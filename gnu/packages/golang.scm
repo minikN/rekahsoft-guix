@@ -4309,3 +4309,29 @@ suffix comparison, rather than the string-based or tree-based approaches.")
      "Go library to parse a line as shell words.")
     (home-page "https://github.com/mattn/go-shellwords")
     (license license:expat)))
+
+(define-public go-github-com-mitchellh-gox
+  (package
+    (name "go-gox")
+    (version "1.0.1")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/mitchellh/gox.git")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0mkh81hd7kn45dz7b6yhzqsg2mvg1g6pwx89jjigxrnqhyg9vrl7"))))
+    (build-system go-build-system)
+    (arguments
+     '(#:import-path "github.com/mitchellh/gox"
+       #:phases (modify-phases %standard-phases
+                  (delete 'check))))
+    (synopsis "Dead simple, no frills Go cross compile tool")
+    (description
+     "Gox is a simple, no-frills tool for Go cross compilation that behaves a
+lot like standard go build.  Gox will parallelize builds for multiple
+platforms.  Gox will also build the cross-compilation toolchain for you.")
+    (home-page "https://github.com/mitchellh/gox")
+    (license license:mpl2.0)))
