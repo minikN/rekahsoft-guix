@@ -126,6 +126,54 @@ all of the regexes given on the command line in order.")
     (home-page "https://github.com/rupa/z")
     (license license:expat)))
 
+(define-public fzf
+  (package
+    (name "fzf")
+    (version "0.18.0")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/junegunn/fzf.git")
+                    (commit version)))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0pwpr4fpw56yzzkcabzzgbgwraaxmp7xzzmap7w1xsrkbj7dl2xl"))))
+    (build-system go-build-system)
+    (native-inputs
+     `(("github.com/mattn/go-isatty" ,go-github-com-mattn-go-isatty)
+       ("github.com/mattn/go-runewidth" ,go-github-com-mattn-go-runewidth)
+       ("github.com/mattn/go-shellwords" ,go-github-com-mattn-go-shellwords)
+       ("golang.org/x/crypto/ssh/terminal" ,go-golang-org-x-crypto-ssh-terminal)
+       ("golang.org/x/sys/unix" ,go-golang-org-x-sys-unix)))
+    (propagated-inputs
+     `(("tmux" ,tmux)))
+    (arguments
+     '(#:import-path "github.com/junegunn/fzf"
+       #:install-source? #f
+       #:phases
+       (modify-phases %standard-phases
+         (replace 'build
+           (lambda _
+             (with-directory-excursion "src/github.com/junegunn/fzf"
+               (invoke "make"))))
+         (replace 'install
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out")))
+               (mkdir-p (string-append out "/share"))
+               (with-directory-excursion "src/github.com/junegunn/fzf"
+                 (invoke "make" "install")
+                 (copy-recursively "bin" (string-append out "/bin"))
+                 (copy-recursively "man" (string-append out "/share/man"))
+                 (copy-recursively "shell" (string-append out "/share/fzf")))))))))
+    (synopsis "Command line fuzzy finder")
+    (description
+     "@command{fzf} is a general purpose command line fuzzy finder.  It's an
+interactive uniz filter for command-line that can be used with any lists;
+files, command history, processes, hostnames, bookmarks, git commits, etc..")
+    (home-page "https://github.com/junegunn/fzf")
+    (license license:expat)))
+
 (define-public envstore
   (package
     (name "envstore")

@@ -4263,3 +4263,49 @@ used by other processes.")
 Porter2 stemmer}.  It is written completely using finite state machines to do
 suffix comparison, rather than the string-based or tree-based approaches.")
       (license license:asl2.0))))
+
+(define-public go-github-com-mattn-go-runewidth
+  (package
+    (name "go-runewidth")
+    (version "0.0.4")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/mattn/go-runewidth.git")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "00b3ssm7wiqln3k54z2wcnxr3k3c7m1ybyhb9h8ixzbzspld0qzs"))))
+    (build-system go-build-system)
+    (arguments
+     '(#:import-path "github.com/mattn/go-runewidth"))
+    (synopsis "Provides functions to get fixed width of the character or string")
+    (description
+     "Provides functions to get fixed width of the character or string.")
+    (home-page "https://github.com/mattn/go-runewidth")
+    (license license:expat)))
+
+(define-public go-github-com-mattn-go-shellwords
+  (package
+    (name "go-shellwords")
+    (version "1.0.6")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/mattn/go-shellwords.git")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0s6rcswsr6k5dwcng4ck6xhz5xw6j20x1d24ngbbh9qfxxnw0j3j"))))
+    (build-system go-build-system)
+    (arguments
+     '(#:import-path "github.com/mattn/go-shellwords"
+       #:phases (modify-phases %standard-phases
+                  (delete 'check))))
+    (synopsis "Parse line as shell words")
+    (description
+     "Go library to parse a line as shell words.")
+    (home-page "https://github.com/mattn/go-shellwords")
+    (license license:expat)))
