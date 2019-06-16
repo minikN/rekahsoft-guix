@@ -174,6 +174,46 @@ files, command history, processes, hostnames, bookmarks, git commits, etc..")
     (home-page "https://github.com/junegunn/fzf")
     (license license:expat)))
 
+(define-public spaceship-prompt
+  (package
+    (name "spaceship-prompt")
+    (version "3.11.1")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/denysdovhan/spaceship-prompt.git")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "171gmqnwbyan1wslbh4aky1gdqfbw3gfsfscxfnpgk0j114a6jfj"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (delete 'configure)
+         (delete 'build)
+         (delete 'check)
+         (replace 'install
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (func-path (string-append out "/share/zsh/site-functions"))
+                    (install-path (string-append out "/lib/spaceship-prompt")))
+               (for-each mkdir-p `(,func-path ,install-path))
+               (for-each (lambda (dir)
+                           (copy-recursively dir (string-append install-path "/" dir)))
+                         '("lib" "modules" "sections"))
+               (copy-file "spaceship.zsh" (string-append install-path "/spaceship.zsh"))
+               (symlink (string-append install-path "/spaceship.zsh")
+                        (string-append func-path "/prompt_spaceship_setup"))))))))
+    (synopsis "Zsh prompt for Astronauts")
+    (description
+     "Spaceship is a minimalistic, powerful and extremely customizable
+Zsh prompt.  It combines everything you may need for convenient work,
+without unecessary complications, like a real spaceship.")
+    (home-page "https://github.com/denysdovhan/spaceship-prompt")
+    (license license:expat)))
+
 (define-public envstore
   (package
     (name "envstore")
