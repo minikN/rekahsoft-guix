@@ -97,6 +97,7 @@
   #:use-module (gnu packages texinfo)
   #:use-module (gnu packages textutils)
   #:use-module (gnu packages tls)
+  #:use-module (gnu packages version-control)
   #:use-module (gnu packages web)
   #:use-module (gnu packages wget)
   #:use-module (gnu packages xdisorg)
@@ -213,6 +214,129 @@ volumes.")
 manager (like podman or CRI-O) and an OCI runtime (like runc or crun) for a single
 container.")
     (home-page "https://github.com/containers/conmon")
+    (license license:asl2.0)))
+
+(define-public buildah
+  (package
+    (name "buildah")
+    (version "1.9.0")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/containers/buildah.git")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "19yf93pq4vw24h76kl32c6ryvg5fp5mixakw9c6sqydf7m74z9i8"))))
+    (build-system go-build-system)
+    (inputs
+     `(("git" ,git)))
+    (propagated-inputs
+     `(("runc" ,runc)
+       ("cni-plugins" ,cni-plugins)))
+    (native-inputs
+     `(("gpgme" ,gpgme)
+       ("pkg-config" ,pkg-config)
+       ("libassuan" ,libassuan)
+       ("libseccomp" ,libseccomp)
+       ("lvm2" ,lvm2)
+       ("eudev" ,eudev)
+       ("glib" ,glib)
+       ("btrfs-progs" ,btrfs-progs)
+       ("libostree" ,libostree)
+       ("libselinux" ,libselinux)
+       ("go-md2man" ,go-md2man)))
+    (arguments
+     '(#:import-path "github.com/containers/buildah"
+       #:install-source? #f
+       #:phases
+       (modify-phases %standard-phases
+         (replace 'build
+           (lambda _
+             (with-directory-excursion "src/github.com/containers/buildah"
+               (setenv "HOME" "/tmp")
+               (invoke "make" "binary" "docs" "GIT_COMMIT=NONE"))))
+         (replace 'install
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out")))
+               (with-directory-excursion "src/github.com/containers/buildah"
+                 (invoke "make" "install"
+                         "GIT_COMMIT=NONE"
+                         (string-append "PREFIX=" out)))
+               #t))))))
+    (synopsis "Tool that facilitates building OCI images")
+    (description
+     "Buildah provides a command line tool for creating and manipulating OCI
+container images.")
+    (home-page "https://github.com/containers/buildah")
+    (license license:asl2.0)))
+
+(define-public go-md2man
+  (package
+    (name "go-md2man")
+    (version "1.0.10")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/cpuguy83/go-md2man.git")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "1bqkf2bvy1dns9zd24k81mh2p1zxsx2nhq5cj8dz2vgkv1xkh60i"))))
+    (build-system go-build-system)
+    (arguments
+     '(#:import-path "github.com/cpuguy83/go-md2man"
+       #:install-source? #f
+       #:phases %standard-phases))
+    (synopsis "Converts markdown into roff (man pages)")
+    (description
+     "Uses blackfriday to process markdown into man pages.")
+    (home-page "https://github.com/cpuguy83/go-md2man")
+    (license license:expat)))
+
+(define-public cni-plugins
+  (package
+    (name "cni-plugins")
+    (version "0.8.1")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/containernetworking/plugins.git")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "07d8knnabfjipzvcqbq7h8gd940lln934xp57nf5x31d3hpmvzws"))))
+    (build-system go-build-system)
+    (arguments
+     '(#:import-path "github.com/containernetworking/plugins"
+       #:install-source? #f
+       #:phases
+       (modify-phases %standard-phases
+         (replace 'build
+           (lambda _
+             (with-directory-excursion "src/github.com/containernetworking/plugins"
+               (setenv "HOME" "/tmp")
+               (invoke "./build_linux.sh"))))
+         (delete 'check) ;; Tests currently use sudo
+         (replace 'install
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out")))
+               (copy-recursively
+                "src/github.com/containernetworking/plugins/bin"
+                (string-append out "/bin"))
+               #t))))))
+         ;; FIXME: Enable tests
+         ;; (replace 'check
+         ;;   (lambda _
+         ;;     (with-directory-excursion "src/github.com/containernetworking/plugins"
+         ;;       (invoke "./test_linux.sh"))))
+    (synopsis "Some standard networking plugins, maintained by the CNI team")
+    (description
+     "A collection of CNI networking plugins.")
+    (home-page "https://github.com/containernetworking/plugins")
     (license license:asl2.0)))
 
 (define (qemu-patch commit file-name sha256-bv)
