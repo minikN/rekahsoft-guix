@@ -116,6 +116,105 @@
   #:use-module (srfi srfi-1)
   #:use-module (ice-9 match))
 
+(define-public libpod
+  (package
+    (name "libpod")
+    (version "1.4.0")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/containers/libpod.git")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "05xbxldhm3cgdjysidzpc8wnq17mgd84mq60jmbq6zcc9jl21axh"))))
+    (build-system go-build-system)
+    (native-inputs
+     `(("gpgme" ,gpgme)
+       ("pkg-config" ,pkg-config)
+       ("libassuan" ,libassuan)
+       ("libseccomp" ,libseccomp)
+       ("go-md2man" ,go-md2man)))
+    (propagated-inputs
+     `(("runc" ,runc)
+       ("conmon" ,conmon)))
+    (arguments
+     '(#:import-path "github.com/containers/libpod"
+       #:phases (modify-phases %standard-phases
+                  (replace 'build
+                    (lambda _
+                      (with-directory-excursion "src/github.com/containers/libpod"
+                        (setenv "HOME" "/tmp")
+                        (invoke "make" "all"
+                                "GIT_COMMIT=NONE"
+                                "GIT_BRANCH=NONE"))))
+                  ;; FIXME: tests currently require docker
+                  ;; (replace 'check
+                  ;;   (lambda _
+                  ;;     (with-directory-excursion "src/github.com/containers/libpod"
+                  ;;       (setenv "HOME" "/tmp")
+                  ;;       (invoke "make" "test"))))
+                  (delete 'check)
+                  (replace 'install
+                    (lambda* (#:key outputs #:allow-other-keys)
+                      (let ((out (assoc-ref outputs "out")))
+                        (with-directory-excursion "src/github.com/containers/libpod"
+                          (invoke "make" "install"
+                                  (string-append "PREFIX=" out)
+                                  (string-append "DESTDIR=" out)))))))))
+    (synopsis "Library used to create containers pods and home of Podman")
+    (description
+     "Libpod provides a library for applications looking to use the container
+pod concept, popularized by kubernets.  Libpod also contains the pod manager
+tool Podman.  Podman manages pods, containers, container images, and container
+volumes.")
+    (home-page "https://github.com/containers/libpod")
+    (license license:asl2.0)))
+
+(define-public conmon
+  (package
+    (name "conmon")
+    (version "0.3.0")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/containers/conmon.git")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0s23gm0cq4mylv882dr1n8bqql42674vny3z58yy77lwzmifc6id"))))
+    (build-system go-build-system)
+    (native-inputs
+     `(("pkg-config" ,pkg-config)
+       ("glib" ,glib)))
+    (arguments
+     '(#:import-path "github.com/containers/conmon"
+       #:phases (modify-phases %standard-phases
+                  (replace 'build
+                    (lambda _
+                      (with-directory-excursion "src/github.com/containers/conmon"
+                        (setenv "HOME" "/tmp")
+                        (invoke "make" "all"
+                                "CC=gcc"
+                                "GIT_COMMIT=NONE"
+                                "GIT_BRANCH=NONE"))))
+                  (delete 'check)
+                  (replace 'install
+                    (lambda* (#:key outputs #:allow-other-keys)
+                      (let ((out (assoc-ref outputs "out")))
+                        (with-directory-excursion "src/github.com/containers/conmon"
+                          (invoke "make" "install"
+                                  (string-append "PREFIX=" out)))))))))
+    (synopsis "OCI container runtime monitor. ")
+    (description
+     "Conmon is a monitoring program and communication tool between a container
+manager (like podman or CRI-O) and an OCI runtime (like runc or crun) for a single
+container.")
+    (home-page "https://github.com/containers/conmon")
+    (license license:asl2.0)))
+
 (define (qemu-patch commit file-name sha256-bv)
   "Return an origin for COMMIT."
   (origin
