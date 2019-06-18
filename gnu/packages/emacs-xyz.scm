@@ -24079,3 +24079,31 @@ you use some other configuration.")
 read-only, constant database that maps Emacs Lisp symbols to
 arbitrary Emacs Lisp objects.")
     (license license:gpl3+)))
+
+(define-public emacs-helm-tramp
+  (package
+    (name "emacs-helm-tramp")
+    (version "1.3.9")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (string-append
+               "https://stable.melpa.org/packages/helm-tramp-"
+               version
+               ".el"))
+        (sha256
+          (base32
+           "1nhlfq113ngcb74n76z8c2wnki14vls18mml36iwi8y9k63flkcd"))))
+    (build-system emacs-build-system)
+    (propagated-inputs `(("emacs-helm" ,emacs-helm)))
+    (home-page
+      "https://github.com/masasam/emacs-helm-tramp")
+    (synopsis
+      "Tramp helm interface for ssh, docker, vagrant")
+    (description
+      "Provides interfaces of Tramp.
+You can also use tramp with helm interface as root
+If you use it with docker-tramp, you can also use docker with helm interface
+If you use it with vagrant-tramp, you can also use vagrant with helm interface
+")
+    (license license:gpl3)))
