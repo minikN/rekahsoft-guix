@@ -24181,3 +24181,27 @@ vc root directory, and for displaying and/or sorting by the vc
 status of listed files.
 ")
     (license license:gpl3)))
+
+(define-public emacs-ac-geiser
+  (package
+    (name "emacs-ac-geiser")
+    (version "20200318.824")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (string-append
+               "https://melpa.org/packages/ac-geiser-"
+               version
+               ".tar"))
+        (sha256
+          (base32
+            "0yhzpa6l0k6r8scis30r8zndm3vsx0vcxglabh7cq45vxax60z2w"))))
+    (build-system emacs-build-system)
+    (propagated-inputs
+      `(("emacs-geiser" ,emacs-geiser)
+        ("emacs-auto-complete" ,emacs-auto-complete)))
+    (home-page "unspecified")
+    (synopsis "Auto-complete backend for geiser")
+    (description
+      "Provides one auto-complete source for Scheme projects using geiser.")
+    (license license:bsd-3)))
