@@ -24205,3 +24205,29 @@ status of listed files.
     (description
       "Provides one auto-complete source for Scheme projects using geiser.")
     (license license:bsd-3)))
+
+(define-public emacs-highlight-indent-guides
+  (package
+    (name "emacs-highlight-indent-guides")
+    (version "20190108.3")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (string-append
+               "https://melpa.org/packages/highlight-indent-guides-"
+               version
+               ".el"))
+        (sha256
+          (base32
+            "02imngb4y6f9vp4jxiwdbdcjxllvjwaa2rlh61zy49n2wivrlwh0"))))
+    (build-system emacs-build-system)
+    (home-page
+      "https://github.com/DarthFennec/highlight-indent-guides")
+    (synopsis "Minor mode to highlight indentation")
+    (description
+      "This minor mode highlights indentation levels via font-lock.  Indent widths
+are dynamically discovered, which means this correctly highlights in any
+mode, regardless of indent width, even in languages with non-uniform
+indentation such as Haskell.  This mode works properly around hard tabs and
+mixed indentation, and it behaves well in large buffers.")
+    (license #f)))
