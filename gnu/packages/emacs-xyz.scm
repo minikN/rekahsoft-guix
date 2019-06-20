@@ -24130,3 +24130,28 @@ If you use it with vagrant-tramp, you can also use vagrant with helm interface
       "Rebox2 provides major and minor modes for inserting and modification of
 comment box is various text styles.")
     (license #f)))
+
+(define-public emacs-multi-term
+  (package
+    (name "emacs-multi-term")
+    (version "20160619.933")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (string-append
+               "https://melpa.org/packages/multi-term-"
+               version
+               ".el"))
+        (sha256
+          (base32
+            "0364vnggv60dgc6hq715l2wcz3h0ar2glkz4g1jxc01djv811id9"))))
+    (build-system emacs-build-system)
+    (native-inputs
+     `(("zsh" ,zsh)))
+    (home-page
+      "http://www.emacswiki.org/emacs/download/multi-term.el")
+    (synopsis
+      "Managing multiple terminal buffers in Emacs.")
+    (description
+      "This package is for creating and managing multiple terminal buffers in Emacs.")
+    (license license:gpl3)))
