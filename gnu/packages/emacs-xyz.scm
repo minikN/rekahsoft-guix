@@ -24107,3 +24107,26 @@ If you use it with docker-tramp, you can also use docker with helm interface
 If you use it with vagrant-tramp, you can also use vagrant with helm interface
 ")
     (license license:gpl3)))
+
+(define-public emacs-rebox2
+  (package
+    (name "emacs-rebox2")
+    (version "20121113.1300")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (string-append
+               "https://melpa.org/packages/rebox2-"
+               version
+               ".el"))
+        (sha256
+          (base32
+           "0ji5x2hnjklz9y4jd11hcfncbcfzgq1dg8r3s7dkrf696y4ziwwy"))))
+    (build-system emacs-build-system)
+    (home-page "https://github.com/lewang/rebox2")
+    (synopsis
+      "Inserting and modification of comment boxes in various styles")
+    (description
+      "Rebox2 provides major and minor modes for inserting and modification of
+comment box is various text styles.")
+    (license #f)))
