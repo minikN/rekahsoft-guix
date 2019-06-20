@@ -24155,3 +24155,29 @@ comment box is various text styles.")
     (description
       "This package is for creating and managing multiple terminal buffers in Emacs.")
     (license license:gpl3)))
+
+(define-public emacs-ibuffer-vc
+  (package
+    (name "emacs-ibuffer-vc")
+    (version "20181225.2227")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (string-append
+               "https://melpa.org/packages/ibuffer-vc-"
+               version
+               ".el"))
+        (sha256
+          (base32
+            "16nry1631g4draqh09r2rq92xpv5vsyxx9yd7r5i2m6kblqh4y3f"))))
+    (build-system emacs-build-system)
+    (home-page
+      "http://github.com/purcell/ibuffer-vc")
+    (synopsis
+      "Group ibuffer's list by VC project, or show VC status")
+    (description
+      "Adds functionality to ibuffer for grouping buffers by their parent
+vc root directory, and for displaying and/or sorting by the vc
+status of listed files.
+")
+    (license license:gpl3)))
