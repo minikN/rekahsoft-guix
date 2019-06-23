@@ -24300,3 +24300,33 @@ a hook.")
       "Quack enhances Emacs support for Scheme programming.  The name
 Quack was a play on DrScheme.")
     (license license:gpl2)))
+
+(define-public emacs-hamlet-mode
+  (package
+    (name "emacs-hamlet-mode")
+    (version "20131208.724")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (string-append
+               "https://melpa.org/packages/hamlet-mode-"
+               version
+               ".el"))
+        (sha256
+          (base32
+           "1r6nxi3d6bmnxrjjsam79vsprfwlnbhpag98vb1hj05yqp13l55v"))))
+    (build-system emacs-build-system)
+    (propagated-inputs
+     `(("emacs-dash" ,emacs-dash)
+        ("emacs-s" ,emacs-s)))
+    (home-page
+      "https://github.com/lightquake/hamlet-mode")
+    (synopsis "Hamlet editing mode")
+    (description
+      "An Emacs major mode for editing files written in Hamlet, a
+Haskell compile-time HTML templating engine. Currently it only provides
+syntax highlighting.
+
+Functions and variables with // in their name are private and may change or
+go away at any time.")
+    (license #f)))
