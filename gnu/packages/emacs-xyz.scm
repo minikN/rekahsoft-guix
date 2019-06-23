@@ -24277,3 +24277,26 @@ intel-hex-mode will do font locking, and calculate checksums.")
       "Enable the mode using M-x highlight-parentheses-mode or by adding it to
 a hook.")
     (license license:gpl2)))
+
+(define-public emacs-quack
+  (package
+    (name "emacs-quack")
+    (version "20181106.1301")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (string-append
+               "https://melpa.org/packages/quack-"
+               version
+               ".el"))
+        (sha256
+          (base32
+           "0ph6zh91kasgbvi425a5m1hz94pxk6qa3srpy4khifsbn7cwiyga"))))
+    (build-system emacs-build-system)
+    (home-page "unspecified")
+    (synopsis
+      "Enhanced support for editing and running Scheme code")
+    (description
+      "Quack enhances Emacs support for Scheme programming.  The name
+Quack was a play on DrScheme.")
+    (license license:gpl2)))
