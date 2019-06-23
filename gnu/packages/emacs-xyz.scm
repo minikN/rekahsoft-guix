@@ -24231,3 +24231,26 @@ mode, regardless of indent width, even in languages with non-uniform
 indentation such as Haskell.  This mode works properly around hard tabs and
 mixed indentation, and it behaves well in large buffers.")
     (license #f)))
+
+(define-public emacs-intel-hex-mode
+  (package
+    (name "emacs-intel-hex-mode")
+    (version "20180423.31")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (string-append
+               "https://melpa.org/packages/intel-hex-mode-"
+               version
+               ".el"))
+        (sha256
+          (base32
+           "1nvwjk686wna96srk3y9xniixas729x6m1rcjnc8lz1zkap9z9bv"))))
+    (build-system emacs-build-system)
+    (home-page
+      "https://github.com/mschuldt/intel-hex-mode")
+    (synopsis "Mode for Intel Hex files")
+    (description
+      "Use this mode for editing files in the intel hex format.  The
+intel-hex-mode will do font locking, and calculate checksums.")
+    (license license:gpl2)))
