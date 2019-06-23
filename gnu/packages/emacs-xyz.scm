@@ -24254,3 +24254,26 @@ mixed indentation, and it behaves well in large buffers.")
       "Use this mode for editing files in the intel hex format.  The
 intel-hex-mode will do font locking, and calculate checksums.")
     (license license:gpl2)))
+
+(define-public emacs-highlight-parentheses
+  (package
+    (name "emacs-highlight-parentheses")
+    (version "20180704.1102")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (string-append
+               "https://melpa.org/packages/highlight-parentheses-"
+               version
+               ".el"))
+        (sha256
+          (base32
+            "0dxnw7d966pm44a54rmd40vrrps56jaayrc8wwj7wxl2imdzqzbl"))))
+    (build-system emacs-build-system)
+    (home-page
+      "https://github.com/tsdh/highlight-parentheses.el")
+    (synopsis "Highlight surrounding parentheses")
+    (description
+      "Enable the mode using M-x highlight-parentheses-mode or by adding it to
+a hook.")
+    (license license:gpl2)))
