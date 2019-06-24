@@ -24330,3 +24330,40 @@ syntax highlighting.
 Functions and variables with // in their name are private and may change or
 go away at any time.")
     (license #f)))
+
+(define-public emacs-mu4e-maildirs-extension
+  (package
+    (name "emacs-mu4e-maildirs-extension")
+    (version "20180606.812")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (string-append
+               "https://melpa.org/packages/mu4e-maildirs-extension-"
+               version
+               ".el"))
+        (sha256
+          (base32
+            "0rcn8mkabhn3w010hchr3xg72z7815j8fshfrcgxxcf9kygsg85b"))))
+    (build-system emacs-build-system)
+    (propagated-inputs `(("emacs-dash" ,emacs-dash)))
+    (arguments
+     '(#:phases
+       (modify-phases %standard-phases
+         (replace 'build
+           (lambda* (#:key outputs #:allow-other-keys)
+             (invoke "emacs" "-batch"
+                     "--eval" "(provide 'mu4e)"
+                     "--eval" "(defvar mu4e~main-buffer-name \"tests\")"
+                     "--eval" "(defvar mu4e-mu-binary \"mu\")"
+                     "--eval" "(require 'cl)"
+                     "-l" "dash.el"
+                     "-l" "mu4e-maildirs-extension.el"
+                     "--eval" "(byte-compile-file \"mu4e-maildirs-extension.el\")"))))))
+    (home-page
+      "http://github.com/agpchil/mu4e-maildirs-extension")
+    (synopsis
+      "Show mu4e maildirs summary in mu4e-main-view")
+    (description "Runs a mu command (async) in a shell process for each
+maildir to count unread and total mails.")
+    (license license:gpl3)))
