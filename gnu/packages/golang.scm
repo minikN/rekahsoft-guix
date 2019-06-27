@@ -47,9 +47,13 @@
   #:use-module (gnu packages admin)
   #:use-module (gnu packages gcc)
   #:use-module (gnu packages base)
+  #:use-module (gnu packages check)
+  #:use-module (gnu packages gnupg)
   #:use-module (gnu packages perl)
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages pcre)
+  #:use-module (gnu packages glib)
+  #:use-module (gnu packages password-utils)
   #:use-module (gnu packages lua)
   #:use-module (gnu packages mp3)
   #:use-module (gnu packages textutils)
@@ -4335,3 +4339,332 @@ lot like standard go build.  Gox will parallelize builds for multiple
 platforms.  Gox will also build the cross-compilation toolchain for you.")
     (home-page "https://github.com/mitchellh/gox")
     (license license:mpl2.0)))
+
+(define-public aws-vault
+  (package
+    (name "aws-vault")
+    (version "4.6.1")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/99designs/aws-vault.git")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0ppjys27685d2ghj7j27910mqzjbzsw8lwg2da9ky5cv97zp592n"))))
+    (build-system go-build-system)
+    (native-inputs
+     `(("go-keyring" ,go-keyring)
+       ("go-github-com-aws-aws-sdk-go" ,go-github-com-aws-aws-sdk-go)
+       ("go-github-com-dvsekhvalnov-jose2go" ,go-github-com-dvsekhvalnov-jose2go)
+       ("go-github-com-godbus-dbus" ,go-github-com-godbus-dbus)
+       ("go-github-com-go-libsecret" ,go-github-com-go-libsecret)
+       ("go-github-com-mitchellh-go-homedir" ,go-github-com-mitchellh-go-homedir)
+       ("go-golang-org-x-crypto-ssh-terminal" ,go-golang-org-x-crypto-ssh-terminal)
+       ("go-golang-org-x-sys-unix" ,go-golang-org-x-sys-unix)
+       ("go-github-com-go-ini-ini" ,go-github-com-go-ini-ini)
+       ("go-github-com-skratchdot-open-golang" ,go-github-com-skratchdot-open-golang)
+       ("go-gopkg-in-kingpin-v2" ,go-gopkg-in-kingpin-v2)
+       ("go-github-com-alecthomas-template" ,go-github-com-alecthomas-template)
+       ("go-github-com-alecthomas-units" ,go-github-com-alecthomas-units)))
+    (arguments
+     '(#:import-path "github.com/99designs/aws-vault"
+       #:install-source? #f
+       #:phases %standard-phases))
+    (synopsis "Vault for securely storing and accessing AWS credentials in development environments ")
+    (description
+     "AWS Vault is a tool to securely store and access AWS credentials in a development environment.
+
+AWS Vault stores IAM credentials in your operating system's secure keystore and
+then generates temporary credentials from those to expose to your shell and
+applications.  It's designed to be complementary to the AWS CLI tools, and is
+aware of your profiles and configuration in ~/.aws/config.")
+    (home-page "https://github.com/99designs/aws-vault")
+    (license license:expat)))
+
+(define-public go-keyring
+  (package
+    (name "go-keyring")
+    (version "1.0.0")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/99designs/keyring.git")
+                    (commit version)))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "1izcaz7mr642by7k6y4dc03bb9hj8racn4qw4xpcw0b1jj61ywn8"))))
+    (build-system go-build-system)
+    (native-inputs
+     `(("go-golang-org-x-crypto-ssh-terminal" ,go-golang-org-x-crypto-ssh-terminal)
+       ("go-golang-org-x-sys-unix" ,go-golang-org-x-sys-unix)
+       ("go-github-com-mitchellh-go-homedir" ,go-github-com-mitchellh-go-homedir)
+       ("go-github-com-dvsekhvalnov-jose2go" ,go-github-com-dvsekhvalnov-jose2go)
+       ("go-github-com-godbus-dbus" ,go-github-com-godbus-dbus)
+       ("go-github-com-go-libsecret" ,go-github-com-go-libsecret)
+       ("password-store" ,password-store)
+       ("gnupg" ,gnupg)))
+    (arguments
+     '(#:import-path "github.com/99designs/keyring"
+       #:phases %standard-phases))
+    (synopsis "Go library providing a uniform interface across a range of
+secure credential stores")
+    (description
+     "Keyring provides utility functions for and a common interface to a range
+of secure credential storage services.  Originally developed as part of AWS
+Vault, a command line tool for securely managing AWS access from developer
+workstations.
+
+Currently Keyring supports the following backends: macOS/OSX Keychain, Windows
+pcredential store, Pass, Secret Service, KDE Wallet, Encrypted File.")
+    (home-page "https://github.com/99designs/keyring")
+    (license license:expat)))
+
+(define-public go-github-com-dvsekhvalnov-jose2go
+  (package
+    (name "go-jose2go")
+    (version "1.3")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/dvsekhvalnov/jose2go.git")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "1nzwvk6nqi7nm2wq4mr2q6k5p0qzsl0kmwx7kgkqsg1zh53250ld"))))
+    (build-system go-build-system)
+    (native-inputs
+     `(("go-gopkg-in-check-v1" ,go-gopkg-in-check-v1)))
+    (arguments
+     '(#:import-path "github.com/dvsekhvalnov/jose2go"
+       #:phases %standard-phases))
+    (synopsis "Golang (GO) implementation of Javascript Object Signing and
+Encryption specification")
+    (description
+     "Pure Golang (GO) library for generating, decoding and encrypting JSON Web
+Tokens.  Zero dependency, relies only on standard library.")
+    (home-page "https://github.com/dvsekhvalnov/jose2go")
+    (license license:expat)))
+
+(define-public go-github-com-godbus-dbus
+  (package
+    (name "go-dbus")
+    (version "5.0.1")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/godbus/dbus.git")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "1c107893nbdfc297i9y0smljmqs167mw26i24509qd09dmvr998y"))))
+    (build-system go-build-system)
+    (native-inputs
+     `(("dbus" ,dbus)))
+    (arguments
+     '(#:import-path "github.com/godbus/dbus"
+       #:tests? #f ; Tests currently fail for unknown reasons
+       #:phases %standard-phases))
+    (synopsis "Native Go bindings for D-Bus")
+    (description
+     "dbus is a simple library that implements native Go client bindings for
+the D-Bus message bus system.")
+    (home-page "https://github.com/godbus/dbus")
+    (license license:bsd-2)))
+
+(define-public go-github-com-go-libsecret
+  (let ((commit "a6f4afe4910cad8688db3e0e9b9ac92ad22d54e1")
+        (revision "0"))
+    (package
+      (name "go-libsecret")
+      (version "5.0.1")
+      (source (origin
+                (method git-fetch)
+                (uri (git-reference
+                      (url "https://github.com/gsterjov/go-libsecret.git")
+                      (commit commit)))
+                (file-name (git-file-name name version))
+                (sha256
+                 (base32
+                  "09zaiadnll83vs22ib89agg7anj0blw5fywvmckxllsgif6ak6v7"))))
+      (build-system go-build-system)
+      (native-inputs
+       `(("go-github-com-godbus-dbus" ,go-github-com-godbus-dbus)))
+      (arguments
+       '(#:import-path "github.com/gsterjov/go-libsecret"
+         #:phases %standard-phases))
+      (synopsis "Native go library that manages secrets via the freedesktop.org Secret Service DBus API")
+      (description
+       "Native go library that manages secrets via the freedesktop.org Secret Service DBus API")
+      (home-page "https://github.com/gsterjov/go-libsecret")
+      (license license:expat))))
+
+(define-public go-github-com-aws-aws-sdk-go
+  (package
+    (name "go-aws-sdk-go")
+    (version "1.20.8")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/aws/aws-sdk-go.git")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "1935w6n1q7lrd0yqrmc5601sjqxh6fyvh1wd9hf6ic7wiq8n84y7"))))
+    (build-system go-build-system)
+    (arguments
+     '(#:import-path "github.com/aws/aws-sdk-go"
+       #:phases %standard-phases))
+    (synopsis "Native Go bindings for D-Bus")
+    (description
+     "dbus is a simple library that implements native Go client bindings for
+the D-Bus message bus system.")
+    (home-page "https://github.com/aws/aws-sdk-go")
+    (license license:asl2.0)))
+
+(define-public go-github-com-go-ini-ini
+  (package
+    (name "go-ini")
+    (version "1.42.0")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/go-ini/ini.git")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "18ywm8zyv091j1pp5mvx8szl7928chk8lw02br6jy568d7rk4xal"))))
+    (build-system go-build-system)
+    (native-inputs
+     `(("go-github.com-smartystreets-goconvey" ,go-github.com-smartystreets-goconvey)))
+    (arguments
+     '(#:import-path "github.com/go-ini/ini"
+;       #:import-path "gopkg.in/ini.v1"
+       #:tests? #f
+       #:phases %standard-phases))
+    (synopsis "Go library provides INI file read and write functionality")
+    (description
+     "Go library provides INI file read and write functionality.")
+    (home-page "https://github.com/go-ini/ini")
+    (license license:asl2.0)))
+
+(define-public go-github-com-skratchdot-open-golang
+  (let ((commit "79abb63cd66e41cb1473e26d11ebdcd68b04c8e5")
+        (revision "0"))
+    (package
+      (name "go-open-golang")
+      (version "1.42.0")
+      (source (origin
+                (method git-fetch)
+                (uri (git-reference
+                      (url "https://github.com/skratchdot/open-golang.git")
+                      (commit commit)))
+                (file-name (git-file-name name version))
+                (sha256
+                 (base32
+                  "0jc13jn8cj7p14n79zhav2nwga6kf9rqs01ic5k7j7agwzzly3ww"))))
+      (build-system go-build-system)
+      (arguments
+       '(#:import-path "github.com/skratchdot/open-golang"
+         #:phases (modify-phases %standard-phases
+                    (delete 'build)
+                    (delete 'check))))
+      (synopsis "Open a file, directory, or URI using the OS's default application for that object type")
+      (description
+       "Open a file, directory, or URI using the OS's default application for
+that object type.  Optionally, you can specify an application to use.
+
+This is a proxy for the following commands:
+
+        OSX: open
+    Windows: start
+Linux/Other: xdg-open")
+      (home-page "https://github.com/skratchdot/open-golang")
+      (license license:expat))))
+
+(define-public go-gopkg-in-kingpin-v2
+  (package
+    (name "go-kingpin-v2")
+    (version "2.2.6")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://gopkg.in/alecthomas/kingpin.v2")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0mndnv3hdngr3bxp7yxfd47cas4prv98sqw534mx7vp38gd88n5r"))))
+    (build-system go-build-system)
+    (native-inputs
+     `(("go-github-com-alecthomas-template" ,go-github-com-alecthomas-template)
+       ("go-github-com-alecthomas-units" ,go-github-com-alecthomas-units)
+       ("go-github-com-stretchr-testify" ,go-github-com-stretchr-testify)))
+    (arguments
+     '(#:import-path "gopkg.in/alecthomas/kingpin.v2"
+       #:phases %standard-phases))
+    (synopsis "Go library provides utilities for building command line interfaces")
+    (description
+     "Go library provides utilities for building command line interfaces.")
+    (home-page "https://gopkg.in/alecthomas/kingpin.v2")
+    (license license:expat)))
+
+(define-public go-github-com-alecthomas-template
+  (let ((commit "a0175ee3bccc567396460bf5acd36800cb10c49c")
+        (revision "0"))
+      (package
+        (name "go-alecthomas-template")
+        (version "0.0.0")
+        (source (origin
+                  (method git-fetch)
+                  (uri (git-reference
+                        (url "https://github.com/alecthomas/template.git")
+                        (commit commit)))
+                  (file-name (git-file-name name version))
+                  (sha256
+                   (base32
+                    "0qjgvvh26vk1cyfq9fadyhfgdj36f1iapbmr5xp6zqipldz8ffxj"))))
+        (build-system go-build-system)
+        (arguments
+         '(#:import-path "github.com/alecthomas/template"
+           #:phases %standard-phases))
+        (synopsis "Fork of Go's text/template adding newline elision")
+        (description
+         "This is a fork of Go 1.4's text/template package with one addition: a
+backslash immediately after a closing delimiter will delete all subsequent
+newlines until a non-newline.")
+        (home-page "https://github.com/alecthomas/template")
+        (license license:bsd-3))))
+
+(define-public go-github-com-alecthomas-units
+  (let ((commit "2efee857e7cfd4f3d0138cc3cbb1b4966962b93a")
+        (revision "0"))
+      (package
+        (name "go-alecthomas-units")
+        (version "0.0.0")
+        (source (origin
+                  (method git-fetch)
+                  (uri (git-reference
+                        (url "https://github.com/alecthomas/units.git")
+                        (commit commit)))
+                  (file-name (git-file-name name version))
+                  (sha256
+                   (base32
+                    "1j65b91qb9sbrml9cpabfrcf07wmgzzghrl7809hjjhrmbzri5bl"))))
+        (build-system go-build-system)
+        (native-inputs
+         `(("go-github-com-stretchr-testify" ,go-github-com-stretchr-testify)))
+        (arguments
+         '(#:import-path "github.com/alecthomas/units"
+           #:phases %standard-phases))
+        (synopsis "Helpful unit multipliers and functions for Go")
+        (description
+         "Helpful unit multipliers and functions for Go")
+        (home-page "https://github.com/alecthomas/units")
+        (license #f))))
