@@ -23,7 +23,8 @@
   #:use-module (guix packages)
   #:use-module (guix download)
   #:use-module (guix git-download)
-  #:use-module (guix build-system go))
+  #:use-module (guix build-system go)
+  #:use-module (guix build-system trivial))
 
 (define-public terraform-docs
   (package
@@ -62,6 +63,83 @@ tool.  These can be shown, or written to a file in JSON or Markdown formats.")
               (sha256
                (base32
                 "0azgxy31r9jdjj5x2n0sc1n1wjvq9q9zyrgl0rx631ppmjmsz31w"))))
+    (build-system go-build-system)
+    (native-inputs
+     `(("go-gox" ,go-github-com-mitchellh-gox)))
+    (arguments
+     `(#:import-path "github.com/hashicorp/terraform"
+       #:install-source? #f
+       #:phases (modify-phases %standard-phases
+                  (replace 'build
+                    (lambda _
+                      (with-directory-excursion "src/github.com/hashicorp/terraform"
+                        (setenv "TF_RELEASE" "")
+                        (setenv "XC_OS" "linux")
+                        (setenv "XC_ARCH"
+                                (let ((system ,(or (%current-target-system)
+                                                   (%current-system))))
+                                  (cond
+                                   ((string-prefix? "x86_64" system)
+                                    "amd64")
+                                   ((string-prefix? "i686" system)
+                                    "386")
+                                   (else ""))))
+                        (invoke "./scripts/build.sh"))))
+                  (replace 'install
+                    (lambda* (#:key outputs #:allow-other-keys)
+                      (let ((out (assoc-ref outputs "out")))
+                        (with-directory-excursion "src/github.com/hashicorp/terraform"
+                          (rename-file "bin/terraform" "bin/terraform-0.12")
+                          (copy-recursively "bin" (string-append out "/bin")))))))))
+    (synopsis "Safely and predictably create, change, and improve infrastructure")
+    (description
+     "Terraform is a tool for building, changing, and versioning
+infrastructure safely and efficiently.  Terraform can manage existing and
+popular service providers as well as custom in-house solutions.")
+    (home-page "https://github.com/hashicorp/terraform")
+    (license license:mpl2.0)))
+
+(define* (wrap-terraform terraform
+                         #:optional
+                         (name (string-append (package-name terraform) "-wrapper")))
+  (package/inherit terraform
+    (name name)
+    (source #f)
+    (build-system trivial-build-system)
+    (outputs '("out"))
+    (propagated-inputs `(("terraform" ,terraform)))
+    (arguments
+     `(#:modules ((guix build utils))
+       #:builder
+         (begin
+           (use-modules (guix build utils))
+           (let ((bin (string-append (assoc-ref %outputs "out") "/bin"))
+                 (terraform (string-append (assoc-ref %build-inputs "terraform") "/bin/")))
+                (mkdir-p bin)
+                (symlink (string-append terraform "terraform-0.12")
+                         (string-append bin "/" "terraform"))
+                #t))))
+    (synopsis "Wrapper for the terraform 0.122 commands")
+    (description
+     "This package provides wrappers for the commands of Terraform@tie{}0.12.x such
+that they can be invoked under their usual name---e.g., @command{terraform}
+instead of @command{terraform-0.12}.")))
+
+(define-public terraform-wrapper (wrap-terraform terraform))
+
+(define-public terraform-0.11
+  (package
+    (name "terraform0.11")
+    (version "0.11.14")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/hashicorp/terraform.git")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "1bzz5wy13gh8j47mxxp6ij6yh20xmxd9n5lidaln3mf1bil19dmc"))))
     (build-system go-build-system)
     (native-inputs
      `(("go-gox" ,go-github-com-mitchellh-gox)))
