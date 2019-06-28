@@ -53,7 +53,7 @@ tool.  These can be shown, or written to a file in JSON or Markdown formats.")
 (define-public terraform
   (package
     (name "terraform")
-    (version "0.12.2")
+    (version "0.12.3")
     (source (origin
               (method git-fetch)
               (uri (git-reference
@@ -62,7 +62,7 @@ tool.  These can be shown, or written to a file in JSON or Markdown formats.")
               (file-name (git-file-name name version))
               (sha256
                (base32
-                "0azgxy31r9jdjj5x2n0sc1n1wjvq9q9zyrgl0rx631ppmjmsz31w"))))
+                "190bvd1q6h2hgi6s2ca6wnaib4k90rjq5g5l93vcbfjcczcgbv5q"))))
     (build-system go-build-system)
     (native-inputs
      `(("go-gox" ,go-github-com-mitchellh-gox)))
