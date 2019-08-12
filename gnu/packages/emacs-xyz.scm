@@ -24367,3 +24367,25 @@ go away at any time.")
     (description "Runs a mu command (async) in a shell process for each
 maildir to count unread and total mails.")
     (license license:gpl3)))
+
+(define-public emacs-helm-unicode
+  (package
+    (name "emacs-helm-unicode")
+    (version "20180608.1407")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (string-append
+               "https://melpa.org/packages/helm-unicode-"
+               version
+               ".el"))
+        (sha256
+          (base32
+           "0w0wvh9kwa4rj98ldi9ppsprw74926a1niih36dp7hbb61xmm7ny"))))
+    (build-system emacs-build-system)
+    (propagated-inputs `(("emacs-helm" ,emacs-helm)))
+    (home-page "unspecified")
+    (synopsis "Helm command for unicode characters.")
+    (description
+      "A helm command for looking up unicode characters by name.")
+    (license #f)))
