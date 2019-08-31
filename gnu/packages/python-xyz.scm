@@ -19312,6 +19312,124 @@ converters and more, those based on the library itself.")
 for YAML and JSON.")
     (license license:expat)))
 
+(define-public python-virtualenv-clone
+  (package
+    (name "python-virtualenv-clone")
+    (version "0.5.3")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (pypi-uri "virtualenv-clone" version))
+        (sha256
+          (base32
+            "0mq54afkkz23q4fwv6rnx7c62913r7d0q9iza6i7w20vl5qy32n8"))))
+    (build-system python-build-system)
+    (native-inputs
+     `(("python-pytest" ,python-pytest)
+       ("python-tox" ,python-tox)))
+    (home-page
+      "https://github.com/edwardgeorge/virtualenv-clone")
+    (synopsis "script to clone virtualenvs.")
+    (description "script to clone virtualenvs.")
+    (license license:expat)))
+
+(define-public python-arpeggio
+  (package
+    (name "python-arpeggio")
+    (version "1.9.0")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (pypi-uri "Arpeggio" version))
+        (sha256
+          (base32
+            "0cl7mpdfgjjr5n0523jsd11z2kb3vd17xa1g95cdaqb6yy28n9d5"))))
+    (build-system python-build-system)
+    (home-page
+      "https://github.com/textX/Arpeggio")
+    (synopsis "Packrat parser interpreter")
+    (description "Packrat parser interpreter")
+    (license license:expat)))
+
+(define-public python-ordereddict
+  (package
+    (name "python-ordereddict")
+    (version "1.1")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (pypi-uri "ordereddict" version))
+        (sha256
+          (base32
+            "07qvy11nvgxpzarrni3wrww3vpc9yafgi2bch4j2vvvc42nb8d8w"))))
+    (build-system python-build-system)
+    (home-page "UNKNOWN")
+    (synopsis
+      "A drop-in substitute for Py2.7's new collections.OrderedDict that works in Python 2.4-2.6.")
+    (description
+      "A drop-in substitute for Py2.7's new collections.OrderedDict that works in Python 2.4-2.6.")
+    (license license:expat)))
+
+(define-public python-parver
+  (package
+    (name "python-parver")
+    (version "0.2.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "parver" version))
+       (sha256
+        (base32
+         "0jzyylcmjxb0agc4fpdnzdnv2ajvp99rs9pz7qcklnhlmy8scdqv"))))
+    (build-system python-build-system)
+    (native-inputs
+     `(("python-six" ,python-six)
+       ("python-attrs" ,python-attrs)
+       ("python-arpeggio" ,python-arpeggio)
+       ("python-pytest" ,python-pytest)
+       ("python-hypothesis" ,python-hypothesis)
+       ("python-pretend" ,python-pretend)))
+    (home-page "https://github.com/RazerM/parver")
+    (synopsis
+     "Parse and manipulate version numbers")
+    (description
+     "Parse and manipulate version numbers.")
+    (license license:expat)))
+
+(define-public python-pipenv
+  (package
+    (name "python-pipenv")
+    (version "2018.11.26")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "pipenv" version))
+       (sha256
+        (base32
+         "0ip8zsrwmhrankrix0shig9g8q2knmr7b63sh7lqa8a5x03fcwx6"))))
+    (build-system python-build-system)
+    (native-inputs
+     `(("python-pytest" ,python-pytest)
+       ("python-arpeggio" ,python-arpeggio)))
+    (propagated-inputs
+     `(("python-certifi" ,python-certifi)
+       ("python-invoke" ,python-invoke)
+       ("python-parver" ,python-parver)
+       ("python-ordereddict" ,python-ordereddict)
+       ("python-requests" ,python-requests)
+       ("python-virtualenv" ,python-virtualenv)
+       ("python-virtualenv-clone" ,python-virtualenv-clone)))
+    (arguments
+     ;; FIXME: Tests currently fail due to an issue with python-typing and the
+     ;; built in typing in pythong 3.7
+     '(#:tests? #f))
+    (home-page "https://github.com/pypa/pipenv")
+    (synopsis
+     "Python Development Workflow for Humans")
+    (description
+     "Python Development Workflow for Humans.")
+    (license license:expat)))
+
 (define-public python-dbusmock
   (package
     (name "python-dbusmock")
