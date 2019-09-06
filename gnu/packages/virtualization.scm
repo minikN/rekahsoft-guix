@@ -327,7 +327,7 @@ container images.")
              (let ((out (assoc-ref outputs "out")))
                (copy-recursively
                 "src/github.com/containernetworking/plugins/bin"
-                (string-append out "/bin"))
+                (string-append out "/usr/lib/cni"))
                #t))))))
          ;; FIXME: Enable tests
          ;; (replace 'check
