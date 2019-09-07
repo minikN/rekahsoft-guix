@@ -139,7 +139,8 @@
        ("go-md2man" ,go-md2man)))
     (propagated-inputs
      `(("runc" ,runc)
-       ("conmon" ,conmon)))
+       ("conmon" ,conmon)
+       ("slirp4netns" ,slirp4netns)))
     (arguments
      '(#:import-path "github.com/containers/libpod"
        #:phases (modify-phases %standard-phases
@@ -338,6 +339,39 @@ container images.")
      "A collection of CNI networking plugins.")
     (home-page "https://github.com/containernetworking/plugins")
     (license license:asl2.0)))
+
+(define-public slirp4netns
+  (package
+    (name "slirp4netns")
+    (version "0.4.1")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/rootless-containers/slirp4netns.git")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0jai403d51w1ym7y12hq2k0hrysnc0d5kkzq8wcx7g00jk1rhkff"))))
+    (build-system gnu-build-system)
+    (arguments
+     ;; TODO: Tests currently fail
+     '(#:tests? #f))
+    (inputs
+     `(("glib" ,glib)
+       ("libcap" ,libcap)
+       ("libseccomp" ,libseccomp)))
+    (native-inputs
+     `(("pkg-config" ,pkg-config)
+       ("autoconf" ,autoconf)
+       ("automake" ,automake)))
+    (synopsis "User-mode networking for unprivileged network namespaces")
+    (description
+     "slirp4netns allows connecting a network namespace to the Internet in a
+completely unprivileged way, by connecting a TAP device in a network namespace
+to the usermode TCP/IP stack (\"slirp\").")
+    (home-page "https://github.com/rootless-containers/slirp4netns")
+    (license license:gpl2+)))
 
 (define (qemu-patch commit file-name sha256-bv)
   "Return an origin for COMMIT."
