@@ -5,6 +5,7 @@
 ;;; Copyright © 2017 Stefan Reichör <stefan@xsteve.at>
 ;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018 Benjamin Slade <slade@jnanam.net>
+;;; Copyright © 2019 Collin J. Doering <collin@rekahsoft.ca>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -33,10 +34,57 @@
   #:use-module (gnu packages ncurses)
   #:use-module (gnu packages readline)
   #:use-module (gnu packages pkg-config)
+  #:use-module (gnu packages ruby)
+  #:use-module (gnu packages tmux)
+  #:use-module (gnu packages shells)
   #:use-module (guix utils)
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system go)
   #:use-module (guix build-system python))
+
+(define-public zsh-autosuggestions
+  (package
+    (name "zsh-autosuggestions")
+    (version "0.6.3")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/zsh-users/zsh-autosuggestions.git")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "1h8h2mz9wpjpymgl2p7pc146c1jgb3dggpvzwm9ln3in336wl95c"))))
+    (build-system gnu-build-system)
+    (native-inputs
+     `(("tmux" ,tmux)
+       ("zsh" ,zsh)
+       ("ruby" ,ruby)
+       ("ruby-rspec" ,ruby-rspec)
+       ("ruby-rspec-wait" ,ruby-rspec-wait)
+       ("ruby-pry" ,ruby-pry)
+       ("ruby-byebug" ,ruby-byebug)))
+    (arguments
+     '(#:phases
+       (modify-phases %standard-phases
+         (delete 'configure)
+         (replace 'check ; Tests use ruby's bundler; instead execute rspec directly
+           (lambda _
+             (setenv "TMUX_TMPDIR" (getenv "TMPDIR"))
+             (setenv "SHELL" (which "zsh"))
+             (invoke "rspec")))
+         (replace 'install
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (zsh-plugins (string-append out "/share/zsh/plugins/zsh-autosuggestions")))
+               (invoke "make" "all")
+               (install-file "zsh-autosuggestions.zsh" zsh-plugins)
+               #t))))))
+    (synopsis "Fish-like autosuggestions for zsh")
+    (description
+     "Fish-like fast/unobtrusive autosuggestions for zsh.  It suggests commands as you type.")
+    (home-page "https://github.com/zsh-users/zsh-autosuggestions.git")
+    (license license:expat)))
 
 (define-public envstore
   (package
