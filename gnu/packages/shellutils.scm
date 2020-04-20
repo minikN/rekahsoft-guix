@@ -144,8 +144,8 @@ all of the regexes given on the command line in order.")
      `(("github.com/mattn/go-isatty" ,go-github-com-mattn-go-isatty)
        ("github.com/mattn/go-runewidth" ,go-github-com-mattn-go-runewidth)
        ("github.com/mattn/go-shellwords" ,go-github-com-mattn-go-shellwords)
-       ("golang.org/x/crypto/ssh/terminal" ,go-golang-org-x-crypto-ssh-terminal)
-       ("golang.org/x/sys/unix" ,go-golang-org-x-sys-unix)))
+       ("go-golang-org-x-crypto" ,go-golang-org-x-crypto)
+       ("go-golang-org-x-sys" ,go-golang-org-x-sys)))
     (propagated-inputs
      `(("tmux" ,tmux)))
     (arguments
