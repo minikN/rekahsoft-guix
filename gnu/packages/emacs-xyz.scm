@@ -24389,3 +24389,30 @@ maildir to count unread and total mails.")
     (description
       "A helm command for looking up unicode characters by name.")
     (license #f)))
+
+(define-public emacs-treemacs-projectile
+  (package
+    (name "emacs-treemacs-projectile")
+    (version "20200530.2129")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (string-append
+               "https://melpa.org/packages/treemacs-projectile-"
+               version
+               ".el"))
+        (sha256
+          (base32
+            "0llai57mzwfps9153xmdgmx616yvh2ilfh8fkcsxkq0zpizq2lfq"))))
+    (build-system emacs-build-system)
+    (propagated-inputs
+      `(("emacs-projectile" ,emacs-projectile)
+        ("emacs-treemacs" ,emacs-treemacs)))
+    (home-page
+      "https://github.com/Alexander-Miller/treemacs")
+    (synopsis "Projectile integration for treemacs")
+    (description
+      "Projectile integration for treemacs
+")
+    (license license:gpl3+)))
+
