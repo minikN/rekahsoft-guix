@@ -24498,3 +24498,27 @@ not catch, nameley the committing and (un)staging of files.
 ")
     (license license:gpl3+)))
 
+(define-public emacs-treemacs-evil
+  (package
+    (name "emacs-treemacs-evil")
+    (version "20200716.2041")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (string-append
+               "https://melpa.org/packages/treemacs-evil-"
+               version
+               ".el"))
+        (sha256
+          (base32
+            "1gmsg4xwk3qpxs0h2d25jpzv0cfr6c954bq5pszdl2q39ihpg48m"))))
+    (build-system emacs-build-system)
+    (propagated-inputs
+      `(("emacs-evil" ,emacs-evil)
+        ("emacs-treemacs" ,emacs-treemacs)))
+    (home-page
+      "https://github.com/Alexander-Miller/treemacs")
+    (synopsis "Evil mode integration for treemacs")
+    (description "Evil mode compatibility.
+")
+    (license license:gpl3+)))
