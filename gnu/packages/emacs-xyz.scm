@@ -24471,3 +24471,30 @@ not catch, nameley the committing and (un)staging of files.
 ")
     (license license:gpl3+)))
 
+(define-public emacs-treemacs-persp
+  (package
+    (name "emacs-treemacs-persp")
+    (version "20200530.2129")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (string-append
+               "https://melpa.org/packages/treemacs-persp-"
+               version
+               ".el"))
+        (sha256
+          (base32
+            "0w9da9c40r54bmcw6nb92iq829jr4gwgzgn1m2fvcdl135r4bdpl"))))
+    (build-system emacs-build-system)
+    (propagated-inputs
+      `(("emacs-treemacs" ,emacs-treemacs)
+        ("emacs-persp-mode" ,emacs-persp-mode)
+        ("emacs-dash" ,emacs-dash)))
+    (home-page
+      "https://github.com/Alexander-Miller/treemacs")
+    (synopsis "Persp-mode integration for treemacs")
+    (description
+      "Integration of persp-mode into treemacs' buffer scoping framework.
+")
+    (license license:gpl3+)))
+
