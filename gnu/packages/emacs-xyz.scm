@@ -24416,3 +24416,28 @@ maildir to count unread and total mails.")
 ")
     (license license:gpl3+)))
 
+(define-public emacs-treemacs-icons-dired
+  (package
+    (name "emacs-treemacs-icons-dired")
+    (version "20200530.2129")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (string-append
+               "https://melpa.org/packages/treemacs-icons-dired-"
+               version
+               ".el"))
+        (sha256
+          (base32
+            "1k049pf4iyd72mbd3kkkxljbrirj5gdb3zlmsb3rdpr7p7acdjj9"))))
+    (build-system emacs-build-system)
+    (propagated-inputs
+      `(("emacs-treemacs" ,emacs-treemacs)))
+    (home-page
+      "https://github.com/Alexander-Miller/treemacs")
+    (synopsis "Treemacs icons for dired")
+    (description
+      "Treemacs icons for dired.  Code is based on all-the-icons-dired.el
+")
+    (license license:gpl3+)))
+
