@@ -24441,3 +24441,33 @@ maildir to count unread and total mails.")
 ")
     (license license:gpl3+)))
 
+(define-public emacs-treemacs-magit
+  (package
+    (name "emacs-treemacs-magit")
+    (version "20200421.1426")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (string-append
+               "https://melpa.org/packages/treemacs-magit-"
+               version
+               ".el"))
+        (sha256
+          (base32
+            "0b7c5qmhvkf0v0qp6ycsz0f5sl1lnqm6acs5ssvsgkp91czi0m1f"))))
+    (build-system emacs-build-system)
+    (propagated-inputs
+      `(("emacs-treemacs" ,emacs-treemacs)
+        ("emacs-pfuture" ,emacs-pfuture)
+        ("emacs-magit" ,emacs-magit)))
+    (home-page
+      "https://github.com/Alexander-Miller/treemacs")
+    (synopsis "Magit integration for treemacs")
+    (description
+      "Closing the gaps for filewatch- and git-modes in conjunction with magit.
+Specifically this package will hook into magit so as to artificially
+produce filewatch events for changes that treemacs would otherwise
+not catch, nameley the committing and (un)staging of files.
+")
+    (license license:gpl3+)))
+
