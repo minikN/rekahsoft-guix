@@ -24522,3 +24522,43 @@ not catch, nameley the committing and (un)staging of files.
     (description "Evil mode compatibility.
 ")
     (license license:gpl3+)))
+
+(define-public emacs-vimish-fold
+  (package
+    (name "emacs-vimish-fold")
+    (version "20200524.1729")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (string-append
+               "https://melpa.org/packages/vimish-fold-"
+               version
+               ".el"))
+        (sha256
+          (base32
+            "08p826zn4ris9b46r1d5z9v9jdj4lyr6kdmw4yhmnm9sk41z4bm4"))))
+    (build-system emacs-build-system)
+    (propagated-inputs `(("emacs-f" ,emacs-f)))
+    (home-page
+      "https://github.com/mrkkrp/vimish-fold")
+    (synopsis "Fold text like in Vim")
+    (description
+      "This is a package to perform text folding like in Vim.  It has the
+following features:
+
+* folding of active regions;
+* good visual feedback: it's obvious which part of text is folded;
+* persistence by default: when you kill a buffer your folds don't
+  disappear;
+* persistence scales well, you can work on hundreds of files with lots of
+  folds without adverse effects;
+* it does not break indentation;
+* folds can be toggled from folded state to unfolded and back very
+  easily;
+* quick navigation between existing folds;
+* you can use mouse to unfold folds (good for beginners and not only for
+  them);
+* for fans of `avy package: you can use `avy' to fold text with minimal
+  number of key strokes!")
+    (license #f)))
+
