@@ -24638,3 +24638,29 @@ command which prompts for post id (the string after http://ix.io/)
 
 curl is used as the backend via grapnel http request library.")
     (license #f)))
+
+(define-public emacs-treemacs-all-the-icons
+  (package
+    (name "emacs-treemacs-all-the-icons")
+    (version "20200801.920")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (string-append
+               "https://melpa.org/packages/treemacs-all-the-icons-"
+               version
+               ".el"))
+        (sha256
+          (base32
+            "1dbsr6j4pz2l3p9ya82was7n6m2pvbz8wlxmvhn6xsnwd57c1xiq"))))
+    (build-system emacs-build-system)
+    (propagated-inputs
+      `(("emacs-all-the-icons" ,emacs-all-the-icons)
+        ("emacs-treemacs" ,emacs-treemacs)))
+    (home-page
+      "https://github.com/Alexander-Miller/treemacs")
+    (synopsis
+      "An all-the-icons integration for treemacs")
+    (description "An all-the-icons integration for treemacs.
+")
+    (license license:gpl3)))
