@@ -19315,14 +19315,14 @@ for YAML and JSON.")
 (define-public python-virtualenv-clone
   (package
     (name "python-virtualenv-clone")
-    (version "0.5.3")
+    (version "0.5.4")
     (source
       (origin
         (method url-fetch)
         (uri (pypi-uri "virtualenv-clone" version))
         (sha256
           (base32
-            "0mq54afkkz23q4fwv6rnx7c62913r7d0q9iza6i7w20vl5qy32n8"))))
+            "0absh96fsxk9di7ir76f5djyfm2c214wnyk53avrhjy8akflhpk6"))))
     (build-system python-build-system)
     (native-inputs
      `(("python-pytest" ,python-pytest)
@@ -19336,14 +19336,14 @@ for YAML and JSON.")
 (define-public python-arpeggio
   (package
     (name "python-arpeggio")
-    (version "1.9.0")
+    (version "1.9.2")
     (source
       (origin
         (method url-fetch)
         (uri (pypi-uri "Arpeggio" version))
         (sha256
           (base32
-            "0cl7mpdfgjjr5n0523jsd11z2kb3vd17xa1g95cdaqb6yy28n9d5"))))
+            "0aq2pmhfyq7vhbhyq8jgxiphncy1s79rmrsggz4p52m4cdhy134l"))))
     (build-system python-build-system)
     (home-page
       "https://github.com/textX/Arpeggio")
@@ -19373,14 +19373,14 @@ for YAML and JSON.")
 (define-public python-parver
   (package
     (name "python-parver")
-    (version "0.2.1")
+    (version "0.3.0")
     (source
      (origin
        (method url-fetch)
        (uri (pypi-uri "parver" version))
        (sha256
         (base32
-         "0jzyylcmjxb0agc4fpdnzdnv2ajvp99rs9pz7qcklnhlmy8scdqv"))))
+         "0a6jp17c1ag6b9yp5xgy9wvznk3g0v2f8gpwkcwxpyc9ygk98zdm"))))
     (build-system python-build-system)
     (native-inputs
      `(("python-six" ,python-six)
@@ -19433,14 +19433,14 @@ for YAML and JSON.")
 (define-public python-dbusmock
   (package
     (name "python-dbusmock")
-    (version "0.18.3")
+    (version "0.19")
     (source
      (origin
        (method url-fetch)
        (uri (pypi-uri "python-dbusmock" version))
        (sha256
         (base32
-         "0hp2kyac88nh9iv6l8hlmv7s1sa1s5f1a3wc2pmlmmxnd211fjlr"))))
+         "1hl6zk3blc561csjp5sfpbglpbwr9qp65f9k4smdxmgwsbp30zs9"))))
     (build-system python-build-system)
     (arguments
      '(#:phases
