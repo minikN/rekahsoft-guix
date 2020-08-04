@@ -24600,3 +24600,41 @@ An example:
  '((q . \"ASIN B001EN71CW\")))")
     (license license:gpl3)))
 
+(define-public emacs-ix
+  (package
+    (name "emacs-ix")
+    (version "20131027.1629")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (string-append
+               "https://melpa.org/packages/ix-"
+               version
+               ".el"))
+        (sha256
+          (base32
+            "165nr8cz2y0mpcav0bkc8kak5zji4fayrs9v9wdzn0nksq6wdbls"))))
+    (build-system emacs-build-system)
+    (propagated-inputs
+      `(("emacs-grapnel" ,emacs-grapnel)
+        ("curl" ,curl)))
+    (home-page
+      "http://www.github.com/theanalyst/ix.el")
+    (synopsis
+      "Emacs client for http://ix.io pastebin")
+    (description
+      "ix.el is a simple emacs client to http://ix.io cmdline pastebin. At
+the moment using the `ix' command on a selection sends the
+selection to ix.io, entire buffer is sent if selection is inactive,
+on success the url is notified in the minibuffer as well as saved
+in the kill ring.
+
+It is recommended to set a user name and token so that you can
+later delete or replace a paste. Set this via the variables
+`ix-user' and `ix-token' via M-x customize-group RET ix
+
+Posts (if posted with user and token) can be deleted by `ix-delete'
+command which prompts for post id (the string after http://ix.io/)
+
+curl is used as the backend via grapnel http request library.")
+    (license #f)))
