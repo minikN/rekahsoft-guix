@@ -24562,3 +24562,41 @@ following features:
   number of key strokes!")
     (license #f)))
 
+(define-public emacs-grapnel
+  (package
+    (name "emacs-grapnel")
+    (version "20131001.1534")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (string-append
+               "https://melpa.org/packages/grapnel-"
+               version
+               ".el"))
+        (sha256
+          (base32
+            "1vnd025v7am19bamp0y50lq9abf2rzrbjslppvbk1ybb3lvw8n7q"))))
+    (build-system emacs-build-system)
+    (home-page
+      "http://www.github.com/leathekd/grapnel")
+    (synopsis
+      "HTTP request lib with flexible callback dispatch")
+    (description
+      "Grapnel is an HTTP request library that uses a curl subprocess and
+offers flexible callback dispatch.  Not only can you pass in an
+alist of request outcomes to callback functions (see below) but you
+can also override the dispatch function itself if the default one
+doesn't suit your needs.  Further, grapnel will build the query
+string, request data (i.e., POST body), and headers from alists
+that are passed in.
+
+An example:
+(grapnel-retrieve-url
+ \"www.google.com\"
+ '((success . (lambda (res hdrs) (message \"%s\" res)))
+   (failure . (lambda (res hdrs) (message \"Fail: %s\" res)))
+   (error   . (lambda (res err)  (message \"Err: %s\" err))))
+ \"GET\"
+ '((q . \"ASIN B001EN71CW\")))")
+    (license license:gpl3)))
+
