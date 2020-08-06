@@ -24664,3 +24664,41 @@ curl is used as the backend via grapnel http request library.")
     (description "An all-the-icons integration for treemacs.
 ")
     (license license:gpl3)))
+
+(define-public emacs-persp-projectile
+  (package
+    (name "emacs-persp-projectile")
+    (version "20180616.1944")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (string-append
+               "https://melpa.org/packages/persp-projectile-"
+               version
+               ".el"))
+        (sha256
+          (base32
+            "1pc1v6rc44wl7sq0qchgc4lxiy8lr7zvp0hygcp95c1x0dkqs8jl"))))
+    (build-system emacs-build-system)
+    (propagated-inputs
+      `(("emacs-perspective" ,emacs-perspective)
+        ("emacs-projectile" ,emacs-projectile)))
+    (home-page "https://github.com/bbatsov/persp-projectile")
+    (synopsis
+      "Perspective integration with Projectile")
+    (description
+      "This library bridges perspective mode to the awesome library
+Projectile.  The idea is to create a separate perspective when
+switching project.  A perspective is an independent workspace for
+Emacs, similar to multiple desktops in Gnome and MacOS.  I often
+work on many projects at the same time, and using perspective and
+projectile together allows me to easily know which project I'm
+current in, and focus on files that only belong to current project
+when switching buffer.
+
+To use this library, put this file in your Emacs load path, and
+call (require 'persp-projectile)
+
+See perspective.el on github: https://github.com/nex3/perspective-el
+")
+    (license license:gpl3+)))
