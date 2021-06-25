@@ -91,8 +91,9 @@ if test "x$guix_build_daemon" = "xyes"; then
   dnl sched_setaffinity: to improve RPC locality.
   dnl statvfs: to detect disk-full conditions.
   dnl strsignal: for error reporting.
+  dnl statx: fine-grain 'stat' call, new in glibc 2.28.
   AC_CHECK_FUNCS([lutimes lchown posix_fallocate sched_setaffinity \
-     statvfs nanosleep strsignal])
+     statvfs nanosleep strsignal statx])
 
   dnl Check whether the store optimiser can optimise symlinks.
   AC_MSG_CHECKING([whether it is possible to create a link to a symlink])
@@ -114,9 +115,6 @@ if test "x$guix_build_daemon" = "xyes"; then
   dnl Check whether we have the `personality' syscall, which allows us
   dnl to do i686-linux builds on x86_64-linux machines.
   AC_CHECK_HEADERS([sys/personality.h])
-
-  dnl Check for <linux/fs.h> (for immutable file support).
-  AC_CHECK_HEADERS([linux/fs.h])
 
   dnl Determine the appropriate default list of substitute URLs (GnuTLS
   dnl is required so we can default to 'https'.)

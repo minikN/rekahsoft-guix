@@ -1,9 +1,11 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2017, 2018, 2019 Ricardo Wurmus <rekado@elephly.net>
+;;; Copyright © 2017, 2018, 2019, 2020 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2018 Joshua Sierles, Nextjournal <joshua@nextjournal.com>
-;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2019 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2019 Andreas Enge <andreas@enge.fr>
+;;; Copyright © 2020 Alexander Krotov <krotov@iitp.ru>
+;;; Copyright © 2020 Pierre Langlois <pierre.langlos@gmx.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -38,11 +40,13 @@
   #:use-module (gnu packages check)
   #:use-module (gnu packages compression)
   #:use-module (gnu packages cran)
+  #:use-module (gnu packages gd)
   #:use-module (gnu packages graphviz)
   #:use-module (gnu packages maths)
   #:use-module (gnu packages multiprecision)
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages python)
+  #:use-module (gnu packages python-science)
   #:use-module (gnu packages python-web)
   #:use-module (gnu packages python-xyz)
   #:use-module (gnu packages statistics)
@@ -53,15 +57,14 @@
 (define-public igraph
   (package
     (name "igraph")
-    (version "0.7.1")
+    (version "0.8.1")
     (source
      (origin
        (method url-fetch)
-       (uri (string-append "http://igraph.org/nightly/get/c/igraph-"
-                           version ".tar.gz"))
+       (uri (string-append "https://github.com/igraph/igraph/releases/"
+                           "download/" version "/igraph-" version ".tar.gz"))
        (sha256
-        (base32
-         "1pxh8sdlirgvbvsw8v65h6prn7hlm45bfsl1yfcgd6rn4w706y6r"))))
+        (base32 "0wbvrac3ip3lqmbkckhnxa2swlbc86l1h8mazdlb618kx3winvi6"))))
     (build-system gnu-build-system)
     (arguments
      `(#:configure-flags
@@ -75,7 +78,7 @@
        ("lapack" ,lapack)
        ("openblas" ,openblas)
        ("zlib" ,zlib)))
-    (home-page "http://igraph.org")
+    (home-page "https://igraph.org")
     (synopsis "Network analysis and visualization")
     (description
      "This package provides a library for the analysis of networks and graphs.
@@ -87,34 +90,49 @@ more.")
 (define-public python-igraph
   (package (inherit igraph)
     (name "python-igraph")
-    (version "0.7.1.post6")
+    (version "0.8.0")
     (source
      (origin
        (method url-fetch)
        (uri (pypi-uri "python-igraph" version))
        (sha256
         (base32
-         "0xp61zz710qlzhmzbfr65d5flvsi8zf2xy78s6rsszh719wl5sm5"))))
+         "13mbrlmnbgbzw6y8ws7wj0a3ly3in8j4l1ngi6yxvgvxxi4bprj7"))))
     (build-system python-build-system)
-    (arguments '())
+    (arguments
+     '(#:configure-flags
+       (list "--use-pkg-config")
+       #:phases
+       (modify-phases %standard-phases
+         (replace 'build
+           (lambda _
+             (invoke "python" "./setup.py" "build" "--use-pkg-config")))
+         (delete 'check)
+         (add-after 'install 'check
+           (lambda* (#:key inputs outputs #:allow-other-keys)
+             (add-installed-pythonpath inputs outputs)
+             (invoke "pytest" "-v"))))))
     (inputs
      `(("igraph" ,igraph)))
+    (propagated-inputs
+     `(("python-texttable" ,python-texttable)))
     (native-inputs
-     `(("pkg-config" ,pkg-config)))
-    (home-page "http://pypi.python.org/pypi/python-igraph")
+     `(("pkg-config" ,pkg-config)
+       ("python-pytest" ,python-pytest)))
+    (home-page "https://pypi.org/project/python-igraph/")
     (synopsis "Python bindings for the igraph network analysis library")))
 
 (define-public r-igraph
   (package
     (name "r-igraph")
-    (version "1.2.4.1")
+    (version "1.2.5")
     (source
      (origin
        (method url-fetch)
        (uri (cran-uri "igraph" version))
        (sha256
         (base32
-         "1074y8mvprrqlkb4vwa2qc9l03r8d7p5vaaqacj4ljjs7dvcq6l9"))))
+         "126z1ygbmi3g7hk97snf22rnx680dyi30idssm5zacba5rdngp8c"))))
     (build-system r-build-system)
     (native-inputs
      `(("gfortran" ,gfortran)))
@@ -127,7 +145,7 @@ more.")
      `(("r-magrittr" ,r-magrittr)
        ("r-matrix" ,r-matrix)
        ("r-pkgconfig" ,r-pkgconfig)))
-    (home-page "http://igraph.org")
+    (home-page "https://igraph.org")
     (synopsis "Network analysis and visualization")
     (description
      "This package provides routines for simple graphs and network analysis.
@@ -139,14 +157,14 @@ more.")
 (define-public r-diffusionmap
   (package
     (name "r-diffusionmap")
-    (version "1.1-0.1")
+    (version "1.2.0")
     (source
      (origin
        (method url-fetch)
        (uri (cran-uri "diffusionMap" version))
        (sha256
         (base32
-         "11l4kbciawvli5nlsi4qaf8afmgk5xgqiqpdyhvaqri5mx0zhk5j"))))
+         "1rvk7069brlm1s9kqj4c31mwwr3mw4hmhay95cjjjfmw5xclff2j"))))
     (properties `((upstream-name . "diffusionMap")))
     (build-system r-build-system)
     (propagated-inputs
@@ -164,14 +182,14 @@ model.")
 (define-public r-rgraphviz
   (package
     (name "r-rgraphviz")
-    (version "2.28.0")
+    (version "2.32.0")
     (source
      (origin
        (method url-fetch)
        (uri (bioconductor-uri "Rgraphviz" version))
        (sha256
         (base32
-         "0nivz8fshaqig6ynjqbya2gmxsy4hm7jnd8fhb853z5g0ydp7g0c"))))
+         "1calpvzgcz6v7s4x6bf35kj83sga95zjp7x87p5d3qnbv7q2wz5y"))))
     (properties `((upstream-name . "Rgraphviz")))
     (build-system r-build-system)
     ;; FIXME: Rgraphviz bundles the sources of an older variant of
@@ -182,7 +200,7 @@ model.")
      `(("r-graph" ,r-graph)))
     (native-inputs
      `(("pkg-config" ,pkg-config)))
-    (home-page "http://bioconductor.org/packages/Rgraphviz")
+    (home-page "https://bioconductor.org/packages/Rgraphviz")
     (synopsis "Plotting capabilities for R graph objects")
     (description
      "This package interfaces R with the graphviz library for plotting R graph
@@ -198,7 +216,7 @@ objects from the @code{graph} package.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/wjrl/RBioFabric.git")
+                      (url "https://github.com/wjrl/RBioFabric")
                       (commit commit)))
                 (file-name (string-append name "-" version "-checkout"))
                 (sha256
@@ -218,6 +236,58 @@ lines.")
 (define-public python-plotly
   (package
     (name "python-plotly")
+    (version "4.8.1")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/plotly/plotly.py")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "08ab677gr85m10zhixr6dnmlfws8q6sra7nhyb8nf3r8dx1ffqhz"))))
+    (build-system python-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'chdir
+           (lambda _
+             (chdir "packages/python/plotly")
+             #t))
+         (replace 'check
+           (lambda _
+             (invoke "pytest" "-x" "plotly/tests/test_core")
+             (invoke "pytest" "-x" "plotly/tests/test_io")
+             ;; FIXME: Add optional dependencies and enable their tests.
+             ;; (invoke "pytest" "-x" "plotly/tests/test_optional")
+             (invoke "pytest" "_plotly_utils/tests")))
+         (add-before 'reset-gzip-timestamps 'make-files-writable
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out")))
+               (for-each (lambda (file) (chmod file #o644))
+                 (find-files out "\\.gz"))
+               #t))))))
+    (native-inputs
+     `(("python-pytest" ,python-pytest)))
+    (propagated-inputs
+     `(("python-decorator" ,python-decorator)
+       ("python-ipywidgets" ,python-ipywidgets)
+       ("python-pandas" ,python-pandas)
+       ("python-requests" ,python-requests)
+       ("python-retrying" ,python-retrying)
+       ("python-six" ,python-six)
+       ("python-statsmodels" ,python-statsmodels)
+       ("python-xarray" ,python-xarray)))
+    (home-page "https://plotly.com/python/")
+    (synopsis "Interactive plotting library for Python")
+    (description "Plotly's Python graphing library makes interactive,
+publication-quality graphs online.  Examples of how to make line plots, scatter
+plots, area charts, bar charts, error bars, box plots, histograms, heatmaps,
+subplots, multiple-axes, polar charts, and bubble charts. ")
+    (license license:expat)))
+
+(define-public python-plotly-2.4.1
+  (package (inherit python-plotly)
     (version "2.4.1")
     (source
       (origin
@@ -226,26 +296,19 @@ lines.")
         (sha256
          (base32
           "0s9gk2fl53x8wwncs3fwii1vzfngr0sskv15v3mpshqmrqfrk27m"))))
-    (build-system python-build-system)
+   (native-inputs '())
+   (propagated-inputs
+    `(("python-decorator" ,python-decorator)
+      ("python-nbformat" ,python-nbformat)
+      ("python-pandas" ,python-pandas)
+      ("python-pytz" ,python-pytz)
+      ("python-requests" ,python-requests)
+      ("python-six" ,python-six)))
     (arguments
-     '(#:tests? #f)) ; The tests are not distributed in the release
-    (propagated-inputs
-     `(("python-decorator" ,python-decorator)
-       ("python-nbformat" ,python-nbformat)
-       ("python-pandas" ,python-pandas)
-       ("python-pytz" ,python-pytz)
-       ("python-requests" ,python-requests)
-       ("python-six" ,python-six)))
-    (home-page "https://plot.ly/python/")
-    (synopsis "Interactive plotting library for Python")
-    (description "Plotly's Python graphing library makes interactive,
-publication-quality graphs online.  Examples of how to make line plots, scatter
-plots, area charts, bar charts, error bars, box plots, histograms, heatmaps,
-subplots, multiple-axes, polar charts, and bubble charts. ")
-    (license license:expat)))
+     '(#:tests? #f)))) ; The tests are not distributed in the release
 
 (define-public python2-plotly
-  (package-with-python2 python-plotly))
+  (package-with-python2 python-plotly-2.4.1))
 
 (define-public python-louvain
   (package
@@ -255,7 +318,7 @@ subplots, multiple-axes, polar charts, and bubble charts. ")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/vtraag/louvain-igraph.git")
+                    (url "https://github.com/vtraag/louvain-igraph")
                     (commit version)))
               (file-name (git-file-name name version))
               (sha256
@@ -288,7 +351,7 @@ not be used for new projects.")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/facebookresearch/faiss.git")
+                    (url "https://github.com/facebookresearch/faiss")
                     (commit (string-append "v" version))))
               (file-name (git-file-name name version))
               (sha256
@@ -389,7 +452,7 @@ contains supporting code for evaluation and parameter tuning.")
 PYTHONCFLAGS =-I~a/include/python~am/ -I~a/lib/python~a/site-packages/numpy/core/include
 LIBS = -lpython~am -lfaiss
 SHAREDFLAGS = -shared -fopenmp
-CXXFLAGS = -fpermissive -std=c++11 -fopenmp -fPIC
+CXXFLAGS = -fpermissive -fopenmp -fPIC
 CPUFLAGS = ~{~a ~}~%"
                            (assoc-ref inputs "python*") python-version
                            (assoc-ref inputs "python-numpy") python-version
@@ -499,4 +562,33 @@ isolating planarity obstructions.")
     (synopsis "Rank-width and rank-decomposition of graphs")
     (description "rw computes rank-width and rank-decompositions
 of graphs.")
+    (license license:gpl2+)))
+
+(define-public mscgen
+  (package
+    (name "mscgen")
+    (version "0.20")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "http://www.mcternan.me.uk/mscgen/software/mscgen-src-"
+                           version ".tar.gz"))
+       (sha256
+        (base32
+         "08yw3maxhn5fl1lff81gmcrpa4j9aas4mmby1g9w5qcr0np82d1w"))))
+    (build-system gnu-build-system)
+    (native-inputs
+     `(("pkg-config" ,pkg-config)))
+    (inputs
+     `(("gd" ,gd)))
+    (home-page "http://www.mcternan.me.uk/mscgen/")
+    (synopsis "Message Sequence Chart Generator")
+    (description "Mscgen is a small program that parses Message Sequence Chart
+descriptions and produces PNG, SVG, EPS or server side image maps (ismaps) as
+the output.  Message Sequence Charts (MSCs) are a way of representing entities
+and interactions over some time period and are often used in combination with
+SDL.  MSCs are popular in Telecoms to specify how protocols operate although
+MSCs need not be complicated to create or use.  Mscgen aims to provide a simple
+text language that is clear to create, edit and understand, which can also be
+transformed into common image formats for display or printing.")
     (license license:gpl2+)))

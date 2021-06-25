@@ -1,9 +1,11 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2014, 2015, 2016, 2017, 2019 Eric Bavier <bavier@member.fsf.org>
-;;; Copyright © 2016, 2017, 2018 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2014, 2015, 2016, 2017, 2019, 2020 Eric Bavier <bavier@posteo.net>
+;;; Copyright © 2016, 2017, 2018, 2020 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018, 2019 Rutger Helling <rhelling@mykolab.com>
 ;;; Copyright © 2019 Pkill -9 <pkill9@runbox.com>
+;;; Copyright © 2020 Vincent Legoll <vincent.legoll@gmail.com>
+;;; Copyright © 2020 Morgan Smith <Morgan.J.Smith@outlook.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -22,25 +24,40 @@
 
 (define-module (gnu packages debug)
   #:use-module (guix packages)
-  #:use-module (guix licenses)
+  #:use-module ((guix licenses) #:prefix license:)
   #:use-module (guix download)
   #:use-module (guix git-download)
   #:use-module (guix utils)
   #:use-module (guix build-system gnu)
+  #:use-module (guix build-system cmake)
+  #:use-module (gnu packages)
+  #:use-module (gnu packages attr)
   #:use-module (gnu packages autotools)
   #:use-module (gnu packages base)
   #:use-module (gnu packages bash)
+  #:use-module (gnu packages bison)
+  #:use-module (gnu packages code)
+  #:use-module (gnu packages compression)
   #:use-module (gnu packages flex)
+  #:use-module (gnu packages gdb)
   #:use-module (gnu packages glib)
   #:use-module (gnu packages gtk)
   #:use-module (gnu packages golang)
-  #:use-module (gnu packages code)
+  #:use-module (gnu packages image)
+  #:use-module (gnu packages libusb)
+  #:use-module (gnu packages linux)
   #:use-module (gnu packages llvm)
+  #:use-module (gnu packages ncurses)
+  #:use-module (gnu packages ninja)
   #:use-module (gnu packages perl)
+  #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages pretty-print)
   #:use-module (gnu packages python)
+  #:use-module (gnu packages python-xyz)
   #:use-module (gnu packages readline)
+  #:use-module (gnu packages serialization)
   #:use-module (gnu packages virtualization)
+  #:use-module (gnu packages xdisorg)
   #:use-module (ice-9 match)
   #:use-module (srfi srfi-1))
 
@@ -52,7 +69,7 @@
      (origin
       (method url-fetch)
       (uri (list
-            (string-append "http://ftp.de.debian.org/debian/pool/main/d/delta/"
+            (string-append "mirror://debian/pool/main/d/delta/"
                            "delta_" version ".orig.tar.gz")
             ;; This uri seems to send guix download into an infinite loop
             (string-append "http://delta.tigris.org/files/documents/3103/"
@@ -90,7 +107,7 @@ isolate a small failure-inducing substring of a large input that causes your
 program to exhibit a bug.")
     ;; See License.txt, which is a bsd-3 license, despite the project's
     ;; home-page pointing to a bsd-2 license.
-    (license bsd-3)))
+    (license license:bsd-3)))
 
 (define-public c-reduce
   (package
@@ -105,11 +122,11 @@ program to exhibit a bug.")
       (sha256
        (base32 "0qx0zq8jxzx2as2zf0740g7kvgq163ayn3041di4vwk77490y76v"))))
     (build-system gnu-build-system)
+    (native-inputs `(("flex" ,flex)))
     (inputs
      `(("astyle"          ,astyle)
        ("llvm"            ,llvm)
        ("clang"           ,clang)
-       ("flex"            ,flex)
        ("indent"          ,indent)
        ("perl"            ,perl)
        ("exporter-lite"   ,perl-exporter-lite)
@@ -150,7 +167,7 @@ property of interest (such as triggering a compiler bug) and automatically
 produces a much smaller C/C++ program that has the same property.  It is
 intended for use by people who discover and report bugs in compilers and other
 tools that process C/C++ code.")
-    (license ncsa)))
+    (license license:ncsa)))
 
 (define-public american-fuzzy-lop
   (let ((machine (match (or (%current-target-system)
@@ -165,67 +182,29 @@ tools that process C/C++ code.")
                    (_                "UNSUPPORTED"))))
     (package
       (name "american-fuzzy-lop")
-      (version "2.52b")             ;It seems all releases have the 'b' suffix
+      (version "2.56b")             ;It seems all releases have the 'b' suffix
       (source
        (origin
-         (method url-fetch)
-         (uri (string-append "http://lcamtuf.coredump.cx/afl/releases/"
-                             "afl-" version ".tgz"))
+         (method git-fetch)
+         (uri (git-reference
+               (url "https://github.com/google/AFL")
+               (commit (string-append "v" version))))
          (sha256
-          (base32
-           "0ig0ij4n1pwry5dw1hk4q88801jzzy2cric6y2gd6560j55lnqa3"))))
+          (base32 "1q1g59gkm48aa4cg9h70jx4i2gapmypgp5rzs156b2avd95vwkn1"))
+         (file-name (git-file-name name version))))
       (build-system gnu-build-system)
       (inputs
-       `(("custom-qemu"
-          ;; The afl-qemu tool builds qemu 2.10.0 with a few patches applied.
-          ,(package (inherit qemu-minimal-2.10)
-             (name "afl-qemu")
-             (inputs
-              `(("afl-src" ,source)
-                ,@(package-inputs qemu-minimal)))
-             ;; afl only supports using a single afl-qemu-trace executable, so
-             ;; we only build qemu for the native target.
-             (arguments
-              `(#:modules ((srfi srfi-1)
-                           ,@%gnu-build-system-modules)
-                ,@(substitute-keyword-arguments (package-arguments qemu-minimal)
-                    ((#:configure-flags config-flags)
-                     ``(,(string-append "--target-list=" ,machine "-linux-user")
-                        ,@(remove (λ (f) (string-prefix? "--target-list=" f))
-                                  ,config-flags)))
-                    ((#:phases qemu-phases)
-                     `(modify-phases ,qemu-phases
-                        (add-after
-                         'unpack 'apply-afl-patches
-                         (lambda* (#:key inputs #:allow-other-keys)
-                           (let* ((afl-dir (string-append "afl-" ,version))
-                                  (patch-dir
-                                   (string-append afl-dir
-                                                  "/qemu_mode/patches")))
-                             (invoke "tar" "xf"
-                                     (assoc-ref inputs "afl-src"))
-                             (install-file (string-append patch-dir
-                                                          "/afl-qemu-cpu-inl.h")
-                                           ".")
-                             (copy-file (string-append afl-dir "/config.h")
-                                        "./afl-config.h")
-                             (install-file (string-append afl-dir "/types.h")
-                                           ".")
-                             (substitute* "afl-qemu-cpu-inl.h"
-                               (("\\.\\./\\.\\./config.h") "afl-config.h"))
-                             (substitute* (string-append patch-dir
-                                                         "/cpu-exec.diff")
-                               (("\\.\\./patches/") ""))
-                             (for-each (lambda (patch-file)
-                                         (invoke "patch" "--force" "-p1"
-                                                 "--input" patch-file))
-                                       (find-files patch-dir
-                                                   "\\.diff$"))
-                             #t))))))))))))
+       `(("qemu" ,qemu-for-american-fuzzy-lop)))
       (arguments
        `(#:make-flags (list (string-append "PREFIX=" (assoc-ref %outputs "out"))
+                            (string-append "DOC_PATH=$(PREFIX)/share/doc/"
+                                           ,name "-" ,version)
                             "CC=gcc")
          #:phases (modify-phases %standard-phases
+                    (add-after 'unpack 'make-git-checkout-writable
+                      (lambda _
+                        (for-each make-file-writable (find-files "."))
+                        #t))
                     (delete 'configure)
                     ,@(if (string=? (%current-system) (or "x86_64-linux"
                                                           "i686-linux"))
@@ -245,13 +224,13 @@ tools that process C/C++ code.")
                      ;; TODO: Build and install the afl-llvm tool.
                      'install 'install-qemu
                      (lambda* (#:key inputs outputs #:allow-other-keys)
-                       (let ((qemu (assoc-ref inputs "custom-qemu"))
+                       (let ((qemu (assoc-ref inputs "qemu"))
                              (out  (assoc-ref outputs "out")))
                          (symlink (string-append qemu "/bin/qemu-" ,machine)
                                   (string-append out "/bin/afl-qemu-trace"))
                          #t)))
-                    (delete 'check)))) ; Tests are run during 'install phase.
-      (home-page "http://lcamtuf.coredump.cx/afl")
+                    (delete 'check)))) ; tests are run during 'install phase
+      (home-page "https://lcamtuf.coredump.cx/afl/")
       (synopsis "Security-oriented fuzzer")
       (description
        "American fuzzy lop is a security-oriented fuzzer that employs a novel
@@ -261,24 +240,174 @@ targeted binary.  This substantially improves the functional coverage for the
 fuzzed code.  The compact synthesized corpora produced by the tool are also
 useful for seeding other, more labor- or resource-intensive testing regimes
 down the road.")
-      (license asl2.0))))
+      (license license:asl2.0))))
+
+(define-public qemu-for-american-fuzzy-lop
+  ;; afl only supports using a single afl-qemu-trace executable, so
+  ;; we only build qemu for the native target.
+  (let ((machine (match (or (%current-target-system)
+                            (%current-system))
+                   ("x86_64-linux"   "x86_64")
+                   ("i686-linux"     "i386")
+                   ("aarch64-linux"  "aarch64")
+                   ("armhf-linux"    "arm")
+                   ("mips64el-linux" "mips64el")
+                   ;; Prevent errors when querying this package on unsupported
+                   ;; platforms, e.g. when running "guix package --search="
+                   (_                "UNSUPPORTED"))))
+  (hidden-package
+   (package
+    (name "qemu")
+    (version "2.10.2")
+    (source (origin
+             (method url-fetch)
+             (uri (string-append "https://download.qemu.org/qemu-"
+                                 version ".tar.xz"))
+             (sha256
+              (base32
+               "17w21spvaxaidi2am5lpsln8yjpyp2zi3s3gc6nsxj5arlgamzgw"))
+             (patches
+              (search-patches "qemu-glibc-2.27.patch"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(;; Running tests in parallel can occasionally lead to failures, like:
+       ;; boot_sector_test: assertion failed (signature == SIGNATURE): (0x00000000 == 0x0000dead)
+       #:parallel-tests? #f
+       #:configure-flags
+       (list (string-append "--target-list=" ,machine "-linux-user"))
+       #:make-flags '("V=1")
+       #:phases
+       (modify-phases %standard-phases
+         (replace 'configure
+           (lambda* (#:key inputs outputs (configure-flags '())
+                           #:allow-other-keys)
+             ;; The `configure' script doesn't understand some of the
+             ;; GNU options.  Thus, add a new phase that's compatible.
+             (let ((out (assoc-ref outputs "out")))
+               (setenv "SHELL" (which "bash"))
+
+               ;; While we're at it, patch for tests.
+               (substitute* "tests/libqtest.c"
+                 (("/bin/sh") (which "sh")))
+
+               ;; The binaries need to be linked against -lrt.
+               (setenv "LDFLAGS" "-lrt")
+               (apply invoke
+                      `("./configure"
+                        ,(string-append "--cc=" (which "gcc"))
+                        ;; Some architectures insist on using HOST_CC
+                        ,(string-append "--host-cc=" (which "gcc"))
+                        "--disable-debug-info" ; save build space
+                        "--enable-virtfs"      ; just to be sure
+                        ,(string-append "--prefix=" out)
+                        ,(string-append "--sysconfdir=/etc")
+                        ,@configure-flags)))))
+         (add-after
+          'unpack 'apply-afl-patches
+          (lambda* (#:key inputs #:allow-other-keys)
+            (let* ((afl-src (assoc-ref inputs "afl-source"))
+                   (patch-dir "qemu_mode/patches"))
+              (copy-recursively (string-append afl-src "/"
+                                               patch-dir)
+                                patch-dir)
+              (install-file
+               (string-append patch-dir
+                              "/afl-qemu-cpu-inl.h")
+               ".")
+              (copy-file (string-append afl-src "/config.h")
+                         "./afl-config.h")
+              (install-file (string-append afl-src "/types.h")
+                            ".")
+              (substitute* "afl-qemu-cpu-inl.h"
+                (("\\.\\./\\.\\./config.h") "afl-config.h"))
+              (substitute* (string-append patch-dir
+                                          "/cpu-exec.diff")
+                (("\\.\\./patches/") ""))
+
+              ;; These were already applied to qemu-minimal-2.10.
+              (for-each (lambda (obsolete-patch)
+                          (delete-file (string-append
+                                        patch-dir "/"
+                                        obsolete-patch)))
+                        (list "configure.diff"
+                              "memfd.diff"))
+
+              (for-each (lambda (patch-file)
+                          (invoke "patch" "--force" "-p1"
+                                  "--input" patch-file))
+                        (find-files patch-dir
+                                    "\\.diff$"))
+              #t)))
+         (add-before 'check 'disable-unusable-tests
+           (lambda* (#:key inputs outputs #:allow-other-keys)
+             (substitute* "tests/Makefile.include"
+               ;; Comment out the test-qga test, which needs /sys and
+               ;; fails within the build environment.
+               (("check-unit-.* tests/test-qga" all)
+                (string-append "# " all)))
+             (substitute* "tests/Makefile.include"
+               ;; Comment out the test-char test, which needs networking and
+               ;; fails within the build environment.
+               (("check-unit-.* tests/test-char" all)
+                (string-append "# " all)))
+             #t)))))
+    (native-inputs
+     `(("python-2" ,python-2) ; QEMU 2 needs Python 2
+       ("glib:bin" ,glib "bin")
+       ("perl" ,perl)
+       ("flex" ,flex)
+       ("bison" ,bison)
+       ("pkg-config" ,pkg-config)))
+    (inputs
+     `(("afl-source" ,(package-source american-fuzzy-lop))
+       ("alsa-lib" ,alsa-lib)
+       ("attr" ,attr)
+       ("glib" ,glib)
+       ("libaio" ,libaio)
+       ("libattr" ,attr)
+       ("libcap" ,libcap)
+       ("libjpeg" ,libjpeg-turbo)
+       ("libpng" ,libpng)
+       ("ncurses" ,ncurses)
+       ("pixman" ,pixman)
+       ("util-linux" ,util-linux)
+       ("zlib" ,zlib)))
+    (home-page "https://www.qemu.org")
+    (synopsis "Machine emulator and virtualizer (without GUI) for american fuzzy lop")
+    (description
+     "QEMU is a generic machine emulator and virtualizer.  This package
+of QEMU is used only by the american fuzzy lop package.
+
+When used as a machine emulator, QEMU can run OSes and programs made for one
+machine (e.g. an ARM board) on a different machine---e.g., your own PC.  By
+using dynamic translation, it achieves very good performance.
+
+When used as a virtualizer, QEMU achieves near native performances by
+executing the guest code directly on the host CPU.  QEMU supports
+virtualization when executing under the Xen hypervisor or using
+the KVM kernel module in Linux.  When using KVM, QEMU can virtualize x86,
+server and embedded PowerPC, and S390 guests.")
+    ;; Many files are GPLv2+, but some are GPLv2-only---e.g., `memory.c'.
+    (license license:gpl2)
+    ;; Several tests fail on MIPS.
+    (supported-systems (delete "mips64el-linux" %supported-systems))))))
 
 (define-public stress-make
-  (let ((commit "506e6cfd98d165f22bee91c408b7c20117a682c4")
-        (revision "0"))                 ;No official source distribution
+  (let ((commit "97815bed8060de33952475b3498767c91f59ffd9")
+        (revision "2"))                 ;No official source distribution
     (package
       (name "stress-make")
-      (version (string-append "1.0-" revision "." (string-take commit 7)))
+      (version (git-version "1.0" revision commit))
       (source
        (origin
          (method git-fetch)
          (uri (git-reference
-               (url "https://github.com/losalamos/stress-make.git")
+               (url "https://github.com/lanl/stress-make")
                (commit commit)))
-         (file-name (string-append name "-" version "-checkout"))
+         (file-name (git-file-name name version))
          (sha256
           (base32
-           "1j330yqhc7plwin04qxbh8afpg5nfnw1xvnmh8rk6mmqg9w6ik70"))))
+           "0k55cy7x0hlc6rgpascl6ibhcfxaash3p9r9r8kwvbm3zag1rmac"))))
       (build-system gnu-build-system)
       (native-inputs
        `(("autoconf" ,autoconf)
@@ -302,14 +431,18 @@ down the road.")
              (add-after 'unpack-make 'set-default-shell
                (lambda _
                  ;; Taken mostly directly from (@ (gnu packages base) gnu-make)
-                 (substitute* (string-append ,make-dir "/job.c")
+                 (substitute* (string-append ,make-dir "/src/job.c")
                    (("default_shell = .*$")
                     (format #f "default_shell = \"~a\";\n"
                             (which "sh"))))))
              (add-before 'configure 'repack-make
                (lambda _
-                 (invoke "tar" "cJf" "./make.tar.xz" ,make-dir)))))))
-      (home-page "https://github.com/losalamos/stress-make")
+                 (invoke "tar" "cJf" "./make.tar.xz" ,make-dir)))
+             (add-before 'build 'setup-go
+               ;; The Go cache is required starting in Go 1.12, and it needs
+               ;; to be writable.
+               (lambda _ (setenv "GOCACHE" "/tmp/go-cache") #t))))))
+      (home-page "https://github.com/lanl/stress-make")
       (synopsis "Expose race conditions in Makefiles")
       (description
        "Stress Make is a customized GNU Make that explicitly manages the order
@@ -320,8 +453,8 @@ Stress Make, then it is likely that the @code{Makefile} contains no race
 conditions.")
       ;; stress-make wrapper is under BSD-3-modifications-must-be-indicated,
       ;; and patched GNU Make is under its own license.
-      (license (list (non-copyleft "COPYING.md")
-                     (package-license gnu-make))))))
+      (license (list (license:non-copyleft "LICENSE.md")
+                     license:gpl3+)))))
 
 (define-public zzuf
   (package
@@ -343,7 +476,7 @@ conditions.")
     (description "Zzuf is a transparent application input fuzzer.  It works by
 intercepting file operations and changing random bits in the program's
 input.  Zzuf's behaviour is deterministic, making it easy to reproduce bugs.")
-    (license (non-copyleft "http://www.wtfpl.net/txt/copying/"))))
+    (license license:wtfpl2)))
 
 (define-public scanmem
   (package
@@ -401,4 +534,126 @@ several different times.  After several scans of the process, scanmem isolates
 the position of the variable and allows you to modify its value.")
     ;; The library is covered by LGPLv3 or later; the application is covered
     ;; by GPLv3 or later.
-    (license (list lgpl3+ gpl3+))))
+    (license (list license:lgpl3+ license:gpl3+))))
+
+(define-public remake
+  (package (inherit gnu-make)
+    (name "remake")
+    (version "4.3-1.5")
+    (source (origin
+              (method url-fetch)
+              (uri (let ((upstream-version
+                          (match (string-split version #\-)
+                            ((ver sub) (string-append ver "%2Bdbg-" sub)))))
+                     (string-append "mirror://sourceforge/bashdb/"
+                                    "remake/" upstream-version "/"
+                                    "remake-" upstream-version ".tar.gz")))
+              (file-name (string-append "remake-" version ".tar.gz"))
+              (sha256
+               (base32
+                "0xlx2485y0israv2pfghmv74lxcv9i5y65agy69mif76yc4vfvif"))
+              (patches (search-patches "remake-impure-dirs.patch"))))
+    (inputs
+     `(("readline" ,readline)
+       ,@(package-inputs gnu-make)))
+    (home-page "http://bashdb.sourceforge.net/remake/")
+    (description "Remake is an enhanced version of GNU Make that adds improved
+error reporting, better tracing, profiling, and a debugger.")
+    (license license:gpl3+)))
+
+(define-public rr
+  (package
+    (name "rr")
+    (version "5.3.0")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/mozilla/rr")
+                    (commit version)))
+              (sha256
+               (base32
+                "1x6l1xsdksnhz9v50p4r7hhmr077cq20kaywqy1jzdklvkjqzf64"))
+              (file-name (git-file-name name version))))
+    (build-system cmake-build-system)
+    (arguments
+     `(#:configure-flags
+       ;; The 'rr_exec_stub' is a static binary, which leads CMake to fail
+       ;; with:
+       ;;
+       ;;   file RPATH_CHANGE could not write new RPATH:
+       ;;
+       ;; Clear CMAKE_INSTALL_RPATH to avoid that problem.
+       (list "-DCMAKE_INSTALL_RPATH="
+             ,@(if (and (not (%current-target-system))
+                        (member (%current-system)
+                                '("x86_64-linux" "aarch64-linux")))
+                   ;; The toolchain doesn't support '-m32'.
+                   '("-Ddisable32bit=ON")
+                   '()))
+
+       ;; XXX: Most tests fail with:
+       ;;
+       ;;  rr needs /proc/sys/kernel/perf_event_paranoid <= 1, but it is 2.
+       ;;
+       ;; This setting cannot be changed from the build environment, so skip
+       ;; the tests.
+       #:tests? #f
+
+       #:phases (modify-phases %standard-phases
+                  (add-before 'check 'set-home
+                    (lambda _
+                      ;; Some tests expect 'HOME' to be set.
+                      (setenv "HOME" (getcwd))
+                      #t)))))
+    (native-inputs
+     `(("pkg-config" ,pkg-config)
+       ("ninja" ,ninja)
+       ("which" ,which)))
+    (inputs
+     `(("gdb" ,gdb)
+       ("cpanproto" ,capnproto)
+       ("python" ,python)
+       ("python-pexpect" ,python-pexpect)))
+    (home-page "https://rr-project.org/")
+    (synopsis "Record and reply debugging framework")
+    (description
+     "rr is a lightweight tool for recording, replaying and debugging
+execution of applications (trees of processes and threads).  Debugging extends
+GDB with very efficient reverse-execution, which in combination with standard
+GDB/x86 features like hardware data watchpoints, makes debugging much more
+fun.")
+    (license license:expat)))
+
+(define-public mspdebug
+  (package
+    (name "mspdebug")
+    (version "0.25")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/dlbeer/mspdebug")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32 "0prgwb5vx6fd4bj12ss1bbb6axj2kjyriyjxqrzd58s5jyyy8d3c"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:tests? #f                         ; no test suite
+       #:phases
+       (modify-phases %standard-phases
+         (delete 'configure))              ; no configure script
+       #:make-flags
+       (list (string-append "CC=" ,(cc-for-target))
+             "INSTALL=install"
+             (string-append "PREFIX=" %output))))
+  (inputs
+     `(("libusb-compat" ,libusb-compat)
+       ("readline" ,readline)))
+    (synopsis "Debugging tool for MSP430 MCUs")
+    (description "MspDebug supports FET430UIF, eZ430, RF2500 and Olimex
+MSP430-JTAG-TINY programmers, as well as many other compatible
+devices.  It can be used as a proxy for gdb or as an independent
+debugger with support for programming, disassembly and reverse
+engineering.")
+    (home-page "https://github.com/dlbeer/mspdebug")
+    (license license:gpl2+)))

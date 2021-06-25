@@ -26,15 +26,37 @@
   #:use-module (guix derivations)
   #:use-module (guix sets)
   #:use-module (guix gexp)
-  #:use-module ((guix utils)
-                #:select (error-location? error-location location-line))
+  #:use-module ((guix diagnostics)
+                #:select (error-location?
+                          error-location location-line
+                          formatted-message?
+                          formatted-message-string
+                          formatted-message-arguments))
+  #:use-module ((guix build utils) #:select (which))
+  #:use-module (git)
+  #:use-module (guix git)
+  #:use-module (guix git-authenticate)
+  #:use-module (guix openpgp)
+  #:use-module (guix tests git)
+  #:use-module (guix tests gnupg)
   #:use-module (srfi srfi-1)
   #:use-module (srfi srfi-26)
   #:use-module (srfi srfi-34)
   #:use-module (srfi srfi-35)
   #:use-module (srfi srfi-64)
+  #:use-module (rnrs bytevectors)
+  #:use-module (rnrs io ports)
+  #:use-module (ice-9 control)
   #:use-module (ice-9 match))
 
+(define (gpg+git-available?)
+  (and (which (git-command))
+       (which (gpg-command)) (which (gpgconf-command))))
+
+(define commit-id-string
+  (compose oid->string commit-id))
+
+
 (test-begin "channels")
 
 (define* (make-instance #:key
@@ -131,44 +153,82 @@
                    (name 'test)
                    (url "test")))
          (test-dir (channel-instance-checkout instance--simple)))
-    (mock ((guix git) latest-repository-commit
-           (lambda* (store url #:key ref)
+    (mock ((guix git) update-cached-checkout
+           (lambda* (url #:key ref starting-commit)
              (match url
-               ("test" (values test-dir 'whatever))
-               (_ (values "/not-important" 'not-important)))))
-          (let ((instances (latest-channel-instances #f (list channel))))
-            (and (eq? 2 (length instances))
-                 (lset= eq?
-                        '(test test-channel)
-                        (map (compose channel-name channel-instance-channel)
-                             instances)))))))
+               ("test" (values test-dir "caf3cabba9e" #f))
+               (_      (values (channel-instance-checkout instance--no-deps)
+                               "abcde1234" #f)))))
+          (with-store store
+            (let ((instances (latest-channel-instances store (list channel))))
+              (and (eq? 2 (length instances))
+                   (lset= eq?
+                          '(test test-channel)
+                          (map (compose channel-name channel-instance-channel)
+                               instances))))))))
 
 (test-assert "latest-channel-instances excludes duplicate channel dependencies"
   (let* ((channel (channel
                    (name 'test)
                    (url "test")))
          (test-dir (channel-instance-checkout instance--with-dupes)))
-    (mock ((guix git) latest-repository-commit
-           (lambda* (store url #:key ref)
+    (mock ((guix git) update-cached-checkout
+           (lambda* (url #:key ref starting-commit)
              (match url
-               ("test" (values test-dir 'whatever))
-               (_ (values "/not-important" 'not-important)))))
-          (let ((instances (latest-channel-instances #f (list channel))))
-            (and (= 2 (length instances))
-                 (lset= eq?
-                        '(test test-channel)
-                        (map (compose channel-name channel-instance-channel)
-                             instances))
-                 ;; only the most specific channel dependency should remain,
-                 ;; i.e. the one with a specified commit.
-                 (find (lambda (instance)
-                         (and (eq? (channel-name
-                                    (channel-instance-channel instance))
-                                   'test-channel)
-                              (string=? (channel-commit
-                                         (channel-instance-channel instance))
-                                        "abc1234")))
-                       instances))))))
+               ("test" (values test-dir "caf3cabba9e" #f))
+               (_      (values (channel-instance-checkout instance--no-deps)
+                               "abcde1234" #f)))))
+          (with-store store
+            (let ((instances (latest-channel-instances store (list channel))))
+              (and (= 2 (length instances))
+                   (lset= eq?
+                          '(test test-channel)
+                          (map (compose channel-name channel-instance-channel)
+                               instances))
+                   ;; only the most specific channel dependency should remain,
+                   ;; i.e. the one with a specified commit.
+                   (find (lambda (instance)
+                           (and (eq? (channel-name
+                                      (channel-instance-channel instance))
+                                     'test-channel)
+                                (string=? (channel-commit
+                                           (channel-instance-channel instance))
+                                          "abc1234")))
+                         instances)))))))
+
+(unless (which (git-command)) (test-skip 1))
+(test-equal "latest-channel-instances #:validate-pull"
+  'descendant
+
+  ;; Make sure the #:validate-pull procedure receives the right values.
+  (let/ec return
+    (with-temporary-git-repository directory
+        '((add "a.txt" "A")
+          (commit "first commit")
+          (add "b.scm" "#t")
+          (commit "second commit"))
+      (with-repository directory repository
+        (let* ((commit1 (find-commit repository "first"))
+               (commit2 (find-commit repository "second"))
+               (spec    (channel (url (string-append "file://" directory))
+                                 (name 'foo)))
+               (new     (channel (inherit spec)
+                                 (commit (oid->string (commit-id commit2)))))
+               (old     (channel (inherit spec)
+                                 (commit (oid->string (commit-id commit1))))))
+          (define (validate-pull channel current commit relation)
+            (return (and (eq? channel old)
+                         (string=? (oid->string (commit-id commit2))
+                                   current)
+                         (string=? (oid->string (commit-id commit1))
+                                   commit)
+                         relation)))
+
+          (with-store store
+            ;; Attempt a downgrade from NEW to OLD.
+            (latest-channel-instances store (list old)
+                                      #:current-channels (list new)
+                                      #:validate-pull validate-pull)))))))
 
 (test-assert "channel-instances->manifest"
   ;; Compute the manifest for a graph of instances and make sure we get a
@@ -245,5 +305,295 @@
                          (list drv1) (list drv3))
                (depends? drv3
                          (list drv2 drv0) (list))))))))
+
+(unless (which (git-command)) (test-skip 1))
+(test-equal "channel-news, no news"
+  '()
+  (with-temporary-git-repository directory
+      '((add "a.txt" "A")
+        (commit "the commit"))
+    (with-repository directory repository
+      (let ((channel (channel (url (string-append "file://" directory))
+                              (name 'foo)))
+            (latest  (reference-name->oid repository "HEAD")))
+        (channel-news-for-commit channel (oid->string latest))))))
+
+(unless (which (git-command)) (test-skip 1))
+(test-assert "channel-news, one entry"
+  (with-temporary-git-repository directory
+      `((add ".guix-channel"
+             ,(object->string
+               '(channel (version 0)
+                         (news-file "news.scm"))))
+        (commit "first commit")
+        (add "src/a.txt" "A")
+        (commit "second commit")
+        (tag "tag-for-first-news-entry")
+        (add "news.scm"
+             ,(lambda (repository)
+                (let ((previous
+                       (reference-name->oid repository "HEAD")))
+                  (object->string
+                   `(channel-news
+                     (version 0)
+                     (entry (commit ,(oid->string previous))
+                            (title (en "New file!")
+                                   (eo "Nova dosiero!"))
+                            (body (en "Yeah, a.txt."))))))))
+        (commit "third commit")
+        (add "src/b.txt" "B")
+        (commit "fourth commit")
+        (add "news.scm"
+             ,(lambda (repository)
+                (let ((second
+                       (commit-id
+                        (find-commit repository "second commit")))
+                      (previous
+                       (reference-name->oid repository "HEAD")))
+                  (object->string
+                   `(channel-news
+                     (version 0)
+                     (entry (commit ,(oid->string previous))
+                            (title (en "Another file!"))
+                            (body (en "Yeah, b.txt.")))
+                     (entry (tag "tag-for-first-news-entry")
+                            (title (en "Old news.")
+                                   (eo "Malnovaĵoj."))
+                            (body (en "For a.txt"))))))))
+        (commit "fifth commit"))
+    (with-repository directory repository
+      (define (find-commit* message)
+        (oid->string (commit-id (find-commit repository message))))
+
+      (let ((channel (channel (url (string-append "file://" directory))
+                              (name 'foo)))
+            (commit1 (find-commit* "first commit"))
+            (commit2 (find-commit* "second commit"))
+            (commit3 (find-commit* "third commit"))
+            (commit4 (find-commit* "fourth commit"))
+            (commit5 (find-commit* "fifth commit")))
+        ;; First try fetching all the news up to a given commit.
+        (and (null? (channel-news-for-commit channel commit2))
+             (lset= string=?
+                    (map channel-news-entry-commit
+                         (channel-news-for-commit channel commit5))
+                    (list commit2 commit4))
+             (lset= equal?
+                    (map channel-news-entry-title
+                         (channel-news-for-commit channel commit5))
+                    '((("en" . "Another file!"))
+                      (("en" . "Old news.") ("eo" . "Malnovaĵoj."))))
+             (lset= string=?
+                    (map channel-news-entry-commit
+                         (channel-news-for-commit channel commit3))
+                    (list commit2))
+
+             ;; Now fetch news entries that apply to a commit range.
+             (lset= string=?
+                    (map channel-news-entry-commit
+                         (channel-news-for-commit channel commit3 commit1))
+                    (list commit2))
+             (lset= string=?
+                    (map channel-news-entry-commit
+                         (channel-news-for-commit channel commit5 commit3))
+                    (list commit4))
+             (lset= string=?
+                    (map channel-news-entry-commit
+                         (channel-news-for-commit channel commit5 commit1))
+                    (list commit4 commit2))
+             (lset= equal?
+                    (map channel-news-entry-tag
+                         (channel-news-for-commit channel commit5 commit1))
+                    '(#f "tag-for-first-news-entry")))))))
+
+(unless (which (git-command)) (test-skip 1))
+(test-assert "latest-channel-instances, missing introduction for 'guix'"
+  (with-temporary-git-repository directory
+      '((add "a.txt" "A")
+        (commit "first commit")
+        (add "b.scm" "#t")
+        (commit "second commit"))
+    (with-repository directory repository
+      (let* ((commit1 (find-commit repository "first"))
+             (commit2 (find-commit repository "second"))
+             (channel (channel (url (string-append "file://" directory))
+                               (name 'guix))))
+
+        (guard (c ((formatted-message? c)
+                   (->bool (string-contains (formatted-message-string c)
+                                            "introduction"))))
+          (with-store store
+            ;; Attempt a downgrade from NEW to OLD.
+            (latest-channel-instances store (list channel))
+            #f))))))
+
+(unless (gpg+git-available?) (test-skip 1))
+(test-equal "authenticate-channel, wrong first commit signer"
+  #t
+  (with-fresh-gnupg-setup (list %ed25519-public-key-file
+                                %ed25519-secret-key-file
+                                %ed25519bis-public-key-file
+                                %ed25519bis-secret-key-file)
+    (with-temporary-git-repository directory
+        `((add ".guix-channel"
+               ,(object->string
+                 '(channel (version 0)
+                           (keyring-reference "master"))))
+          (add ".guix-authorizations"
+               ,(object->string
+                 `(authorizations (version 0)
+                                  ((,(key-fingerprint
+                                      %ed25519-public-key-file)
+                                    (name "Charlie"))))))
+          (add "signer.key" ,(call-with-input-file %ed25519-public-key-file
+                               get-string-all))
+          (commit "first commit"
+                  (signer ,(key-fingerprint %ed25519-public-key-file)))
+          (add "random" ,(random-text))
+          (commit "second commit"
+                  (signer ,(key-fingerprint %ed25519-public-key-file))))
+      (with-repository directory repository
+        (let* ((commit1 (find-commit repository "first"))
+               (commit2 (find-commit repository "second"))
+               (intro   (make-channel-introduction
+                         (commit-id-string commit1)
+                         (openpgp-public-key-fingerprint
+                          (read-openpgp-packet
+                           %ed25519bis-public-key-file)))) ;different key
+               (channel (channel (name 'example)
+                                 (url (string-append "file://" directory))
+                                 (introduction intro))))
+          (guard (c ((formatted-message? c)
+                     (and (string-contains (formatted-message-string c)
+                                           "initial commit")
+                          (equal? (formatted-message-arguments c)
+                                  (list
+                                   (oid->string (commit-id commit1))
+                                   (key-fingerprint %ed25519-public-key-file)
+                                   (key-fingerprint
+                                    %ed25519bis-public-key-file))))))
+            (authenticate-channel channel directory
+                                  (commit-id-string commit2)
+                                  #:keyring-reference-prefix "")
+            'failed))))))
+
+(unless (gpg+git-available?) (test-skip 1))
+(test-equal "authenticate-channel, .guix-authorizations"
+  #t
+  (with-fresh-gnupg-setup (list %ed25519-public-key-file
+                                %ed25519-secret-key-file
+                                %ed25519bis-public-key-file
+                                %ed25519bis-secret-key-file)
+    (with-temporary-git-repository directory
+        `((add ".guix-channel"
+               ,(object->string
+                 '(channel (version 0)
+                           (keyring-reference "channel-keyring"))))
+          (add ".guix-authorizations"
+               ,(object->string
+                 `(authorizations (version 0)
+                                  ((,(key-fingerprint
+                                      %ed25519-public-key-file)
+                                    (name "Charlie"))))))
+          (commit "zeroth commit")
+          (add "a.txt" "A")
+          (commit "first commit"
+                  (signer ,(key-fingerprint %ed25519-public-key-file)))
+          (add "b.txt" "B")
+          (commit "second commit"
+                  (signer ,(key-fingerprint %ed25519-public-key-file)))
+          (add "c.txt" "C")
+          (commit "third commit"
+                  (signer ,(key-fingerprint %ed25519bis-public-key-file)))
+          (branch "channel-keyring")
+          (checkout "channel-keyring")
+          (add "signer.key" ,(call-with-input-file %ed25519-public-key-file
+                               get-string-all))
+          (add "other.key" ,(call-with-input-file %ed25519bis-public-key-file
+                              get-string-all))
+          (commit "keyring commit")
+          (checkout "master"))
+      (with-repository directory repository
+        (let* ((commit1 (find-commit repository "first"))
+               (commit2 (find-commit repository "second"))
+               (commit3 (find-commit repository "third"))
+               (intro   (make-channel-introduction
+                         (commit-id-string commit1)
+                         (openpgp-public-key-fingerprint
+                          (read-openpgp-packet
+                           %ed25519-public-key-file))))
+               (channel (channel (name 'example)
+                                 (url (string-append "file://" directory))
+                                 (introduction intro))))
+          ;; COMMIT1 and COMMIT2 are fine.
+          (and (authenticate-channel channel directory
+                                     (commit-id-string commit2)
+                                     #:keyring-reference-prefix "")
+
+               ;; COMMIT3 is signed by an unauthorized key according to its
+               ;; parent's '.guix-authorizations' file.
+               (guard (c ((unauthorized-commit-error? c)
+                          (and (oid=? (git-authentication-error-commit c)
+                                      (commit-id commit3))
+                               (bytevector=?
+                                (openpgp-public-key-fingerprint
+                                 (unauthorized-commit-error-signing-key c))
+                                (openpgp-public-key-fingerprint
+                                 (read-openpgp-packet
+                                  %ed25519bis-public-key-file))))))
+                 (authenticate-channel channel directory
+                                       (commit-id-string commit3)
+                                       #:keyring-reference-prefix "")
+                 'failed)))))))
+
+(unless (gpg+git-available?) (test-skip 1))
+(test-equal "latest-channel-instances, authenticate dependency"
+  #t
+  ;; Make sure that a channel dependency that has an introduction is
+  ;; authenticated.  This test checks that an authentication error is raised
+  ;; as it should when authenticating the dependency.
+  (with-fresh-gnupg-setup (list %ed25519-public-key-file
+                                %ed25519-secret-key-file)
+    (with-temporary-git-repository dependency-directory
+        `((add ".guix-channel"
+               ,(object->string
+                 '(channel (version 0)
+                           (keyring-reference "master"))))
+          (add ".guix-authorizations"
+               ,(object->string
+                 `(authorizations (version 0) ())))
+          (add "signer.key" ,(call-with-input-file %ed25519-public-key-file
+                               get-string-all))
+          (commit "zeroth commit"
+                  (signer ,(key-fingerprint %ed25519-public-key-file)))
+          (add "foo.txt" "evil")
+          (commit "unsigned commit"))
+      (with-repository dependency-directory dependency
+        (let* ((commit0 (find-commit dependency "zeroth"))
+               (commit1 (find-commit dependency "unsigned"))
+               (intro   `(channel-introduction
+                          (version 0)
+                          (commit ,(commit-id-string commit0))
+                          (signer ,(openpgp-format-fingerprint
+                                    (openpgp-public-key-fingerprint
+                                     (read-openpgp-packet
+                                      %ed25519-public-key-file)))))))
+          (with-temporary-git-repository directory
+              `((add ".guix-channel"
+                     ,(object->string
+                       `(channel (version 0)
+                                 (dependencies
+                                  (channel
+                                   (name test-channel)
+                                   (url ,dependency-directory)
+                                   (introduction ,intro))))))
+                (commit "single commit"))
+            (let ((channel (channel (name 'test) (url directory))))
+              (guard (c ((unsigned-commit-error? c)
+                         (oid=? (git-authentication-error-commit c)
+                                (commit-id commit1))))
+                (with-store store
+                  (latest-channel-instances store (list channel))
+                  'failed)))))))))
 
 (test-end "channels")

@@ -1,14 +1,16 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2015 Andy Wingo <wingo@igalia.com>
 ;;; Copyright © 2015 Mark H Weaver <mhw@netris.org>
 ;;; Copyright © 2016 Sou Bunnbu <iyzsong@gmail.com>
 ;;; Copyright © 2017 Maxim Cournoyer <maxim.cournoyer@gmail.com>
-;;; Copyright © 2017 ng0 <ng0@n0.is>
-;;; Copyright © 2018 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2017 Nikita <nikita@n0.is>
+;;; Copyright © 2018, 2020 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2018 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2017, 2019 Christopher Baines <mail@cbaines.net>
 ;;; Copyright © 2019 Tim Gesthuizen <tim.gesthuizen@yahoo.de>
+;;; Copyright © 2019 David Wilson <david@daviwil.com>
+;;; Copyright © 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -35,7 +37,7 @@
   #:use-module (gnu services networking)
   #:use-module (gnu services sound)
   #:use-module ((gnu system file-systems)
-                #:select (%elogind-file-systems))
+                #:select (%elogind-file-systems file-system))
   #:use-module (gnu system)
   #:use-module (gnu system shadow)
   #:use-module (gnu system pam)
@@ -47,6 +49,7 @@
   #:use-module (gnu packages xfce)
   #:use-module (gnu packages avahi)
   #:use-module (gnu packages xdisorg)
+  #:use-module (gnu packages scanner)
   #:use-module (gnu packages suckless)
   #:use-module (gnu packages linux)
   #:use-module (gnu packages libusb)
@@ -104,10 +107,14 @@
             elogind-service
             elogind-service-type
 
+            %fontconfig-file-system
+            fontconfig-file-system-service
+
             accountsservice-service-type
             accountsservice-service
 
             cups-pk-helper-service-type
+            sane-service-type
 
             gnome-desktop-configuration
             gnome-desktop-configuration?
@@ -133,6 +140,12 @@
             inputattach-configuration
             inputattach-configuration?
             inputattach-service-type
+
+            polkit-wheel-service
+
+            gnome-keyring-configuration
+            gnome-keyring-configuration?
+            gnome-keyring-service-type
 
             %desktop-services))
 
@@ -439,8 +452,8 @@ site} for more information."
    (requirement '(dbus-system udev))
    (documentation "Run the bluetoothd daemon.")
    (start #~(make-forkexec-constructor
-             (string-append #$(bluetooth-configuration-bluez config)
-                            "/libexec/bluetooth/bluetoothd")))
+             (list #$(file-append (bluetooth-configuration-bluez config)
+                                  "/libexec/bluetooth/bluetoothd"))))
    (stop #~(make-kill-destructor))))
 
 (define bluetooth-service-type
@@ -513,12 +526,14 @@ Users need to be in the @code{lp} group to access the D-Bus service.
 
                        ;; It provides polkit "actions".
                        (service-extension polkit-service-type list)))
+                (default-value colord)
                 (description
                  "Run @command{colord}, a system service with a D-Bus
 interface to manage the color profiles of input and output devices such as
 screens and scanners.")))
 
-(define* (colord-service #:key (colord colord))
+(define-deprecated (colord-service #:key (colord colord))
+  colord-service-type
   "Return a service that runs @command{colord}, a system service with a D-Bus
 interface to manage the color profiles of input and output devices such as
 screens and scanners.  It is notably used by the GNOME Color Manager graphical
@@ -579,7 +594,7 @@ include the @command{udisksctl} command, part of UDisks, and GNOME Disks."
 
 (define-record-type* <elogind-configuration> elogind-configuration
   make-elogind-configuration
-  elogind-configuration
+  elogind-configuration?
   (elogind                         elogind-package
                                    (default elogind))
   (kill-user-processes?            elogind-kill-user-processes?
@@ -786,6 +801,27 @@ when they log out."
 
 
 ;;;
+;;; Fontconfig and other desktop file-systems.
+;;;
+
+(define %fontconfig-file-system
+  (file-system
+    (device "none")
+    (mount-point "/var/cache/fontconfig")
+    (type "tmpfs")
+    (flags '(read-only))
+    (check? #f)))
+
+;; The global fontconfig cache directory can sometimes contain stale entries,
+;; possibly referencing fonts that have been GC'd, so mount it read-only.
+;; As mentioned https://debbugs.gnu.org/cgi/bugreport.cgi?bug=36924#8 and
+;; https://debbugs.gnu.org/cgi/bugreport.cgi?bug=38046#10 and elsewhere.
+(define fontconfig-file-system-service
+  (simple-service 'fontconfig-file-system
+                  file-system-service-type
+                  (list %fontconfig-file-system)))
+
+;;;
 ;;; AccountsService service.
 ;;;
 
@@ -828,13 +864,36 @@ accountsservice web site} for more information."
 
 
 ;;;
+;;; Scanner access via SANE.
+;;;
+
+(define %sane-accounts
+  ;; The '60-libsane.rules' udev rules refers to the "scanner" group.
+  (list (user-group (name "scanner") (system? #t))))
+
+(define sane-service-type
+  (service-type
+   (name 'sane)
+   (description
+    "This service provides access to scanners @i{via}
+@uref{http://www.sane-project.org, SANE} by installing the necessary udev
+rules.")
+   (default-value sane-backends-minimal)
+   (extensions
+    (list (service-extension udev-service-type list)
+          (service-extension account-service-type
+                             (const %sane-accounts))))))
+
+
+
+;;;
 ;;; GNOME desktop service.
 ;;;
 
 (define-record-type* <gnome-desktop-configuration> gnome-desktop-configuration
   make-gnome-desktop-configuration
-  gnome-desktop-configuration
-  (gnome-package gnome-package (default gnome)))
+  gnome-desktop-configuration?
+  (gnome gnome-package (default gnome)))
 
 (define (gnome-polkit-settings config)
   "Return the list of GNOME dependencies that provide polkit actions and
@@ -871,18 +930,26 @@ and extends polkit with the actions from @code{gnome-settings-daemon}."
 
 (define-record-type* <mate-desktop-configuration> mate-desktop-configuration
   make-mate-desktop-configuration
-  mate-desktop-configuration
+  mate-desktop-configuration?
   (mate-package mate-package (default mate)))
+
+(define (mate-polkit-extension config)
+  "Return the list of packages for CONFIG's MATE package that extend polkit."
+  (let ((mate (mate-package config)))
+    (map (lambda (input)
+           ((package-direct-input-selector input) mate))
+         '("mate-system-monitor"                  ;kill, renice processes
+           "mate-settings-daemon"                 ;date/time settings
+           "mate-power-manager"                   ;modify brightness
+           "mate-control-center"                  ;RandR, display properties FIXME
+           "mate-applets"))))                     ;CPU frequency scaling
 
 (define mate-desktop-service-type
   (service-type
    (name 'mate-desktop)
    (extensions
     (list (service-extension polkit-service-type
-                             (compose list
-                                      (package-direct-input-selector
-                                       "mate-settings-daemon")
-                                      mate-package))
+                             mate-polkit-extension)
           (service-extension profile-service-type
                              (compose list
                                       mate-package))))
@@ -904,18 +971,24 @@ and extends polkit with the actions from @code{mate-settings-daemon}."
 
 (define-record-type* <xfce-desktop-configuration> xfce-desktop-configuration
   make-xfce-desktop-configuration
-  xfce-desktop-configuration
+  xfce-desktop-configuration?
   (xfce xfce-package (default xfce)))
+
+(define (xfce-polkit-settings config)
+  "Return the list of XFCE dependencies that provide polkit actions and
+rules."
+  (let ((xfce (xfce-package config)))
+    (map (lambda (name)
+           ((package-direct-input-selector name) xfce))
+         '("thunar"
+           "xfce4-power-manager"))))
 
 (define xfce-desktop-service-type
   (service-type
    (name 'xfce-desktop)
    (extensions
     (list (service-extension polkit-service-type
-                             (compose list
-                                      (package-direct-input-selector
-                                       "thunar")
-                                      xfce-package))
+                             xfce-polkit-settings)
           (service-extension profile-service-type
                              (compose list xfce-package))))
    (default-value (xfce-desktop-configuration))
@@ -963,29 +1036,12 @@ with the administrator's password."
   (match-record enlightenment-desktop-configuration
                 <enlightenment-desktop-configuration>
                 (enlightenment)
-    (let ((module-arch (match (string-tokenize (%current-system)
-                                               (char-set-complement (char-set #\-)))
-                              ((arch "linux") (string-append "linux-gnu-" arch))
-                              ((arch "gnu")   (string-append "gnu-" arch)))))
-      (list (file-append enlightenment
-                         "/lib/enlightenment/utils/enlightenment_sys")
-            (file-append enlightenment
-                         "/lib/enlightenment/utils/enlightenment_backlight")
-            ;; TODO: Move this binary to a screen-locker service.
-            (file-append enlightenment
-                         "/lib/enlightenment/utils/enlightenment_ckpasswd")
-            (file-append enlightenment
-                         (string-append
-                           "/lib/enlightenment/modules/cpufreq/"
-                           module-arch "-"
-                           (package-version enlightenment)
-                           "/freqset"))
-            (file-append enlightenment
-                         (string-append
-                           "/lib/enlightenment/modules/sysinfo/"
-                           module-arch "-"
-                           (package-version enlightenment)
-                           "/cpuclock_sysfs"))))))
+    (list (file-append enlightenment
+                       "/lib/enlightenment/utils/enlightenment_sys")
+          (file-append enlightenment
+                       "/lib/enlightenment/utils/enlightenment_system")
+          (file-append enlightenment
+                       "/lib/enlightenment/utils/enlightenment_ckpasswd"))))
 
 (define enlightenment-desktop-service-type
   (service-type
@@ -1021,23 +1077,29 @@ as expected.")))
                (default "wacom"))
   (device inputattach-configuration-device
           (default "/dev/ttyS0"))
+  (baud-rate inputattach-configuration-baud-rate
+             (default #f))
   (log-file inputattach-configuration-log-file
             (default #f)))
 
 (define inputattach-shepherd-service
   (match-lambda
-    (($ <inputattach-configuration> type device log-file)
-     (list (shepherd-service
-            (provision '(inputattach))
-            (requirement '(udev))
-            (documentation "inputattach daemon")
-            (start #~(make-forkexec-constructor
-                      (list (string-append #$inputattach
-                                           "/bin/inputattach")
-                            (string-append "--" #$type)
-                            #$device)
-                      #:log-file #$log-file))
-            (stop #~(make-kill-destructor)))))))
+    (($ <inputattach-configuration> type device baud-rate log-file)
+     (let ((args (append (if baud-rate
+                             (list "--baud" (number->string baud-rate))
+                             '())
+                         (list (string-append "--" type)
+                               device))))
+       (list (shepherd-service
+              (provision '(inputattach))
+              (requirement '(udev))
+              (documentation "inputattach daemon")
+              (start #~(make-forkexec-constructor
+                        (cons (string-append #$inputattach
+                                             "/bin/inputattach")
+                              (quote #$args))
+                        #:log-file #$log-file))
+              (stop #~(make-kill-destructor))))))))
 
 (define inputattach-service-type
   (service-type
@@ -1048,6 +1110,74 @@ as expected.")))
    (default-value (inputattach-configuration))
    (description "Return a service that runs inputattach on a device and
 dispatches events from it.")))
+
+
+;;;
+;;; gnome-keyring-service-type
+;;;
+
+(define-record-type* <gnome-keyring-configuration> gnome-keyring-configuration
+  make-gnome-keyring-configuration
+  gnome-keyring-configuration?
+  (keyring gnome-keyring-package (default gnome-keyring))
+  (pam-services gnome-keyring-pam-services (default '(("gdm-password" . login)
+                                                      ("passwd" . passwd)))))
+
+(define (pam-gnome-keyring config)
+  (define (%pam-keyring-entry . arguments)
+    (pam-entry
+     (control "optional")
+     (module (file-append (gnome-keyring-package config)
+                          "/lib/security/pam_gnome_keyring.so"))
+     (arguments arguments)))
+
+  (list
+   (lambda (service)
+     (case (assoc-ref (gnome-keyring-pam-services config)
+                      (pam-service-name service))
+       ((login)
+        (pam-service
+         (inherit service)
+         (auth (append (pam-service-auth service)
+                       (list (%pam-keyring-entry))))
+         (session (append (pam-service-session service)
+                          (list (%pam-keyring-entry "auto_start"))))))
+       ((passwd)
+        (pam-service
+         (inherit service)
+         (password (append (pam-service-password service)
+                           (list (%pam-keyring-entry))))))
+       (else service)))))
+
+(define gnome-keyring-service-type
+  (service-type
+   (name 'gnome-keyring)
+   (extensions (list
+                (service-extension pam-root-service-type pam-gnome-keyring)))
+   (default-value (gnome-keyring-configuration))
+   (description "Return a service, that adds the @code{gnome-keyring} package
+to the system profile and extends PAM with entries using
+@code{pam_gnome_keyring.so}, unlocking a user's login keyring when they log in
+or setting its password with passwd.")))
+
+
+;;;
+;;; polkit-wheel-service -- Allow wheel group to perform admin actions
+;;;
+
+(define polkit-wheel
+  (file-union
+   "polkit-wheel"
+   `(("share/polkit-1/rules.d/wheel.rules"
+      ,(plain-file
+        "wheel.rules"
+        "polkit.addAdminRule(function(action, subject) {
+    return [\"unix-group:wheel\"];
+});
+")))))
+
+(define polkit-wheel-service
+  (simple-service 'polkit-wheel polkit-service-type (list polkit-wheel)))
 
 
 ;;;
@@ -1065,6 +1195,16 @@ dispatches events from it.")))
          ;; Add udev rules for MTP devices so that non-root users can access
          ;; them.
          (simple-service 'mtp udev-service-type (list libmtp))
+         ;; Add udev rules for scanners.
+         (service sane-service-type)
+         ;; Add polkit rules, so that non-root users in the wheel group can
+         ;; perform administrative tasks (similar to "sudo").
+         polkit-wheel-service
+
+         ;; The global fontconfig cache directory can sometimes contain
+         ;; stale entries, possibly referencing fonts that have been GC'd,
+         ;; so mount it read-only.
+         fontconfig-file-system-service
 
          ;; NetworkManager and its applet.
          (service network-manager-service-type)
@@ -1081,7 +1221,7 @@ dispatches events from it.")))
          (service upower-service-type)
          (accountsservice-service)
          (service cups-pk-helper-service-type)
-         (colord-service)
+         (service colord-service-type)
          (geoclue-service)
          (service polkit-service-type)
          (elogind-service)
@@ -1091,6 +1231,7 @@ dispatches events from it.")))
 
          x11-socket-directory-service
 
+         (service pulseaudio-service-type)
          (service alsa-service-type)
 
          %base-services))

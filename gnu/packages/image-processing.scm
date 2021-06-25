@@ -8,6 +8,8 @@
 ;;; Copyright © 2018 Björn Höfling <bjoern.hoefling@bjoernhoefling.de>
 ;;; Copyright © 2018 Lprndn <guix@lprndn.info>
 ;;; Copyright © 2019 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2020 Vincent Legoll <vincent.legoll@gmail.com>
+;;; Copyright © 2020 Vinicius Monego <monego@posteo.net>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -75,7 +77,7 @@
 (define-public dcmtk
   (package
     (name "dcmtk")
-    (version "3.6.4")
+    (version "3.6.5")
     (source
      (origin
        (method url-fetch)
@@ -84,12 +86,12 @@
                        "dcmtk" (string-join (string-split version #\.) "")
                        "/dcmtk-" version ".tar.gz"))
        (sha256
-        (base32 "1h22z8g0kmvhg8lgkbikyzyphhvxvq6018a00yd6i4g0z9ag6gx9"))))
+        (base32 "1fdyz5wwjp4grys61mxb2ia9fi6i3ax6s43l16xnv291bxk7hld0"))))
     (build-system cmake-build-system)
     (inputs
      `(;; Our ICU is too recent: “error: ‘UChar’ does not name a type“.
        ;; ("icu4c" ,icu4c)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libpng" ,libpng)
        ("libtiff" ,libtiff)
        ("libxml2" ,libxml2)
@@ -137,7 +139,7 @@ licences similar to the Modified BSD licence."))))
        ("gts" ,gts)
        ("hdf5" ,hdf5)
        ("itpp" ,itpp)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libpng" ,libpng)
        ("libtiff" ,libtiff)
        ("libxml" ,libxml2)
@@ -198,7 +200,7 @@ of external libraries that provide additional functionality.")
        ("expat" ,expat)
        ("freetype" ,freetype)
        ("hdf5" ,hdf5)
-       ("jpeg" ,libjpeg)
+       ("jpeg" ,libjpeg-turbo)
        ("jsoncpp" ,jsoncpp)
        ("libogg" ,libogg)
        ("libtheora" ,libtheora)
@@ -373,7 +375,7 @@ integrates with various databases on GUI toolkits such as Qt and Tk.")
              (zero? (system (format #f "~a/bin/Xvfb ~a &" xorg-server disp)))))))))
     (native-inputs
      `(("pkg-config" ,pkg-config)
-       ("xorg-server" ,xorg-server) ; For running the tests
+       ("xorg-server" ,xorg-server-for-tests) ; For running the tests
        ("opencv-extra"
         ,(origin
            (method git-fetch)
@@ -393,7 +395,7 @@ integrates with various databases on GUI toolkits such as Qt and Tk.")
            (patches (search-patches "opencv-rgbd-aarch64-test-fix.patch"))
            (sha256
             (base32 "1f334glf39nk42mpqq6j732h3ql2mpz89jd4mcl678s8n73nfjh2"))))))
-    (inputs `(("libjpeg" ,libjpeg)
+    (inputs `(("libjpeg" ,libjpeg-turbo)
               ("libpng" ,libpng)
               ("jasper" ,jasper)
               ;; ffmpeg 4.0 causes core dumps in tests.
@@ -454,7 +456,7 @@ vision algorithms.  It can be used to do things like:
        ("gobject-introspection" ,gobject-introspection)))
     (inputs
      `(("glib" ,glib)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libpng" ,libpng)
        ("librsvg" ,librsvg)
        ("libtiff" ,libtiff)
@@ -486,6 +488,43 @@ quickly, especially on machines with more than one CPU core.  This is primarily
 due to its architecture which automatically parallelises the image workflows.")
     (license license:lgpl2.1+)))
 
+(define-public gmic
+  (package
+    (name "gmic")
+    (version "2.9.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "https://gmic.eu/files/source/gmic_"
+                           version ".tar.gz"))
+       (sha256
+        (base32 "13axx7nwchn6ysgpvlw3fib474q4nrwv3qn20g3q03ldid0xvjah"))))
+    (build-system cmake-build-system)
+    (arguments
+     `(#:tests? #f))                    ;there are no tests
+    (native-inputs
+     `(("pkg-config" ,pkg-config)))
+    (inputs
+     `(("curl" ,curl)
+       ("fftw" ,fftw)
+       ("graphicsmagick" ,graphicsmagick)
+       ("libjpeg-turbo" ,libjpeg-turbo)
+       ("libpng" ,libpng)
+       ("libtiff" ,libtiff)
+       ("libx11" ,libx11)
+       ;;("opencv" ,opencv) ;OpenCV is currently broken in the CI
+       ("openexr" ,openexr)
+       ("zlib" ,zlib)))
+    (home-page "https://gmic.eu/")
+    (synopsis "Full-featured framework for digital image processing")
+    (description "G'MIC is a full-featured framework for digital image
+processing.  It provides several user interfaces to convert / manipulate
+/ filter / visualize generic image datasets, ranging from 1D scalar
+signals to 3D+t sequences of multi-spectral volumetric images, hence
+including 2D color images.")
+    ;; Dual-licensed, either license applies.
+    (license (list license:cecill license:cecill-c))))
+
 (define-public nip2
   (package
     (name "nip2")
@@ -516,7 +555,7 @@ due to its architecture which automatically parallelises the image workflows.")
        ("gtk+-2" ,gtk+-2)
        ("libxml2" ,libxml2)
        ("libexif" ,libexif)
-       ("libjpeg" ,libjpeg)             ; required by vips.pc
+       ("libjpeg" ,libjpeg-turbo)        ;required by vips.pc
        ("librsvg" ,librsvg)
        ("fftw" ,fftw)
        ("libgsf" ,libgsf)
@@ -548,7 +587,7 @@ recalculates.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/vxl/vxl.git")
+             (url "https://github.com/vxl/vxl")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
@@ -573,7 +612,7 @@ recalculates.")
     (inputs
      `(("libgeotiff" ,libgeotiff)
        ("libtiff" ,libtiff)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libpng" ,libpng)
        ("zlib" ,zlib)))
     (home-page "https://github.com/vxl/vxl/")
@@ -590,7 +629,7 @@ libraries designed for computer vision research and implementation.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/vxl/vxl.git")
+             (url "https://github.com/vxl/vxl")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
@@ -650,7 +689,7 @@ libraries designed for computer vision research and implementation.")
        ("fftw" ,fftw)
        ("fftwf" ,fftwf)
        ("hdf5" ,hdf5)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libpng" ,libpng)
        ("libtiff" ,libtiff)
        ("mesa" ,mesa-opencl)
@@ -725,8 +764,7 @@ combine the information contained in both.")
              "-DSNAP_VERSION_GIT_BRANCH=release"
              "-DSNAP_VERSION_GIT_TIMESTAMP=0"
              "-DSNAP_PACKAGE_QT_PLUGINS=OFF"
-             "-DCMAKE_POSITION_INDEPENDENT_CODE=ON"
-             "-DCMAKE_CXX_FLAGS=-std=gnu++11 -fpermissive")
+             "-DCMAKE_POSITION_INDEPENDENT_CODE=ON")
        #:phases
        (modify-phases %standard-phases
          ;; During the installation phase all libraries provided by all
@@ -799,11 +837,11 @@ combine the information contained in both.")
        ("vtk" ,vtk-6)
        ("qtbase" ,qtbase)
        ("qtdeclarative" ,qtdeclarative)
-       ("qttools" ,qttools)
        ("vxl" ,vxl-1)
        ("zlib" ,zlib)))
     (native-inputs
      `(("googletest" ,googletest)
+       ("qttools" ,qttools)
        ("pkg-config" ,pkg-config)
        ("c3d-src"
         ,(let* ((commit "f521358db26e00002c911cc47bf463b043942ad3")
@@ -812,7 +850,7 @@ combine the information contained in both.")
            (origin
              (method git-fetch)
              (uri (git-reference
-                   (url "https://github.com/pyushkevich/c3d.git")
+                   (url "https://github.com/pyushkevich/c3d")
                    (commit commit)))
              (file-name (git-file-name "c3d" version))
              (sha256
@@ -827,7 +865,7 @@ combine the information contained in both.")
            (origin
              (method git-fetch)
              (uri (git-reference
-                   (url "https://github.com/pyushkevich/greedy.git")
+                   (url "https://github.com/pyushkevich/greedy")
                    (commit commit)))
              (file-name (git-file-name "greedy" version))
              (sha256

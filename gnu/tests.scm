@@ -1,5 +1,5 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2017 Mathieu Othacehe <m.othacehe@gmail.com>
 ;;; Copyright © 2017 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;;
@@ -20,7 +20,7 @@
 
 (define-module (gnu tests)
   #:use-module (guix gexp)
-  #:use-module (guix utils)
+  #:use-module (guix diagnostics)
   #:use-module (guix records)
   #:use-module ((guix ui) #:select (warn-about-load-error))
   #:use-module (gnu bootloader)
@@ -61,7 +61,7 @@
 ;;;
 ;;; This module provides the infrastructure to run operating system tests.
 ;;; The most important part of that is tools to instrument the OS under test,
-;;; essentially allowing to run in a virtual machine controlled by the host
+;;; essentially allowing it to run in a virtual machine controlled by the host
 ;;; system--hence the name "marionette".
 ;;;
 ;;; Code:
@@ -87,8 +87,7 @@
             (requirement `(udev ,@requirement))
 
             (modules '((ice-9 match)
-                       (srfi srfi-9 gnu)
-                       (rnrs bytevectors)))
+                       (srfi srfi-9 gnu)))
             (start
              (with-imported-modules imported-modules
                #~(lambda ()
@@ -98,8 +97,8 @@
                                                ((_ pred rest ...)
                                                 (or (pred x)
                                                     (one-of rest ...))))))
-                       (one-of symbol? string? pair? null? vector?
-                               bytevector? number? boolean?)))
+                       (one-of symbol? string? keyword? pair? null? array?
+                               number? boolean? char?)))
 
                    (match (primitive-fork)
                      (0
@@ -254,6 +253,12 @@ the system under test."
              (number->string (object-address test) 16)))))
 
 (set-record-type-printer! <system-test> write-system-test)
+
+(define-gexp-compiler (compile-system-test (test <system-test>)
+                                           system target)
+  "Compile TEST to a derivation."
+  ;; XXX: SYSTEM and TARGET are ignored.
+  (system-test-value test))
 
 (define (test-modules)
   "Return the list of modules that define system tests."

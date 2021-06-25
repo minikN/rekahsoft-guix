@@ -1,5 +1,5 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -57,12 +57,16 @@
   '((guix build gnu-build-system)
     (guix build utils)))
 
-(define* (package-with-explicit-inputs p inputs
-                                       #:optional
-                                       (loc (current-source-location))
-                                       #:key (native-inputs '())
-                                       guile)
-  "Rewrite P, which is assumed to use GNU-BUILD-SYSTEM, to take INPUTS and
+(define* (package-with-explicit-inputs/deprecated p inputs
+                                                  #:optional
+                                                  (loc (current-source-location))
+                                                  #:key (native-inputs '())
+                                                  guile)
+  "This variant is deprecated because it is inefficient: it memoizes only
+temporarily instead of memoizing across all transformations where INPUTS is
+the same.
+
+Rewrite P, which is assumed to use GNU-BUILD-SYSTEM, to take INPUTS and
 NATIVE-INPUTS as explicit inputs instead of the implicit default, and return
 it.  INPUTS and NATIVE-INPUTS can be either input lists or thunks; in the
 latter case, they will be called in a context where the `%current-system' and
@@ -123,6 +127,47 @@ builder, or the distro's final Guile when GUILE is #f."
          `(,@(call inputs*)
            ,@(map rewritten-input
                   (filtered (package-inputs p)))))))))
+
+(define* (package-with-explicit-inputs* inputs #:optional guile)
+  "Return a procedure that rewrites the given package and all its dependencies
+so that they use INPUTS (a thunk) instead of implicit inputs."
+  (define (duplicate-filter package-inputs)
+    (let ((names (match (inputs)
+                   (((name _ ...) ...)
+                    name))))
+      (fold alist-delete package-inputs names)))
+
+  (define (add-explicit-inputs p)
+    (if (and (eq? (package-build-system p) gnu-build-system)
+             (not (memq #:implicit-inputs? (package-arguments p))))
+        (package
+          (inherit p)
+          (inputs (append (inputs)
+                          (duplicate-filter (package-inputs p))))
+          (arguments
+           (ensure-keyword-arguments (package-arguments p)
+                                     `(#:implicit-inputs? #f
+                                       #:guile ,guile))))
+        p))
+
+  (define (cut? p)
+    (or (not (eq? (package-build-system p) gnu-build-system))
+        (memq #:implicit-inputs? (package-arguments p))))
+
+  (package-mapping add-explicit-inputs cut?))
+
+(define package-with-explicit-inputs
+  (case-lambda*
+   ((inputs #:optional guile)
+    (package-with-explicit-inputs* inputs guile))
+   ((p inputs #:optional (loc (current-source-location))
+       #:key (native-inputs '()) guile)
+    ;; deprecated
+    (package-with-explicit-inputs/deprecated p inputs
+                                             loc
+                                             #:native-inputs
+                                             native-inputs
+                                             #:guile guile))))
 
 (define (package-with-extra-configure-variable p variable value)
   "Return a version of P with VARIABLE=VALUE specified as an extra `configure'
@@ -190,25 +235,21 @@ exact build phases are defined by PHASES."
       (source s)
       (arguments
        ;; Use the right phases and modules.
-       (let* ((args (default-keyword-arguments (package-arguments p)
-                      `(#:phases #f
-                        #:modules ,%default-modules
-                        #:imported-modules ,%gnu-build-system-modules))))
-         (substitute-keyword-arguments args
-           ((#:modules modules)
-            `((guix build gnu-dist)
-              ,@modules))
-           ((#:imported-modules modules)
-            `((guix build gnu-dist)
-              ,@modules))
-           ((#:phases _)
-            phases))))
+       (substitute-keyword-arguments (package-arguments p)
+         ((#:modules modules %default-modules)
+          `((guix build gnu-dist)
+            ,@modules))
+         ((#:imported-modules modules %gnu-build-system-modules)
+          `((guix build gnu-dist)
+            ,@modules))
+         ((#:phases _ #f)
+          phases)))
       (native-inputs
        ;; Add autotools & co. as inputs.
        (let ((ref (lambda (module var)
                     (module-ref (resolve-interface module) var))))
          `(,@(package-native-inputs p)
-           ("autoconf" ,((ref '(gnu packages autotools) 'autoconf-wrapper)))
+           ("autoconf" ,(ref '(gnu packages autotools) 'autoconf-wrapper))
            ("automake" ,(ref '(gnu packages autotools) 'automake))
            ("libtool"  ,(ref '(gnu packages autotools) 'libtool))
            ("gettext"  ,(ref '(gnu packages gettext) 'gnu-gettext))
@@ -251,13 +292,19 @@ standard packages used as implicit inputs of the GNU build system."
                           `(("source" ,source))
                           '())
                     ,@native-inputs
+
+                    ;; When not cross-compiling, ensure implicit inputs come
+                    ;; last.  That way, libc headers come last, which allows
+                    ;; #include_next to work correctly; see
+                    ;; <https://bugs.gnu.org/30756>.
+                    ,@(if target '() inputs)
                     ,@(if (and target implicit-cross-inputs?)
                           (standard-cross-packages target 'host)
                           '())
                     ,@(if implicit-inputs?
                           (standard-packages)
                           '())))
-    (host-inputs inputs)
+    (host-inputs (if target inputs '()))
 
     ;; The cross-libc is really a target package, but for bootstrapping
     ;; reasons, we can't put it in 'host-inputs'.  Namely, 'cross-gcc' is a
@@ -409,13 +456,19 @@ is one of `host' or `target'."
            (libc      (module-ref cross 'cross-libc)))
       (case kind
         ((host)
+         ;; Cross-GCC appears once here, so that it's in $PATH...
          `(("cross-gcc" ,(gcc target
                               #:xbinutils (binutils target)
                               #:libc (libc target)))
            ("cross-binutils" ,(binutils target))))
         ((target)
          (let ((libc (libc target)))
-           `(("cross-libc" ,libc)
+           ;; ... and once here, so that libstdc++ & co. are in
+           ;; CROSS_CPLUS_INCLUDE_PATH, etc.
+           `(("cross-gcc" ,(gcc target
+                                #:xbinutils (binutils target)
+                                #:libc libc))
+             ("cross-libc" ,libc)
 
              ;; MinGW's libc doesn't have a "static" output.
              ,@(if (member "static" (package-outputs libc))
@@ -460,9 +513,11 @@ platform."
   (define canonicalize-reference
     (match-lambda
      ((? package? p)
-      (derivation->output-path (package-cross-derivation store p system)))
+      (derivation->output-path (package-cross-derivation store p
+                                                         target system)))
      (((? package? p) output)
-      (derivation->output-path (package-cross-derivation store p system)
+      (derivation->output-path (package-cross-derivation store p
+                                                         target system)
                                output))
      ((? string? output)
       output)))

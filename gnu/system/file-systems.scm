@@ -1,5 +1,7 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2013, 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2020 Jakub Kądziołka <kuba@kadziolka.net>
+;;; Copyright © 2020 Maxim Cournoyer <maxim.cournoyer@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -20,9 +22,14 @@
   #:use-module (ice-9 match)
   #:use-module (rnrs bytevectors)
   #:use-module (srfi srfi-1)
+  #:use-module (srfi srfi-2)
   #:use-module (srfi srfi-9)
+  #:use-module (srfi srfi-26)
+  #:use-module (srfi srfi-35)
   #:use-module (srfi srfi-9 gnu)
   #:use-module (guix records)
+  #:use-module ((guix diagnostics) #:select (&fix-hint))
+  #:use-module (guix i18n)
   #:use-module (gnu system uuid)
   #:re-export (uuid                               ;backward compatibility
                string->uuid
@@ -30,19 +37,26 @@
   #:export (file-system
             file-system?
             file-system-device
+            file-system-device->string
             file-system-title                     ;deprecated
             file-system-mount-point
             file-system-type
             file-system-needed-for-boot?
             file-system-flags
             file-system-options
+            file-system-options->alist
+            alist->file-system-options
+
             file-system-mount?
+            file-system-mount-may-fail?
             file-system-check?
             file-system-create-mount-point?
             file-system-dependencies
             file-system-location
 
             file-system-type-predicate
+            btrfs-subvolume?
+            btrfs-store-subvolume-file-name
 
             file-system-label
             file-system-label?
@@ -55,6 +69,8 @@
             %pseudo-file-system-types
             %fuse-control-file-system
             %binary-format-file-system
+            %debug-file-system
+            %efivars-file-system
             %shared-memory-file-system
             %pseudo-terminal-file-system
             %tty-gid
@@ -100,6 +116,8 @@
                     (default #f))
   (mount?           file-system-mount?            ; Boolean
                     (default #t))
+  (mount-may-fail?  file-system-mount-may-fail?   ; Boolean
+                    (default #f))
   (needed-for-boot? %file-system-needed-for-boot? ; Boolean
                     (default #f))
   (check?           file-system-check?            ; Boolean
@@ -235,6 +253,47 @@ where both FILE1 and FILE2 are absolute file name.  For example:
               (()
                #f)))))))
 
+(define* (file-system-device->string device #:key uuid-type)
+  "Return the string representations of the DEVICE field of a <file-system>
+record.  When the device is a UUID, its representation is chosen depending on
+UUID-TYPE, a symbol such as 'dce or 'iso9660."
+  (match device
+    ((? file-system-label?)
+     (file-system-label->string device))
+    ((? uuid?)
+     (if uuid-type
+         (uuid->string (uuid-bytevector device) uuid-type)
+         (uuid->string device)))
+    ((? string?)
+     device)))
+
+(define (file-system-options->alist string)
+  "Translate the option string format of a <file-system> record into an
+association list of options or option/value pairs."
+  (if string
+      (let ((options (string-split string #\,)))
+        (map (lambda (param)
+               (let ((=index (string-index param #\=)))
+                 (if =index
+                     (cons (string-take param =index)
+                           (string-drop param (1+ =index)))
+                     param)))
+             options))
+      '()))
+
+(define (alist->file-system-options options)
+  "Return the string representation of OPTIONS, an association list.  The
+string obtained can be used as the option field of a <file-system> record."
+  (if (null? options)
+      #f
+      (string-join (map (match-lambda
+                          ((key . value)
+                           (string-append key "=" value))
+                          (key
+                           key))
+                        options)
+                   ",")))
+
 (define (file-system-needed-for-boot? fs)
   "Return true if FS has the 'needed-for-boot?' flag set, or if it holds the
 store--e.g., if FS is the root file system."
@@ -246,18 +305,19 @@ store--e.g., if FS is the root file system."
   "Return a list corresponding to file-system FS that can be passed to the
 initrd code."
   (match fs
-    (($ <file-system> device mount-point type flags options _ _ check?)
+    (($ <file-system> device mount-point type flags options mount?
+                      mount-may-fail? needed-for-boot? check?)
      (list (cond ((uuid? device)
                   `(uuid ,(uuid-type device) ,(uuid-bytevector device)))
                  ((file-system-label? device)
                   `(file-system-label ,(file-system-label->string device)))
                  (else device))
-           mount-point type flags options check?))))
+           mount-point type flags options mount-may-fail? check?))))
 
 (define (spec->file-system sexp)
   "Deserialize SEXP, a list, to the corresponding <file-system> object."
   (match sexp
-    ((device mount-point type flags options check?)
+    ((device mount-point type flags options mount-may-fail? check?)
      (file-system
        (device (match device
                  (('uuid (? symbol? type) (? bytevector? bv))
@@ -268,6 +328,7 @@ initrd code."
                   device)))
        (mount-point mount-point) (type type)
        (flags flags) (options options)
+       (mount-may-fail? mount-may-fail?)
        (check? check?)))))
 
 (define (specification->file-system-mapping spec writable?)
@@ -312,6 +373,24 @@ TARGET in the other system."
     (device "binfmt_misc")
     (mount-point "/proc/sys/fs/binfmt_misc")
     (type "binfmt_misc")
+    (check? #f)))
+
+(define %debug-file-system
+  (file-system
+    (type "debugfs")
+    (device "none")
+    (mount-point "/sys/kernel/debug")
+    (check? #f)
+    (create-mount-point? #t)))
+
+(define %efivars-file-system
+  ;; Support for EFI variables file system.
+  (file-system
+    (device "efivarfs")
+    (mount-point "/sys/firmware/efi/efivars")
+    (type "efivarfs")
+    (mount-may-fail? #t)
+    (needed-for-boot? #f)
     (check? #f)))
 
 (define %tty-gid
@@ -374,7 +453,7 @@ TARGET in the other system."
                    ;; parent directory.
                    (dependencies (list parent))))
                '("cpuset" "cpu" "cpuacct" "memory" "devices" "freezer"
-                 "blkio" "perf_event")))))
+                 "blkio" "perf_event" "pids")))))
 
 (define %elogind-file-systems
   ;; We don't use systemd, but these file systems are needed for elogind,
@@ -413,7 +492,9 @@ TARGET in the other system."
   ;; List of basic file systems to be mounted.  Note that /proc and /sys are
   ;; currently mounted by the initrd.
   (list %pseudo-terminal-file-system
+        %debug-file-system
         %shared-memory-file-system
+        %efivars-file-system
         %immutable-store))
 
 ;; File systems for Linux containers differ from %base-file-systems in that
@@ -507,13 +588,67 @@ a bind mount."
                  ;; XXX: On some GNU/Linux systems, /etc/resolv.conf is a
                  ;; symlink to a file in a tmpfs which, for an unknown reason,
                  ;; cannot be bind mounted read-only within the container.
-                 (writable? (string=? file "/etc/resolv.conf"))))
-              %network-configuration-files))
+                 ;; The same goes with /var/run/nscd, as discussed in
+                 ;; <https://bugs.gnu.org/37967>.
+                 (writable? (or (string=? file "/etc/resolv.conf")
+                                (string=? file "/var/run/nscd")))))
+              (cons "/var/run/nscd" %network-configuration-files)))
 
 (define (file-system-type-predicate type)
   "Return a predicate that, when passed a file system, returns #t if that file
 system has the given TYPE."
   (lambda (fs)
     (string=? (file-system-type fs) type)))
+
+
+;;;
+;;; Btrfs specific helpers.
+;;;
+
+(define (btrfs-subvolume? fs)
+  "Predicate to check if FS, a file-system object, is a Btrfs subvolume."
+  (and-let* ((btrfs-file-system? (string= "btrfs" (file-system-type fs)))
+             (option-keys (map (match-lambda
+                                 ((key . value) key)
+                                 (key key))
+                               (file-system-options->alist
+                                (file-system-options fs)))))
+    (find (cut string-prefix? "subvol" <>) option-keys)))
+
+(define (btrfs-store-subvolume-file-name file-systems)
+  "Return the subvolume file name within the Btrfs top level onto which the
+store is located, else #f."
+
+  (define (prepend-slash/maybe s)
+    (if (string=? "/" (string-take s 1))
+        s
+        (string-append "/" s)))
+
+  (define (file-name-depth file-name)
+    (length (string-tokenize file-name %not-slash)))
+
+  (and-let* ((btrfs-subvolume-fs (filter btrfs-subvolume? file-systems))
+             (btrfs-subvolume-fs*
+              (sort btrfs-subvolume-fs
+                    (lambda (fs1 fs2)
+                      (> (file-name-depth (file-system-mount-point fs1))
+                         (file-name-depth (file-system-mount-point fs2))))))
+             (store-subvolume-fs
+              (find (lambda (fs) (file-prefix? (file-system-mount-point fs)
+                                               (%store-prefix)))
+                    btrfs-subvolume-fs*))
+             (options (file-system-options->alist
+                       (file-system-options store-subvolume-fs))))
+    ;; XXX: Deriving the subvolume name based from a subvolume ID is not
+    ;; supported, as we'd need to query the actual file system.
+    (or (and=> (assoc-ref options "subvol") prepend-slash/maybe)
+        (raise (condition
+                (&message
+                 (message "The store is on a Btrfs subvolume, but the \
+subvolume name is unknown."))
+                (&fix-hint
+                 (hint
+                  (G_ "Use the @code{subvol} Btrfs file system option."))))))))
+
 
 ;;; file-systems.scm ends here

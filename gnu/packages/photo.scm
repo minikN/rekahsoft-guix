@@ -6,6 +6,9 @@
 ;;; Copyright © 2017 Roel Janssen <roel@gnu.org>
 ;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018 Leo Famulari <leo@famulari.name>
+;;; Copyright © 2020 Sebastian Schott <sschott@mailbox.org>
+;;; Copyright © 2020 Vincent Legoll <vincent.legoll@gmail.com>
+;;; Copyright © 2020 Vinicius Monego <monego@posteo.net>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -26,7 +29,9 @@
   #:use-module (guix build-system cmake)
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system perl)
+  #:use-module (guix build-system python)
   #:use-module (guix download)
+  #:use-module (guix git-download)
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (guix packages)
   #:use-module (guix utils)
@@ -36,29 +41,42 @@
   #:use-module (gnu packages base)
   #:use-module (gnu packages boost)
   #:use-module (gnu packages compression)
+  #:use-module (gnu packages cups)
   #:use-module (gnu packages curl)
+  #:use-module (gnu packages file)
+  #:use-module (gnu packages freedesktop)
+  #:use-module (gnu packages geo)
   #:use-module (gnu packages gettext)
   #:use-module (gnu packages ghostscript)
   #:use-module (gnu packages gl)
   #:use-module (gnu packages gnome)
   #:use-module (gnu packages glib)
   #:use-module (gnu packages graphics)
+  #:use-module (gnu packages gstreamer)
   #:use-module (gnu packages gtk)
   #:use-module (gnu packages image)
+  #:use-module (gnu packages image-processing)
   #:use-module (gnu packages imagemagick)
+  #:use-module (gnu packages iso-codes)
   #:use-module (gnu packages libcanberra)
   #:use-module (gnu packages libusb)
   #:use-module (gnu packages llvm)
+  #:use-module (gnu packages lua)
   #:use-module (gnu packages man)
   #:use-module (gnu packages maths)
+  #:use-module (gnu packages opencl)
   #:use-module (gnu packages perl)
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages popt)
   #:use-module (gnu packages python)
   #:use-module (gnu packages python-xyz)
+  #:use-module (gnu packages python-web)
+  #:use-module (gnu packages qt)
   #:use-module (gnu packages readline)
   #:use-module (gnu packages sqlite)
   #:use-module (gnu packages tex)
+  #:use-module (gnu packages time)
+  #:use-module (gnu packages video)
   #:use-module (gnu packages web)
   #:use-module (gnu packages wxwidgets)
   #:use-module (gnu packages xfig)
@@ -67,22 +85,107 @@
   #:use-module ((srfi srfi-1) #:hide (zip))
   #:use-module (srfi srfi-26))
 
+(define-public rapid-photo-downloader
+  (package
+    (name "rapid-photo-downloader")
+    (version "0.9.18")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append "https://launchpad.net/rapid/pyqt/"
+                                  version "/+download/" name "-"
+                                  version ".tar.gz"))
+              (sha256
+               (base32
+                "15p7sssg6vmqbm5xnc4j5dr89d7gl7y5qyq44a240yl5aqkjnybw"))))
+    (build-system python-build-system)
+    (native-inputs
+     `(("file" ,file)
+       ("intltool" ,intltool)
+       ("gobject-introspection" ,gobject-introspection)))
+    (inputs
+     `(("gdk-pixbuf" ,gdk-pixbuf)
+       ("gexiv2" ,gexiv2)
+       ("gst-libav" ,gst-libav)
+       ("gst-plugins-base" ,gst-plugins-base)
+       ("gst-plugins-good" ,gst-plugins-good)
+       ("gstreamer" ,gstreamer)
+       ("libgudev" ,libgudev)
+       ("libnotify" ,libnotify)
+       ("libmediainfo" ,libmediainfo)
+       ("usdisks" ,udisks)
+       ("python-pyqt" ,python-pyqt)
+       ("python-pygobject" ,python-pygobject)
+       ("python-gphoto2" ,python-gphoto2)
+       ("python-pyzmq" ,python-pyzmq)
+       ("python-tornado" ,python-tornado)
+       ("python-psutil" ,python-psutil)
+       ("python-pyxdg" ,python-pyxdg)
+       ("python-arrow" ,python-arrow)
+       ("python-dateutil" ,python-dateutil)
+       ("python-easygui" ,python-easygui)
+       ("python-colour" ,python-colour)
+       ("python-pymediainfo" ,python-pymediainfo)
+       ("python-sortedcontainers" ,python-sortedcontainers)
+       ("python-rawkit" ,python-rawkit)
+       ("python-requests" ,python-requests)
+       ("python-colorlog" ,python-colorlog)
+       ("python-pyprind" ,python-pyprind)
+       ("python-tenacity" ,python-tenacity)
+       ("perl-image-exiftool" ,perl-image-exiftool)))
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'patch-libmediainfo
+           (lambda _
+             (substitute* "raphodo/metadatavideo.py"
+               (("pymedia_library_file = 'libmediainfo.so.0'")
+                (string-append "pymedia_library_file = '"
+                               (assoc-ref %build-inputs "libmediainfo")
+                               "/lib/libmediainfo.so.0'")))
+             #t))
+         (add-after 'install 'wrap
+           (lambda* (#:key inputs outputs #:allow-other-keys)
+             (let ((out               (assoc-ref outputs "out"))
+                   (path              (string-join
+                                       (list (string-append
+                                              (assoc-ref inputs "perl-image-exiftool")
+                                              "/bin"))
+                                       ":"))
+                   (gi-typelib-path   (getenv "GI_TYPELIB_PATH"))
+                   (python-path       (getenv "PYTHONPATH")))
+               (for-each
+                (lambda (program)
+                  (wrap-program program
+                    `("PATH" ":" prefix (,path))
+                    `("GI_TYPELIB_PATH" ":" prefix (,gi-typelib-path))
+                    `("PYTHONPATH"             ":" prefix (,python-path))))
+                (map (lambda (name)
+                       (string-append out "/bin/" name))
+                     '("analyze-pv-structure"
+                       "rapid-photo-downloader"))))
+             #t)))))
+    (home-page "https://www.damonlynch.net/rapid/")
+    (synopsis "Import photos and videos from cameras, phones and memory cards")
+    (description "Import photos and videos from cameras, phones and memory
+cards and generate meaningful file and folder names.")
+    (license license:gpl2+)))
+
 (define-public libraw
   (package
     (name "libraw")
-    (version "0.19.5")
+    (version "0.20.0")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://www.libraw.org/data/LibRaw-"
                                   version ".tar.gz"))
               (sha256
                (base32
-                "1x827sh6vl8j3ll2ihkcr234y07f31hi1v7sl08jfw3irkbn58j0"))))
+                "18wlsvj6c1rv036ph3695kknpgzc3lk2ikgshy8417yfl8ykh2hz"))))
     (build-system gnu-build-system)
     (native-inputs
      `(("pkg-config" ,pkg-config)))
     (inputs
-     `(("libjpeg" ,libjpeg)))           ;for lossy DNGs and old Kodak cameras
+     `(("libjpeg" ,libjpeg-turbo)))     ;for lossy DNGs and old Kodak cameras
     (propagated-inputs
      `(("lcms" ,lcms)))                 ;for color profiles
     (home-page "https://www.libraw.org")
@@ -111,17 +214,17 @@ cameras (CRW/CR2, NEF, RAF, DNG, and others).")
 (define-public libexif
   (package
     (name "libexif")
-    (version "0.6.21")
+    (version "0.6.22")
     (source (origin
               (method url-fetch)
-              (uri (string-append "mirror://sourceforge/libexif/libexif/"
-                                  version "/libexif-" version ".tar.bz2"))
-              (patches (search-patches "libexif-CVE-2016-6328.patch"
-                                       "libexif-CVE-2017-7544.patch"
-                                       "libexif-CVE-2018-20030.patch"))
+              (uri (string-append
+                    "https://github.com/libexif/libexif/releases"
+                    "/download/libexif-"
+                    (string-map (lambda (x) (if (char=? x #\.) #\_ x)) version)
+                    "-release/libexif-" version ".tar.xz"))
               (sha256
                (base32
-                "06nlsibr3ylfwp28w8f5466l6drgrnydgxrm4jmxzrmk5svaxk8n"))))
+                "0mhcad5zab7fsn120rd585h8ncwkq904nzzrq8vcd72hzk4g2j2h"))))
     (build-system gnu-build-system)
     (home-page "https://libexif.github.io/")
     (synopsis "Read and manipulate EXIF data in digital photographs")
@@ -133,14 +236,14 @@ data as produced by digital cameras.")
 (define-public libgphoto2
   (package
     (name "libgphoto2")
-    (version "2.5.23")
+    (version "2.5.25")
     (source (origin
               (method url-fetch)
               (uri (string-append "mirror://sourceforge/gphoto/libgphoto/"
                                   version "/libgphoto2-" version ".tar.bz2"))
               (sha256
                (base32
-                "0bc5x2bkqbfi4hbkz8ab5xc0bkks9vvks1vygxhdh3x498v27byq"))))
+                "0fkz2rx7xlmr6zl6f56hhxps6bx16dwcw5pyd8c2icf273s9h3kw"))))
     (build-system gnu-build-system)
     (native-inputs `(("pkg-config" ,pkg-config)))
     (inputs
@@ -211,7 +314,7 @@ MTP, and much more.")
 (define-public perl-image-exiftool
   (package
     (name "perl-image-exiftool")
-    (version "11.30")
+    (version "11.85")
     (source
      (origin
        (method url-fetch)
@@ -222,7 +325,8 @@ MTP, and much more.")
              (string-append "https://www.sno.phy.queensu.ca/~phil/exiftool/"
                             "Image-ExifTool-" version ".tar.gz")))
        (sha256
-        (base32 "0vkjb2c1a3jdlq8rx1jywx4p3f1bmgjn7rzfwx6dxgij2lx76lrs"))))
+        (base32
+         "15zqm0ly2b3paqg0ym44ib2mvh6k18a9q5rvdirwipqa127al2lb"))))
     (build-system perl-build-system)
     (arguments
      '(#:phases
@@ -258,7 +362,7 @@ and a wide variety of other metadata.")
                 "1a4m3plmfcrrplqs9zfzhc5apibn10m5sajpizm1sd3q74w5fwq3"))))
     (build-system cmake-build-system)
     (inputs
-     `(("libjpeg" ,libjpeg)
+     `(("libjpeg" ,libjpeg-turbo)
        ("libpng" ,libpng)
        ("libtiff" ,libtiff)
        ("zlib" ,zlib)))
@@ -300,7 +404,7 @@ overlapping images, as well as some command line tools.")
      `(("boost" ,boost)
        ("gsl" ,gsl)
        ("lcms" ,lcms)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libpng" ,libpng)
        ("libtiff" ,libtiff)
        ("openexr" ,openexr)
@@ -361,7 +465,7 @@ photographic equipment.")
 (define-public darktable
   (package
     (name "darktable")
-    (version "2.6.2")
+    (version "3.0.2")
     (source
      (origin
        (method url-fetch)
@@ -369,54 +473,89 @@ photographic equipment.")
              "https://github.com/darktable-org/darktable/releases/"
              "download/release-" version "/darktable-" version ".tar.xz"))
        (sha256
-        (base32 "0igvgyd042j7hm4y8fcm6dc1qqjs4d1r7y6f0pzpa0x416xyzfcw"))))
+        (base32 "1yrnkw8c47kmy2x6m1xp69hwyk02xyc8pd9kvcmyj54lzrhzdfka"))))
     (build-system cmake-build-system)
     (arguments
      `(#:tests? #f                      ; there are no tests
        #:configure-flags '("-DBINARY_PACKAGE_BUILD=On")
-       #:make-flags
-       (list
-        (string-append "CPATH=" (assoc-ref %build-inputs "ilmbase")
-                       "/include/OpenEXR:" (or (getenv "CPATH") "")))
        #:phases
        (modify-phases %standard-phases
-         (add-before 'configure 'set-ldflags
-           (lambda* (#:key outputs #:allow-other-keys)
+         (add-before 'configure 'prepare-build-environment
+           (lambda* (#:key inputs #:allow-other-keys)
+             (setenv "CC" "clang") (setenv "CXX" "clang++")
+             ;; Darktable looks for opencl-c.h in the LLVM dir. Guix installs
+             ;; it to the Clang dir. We fix this by patching CMakeLists.txt.
+             (substitute* "CMakeLists.txt"
+               (("\\$\\{LLVM_INSTALL_PREFIX\\}")
+                (assoc-ref %build-inputs "clang")))
+             #t))
+         (add-before 'configure 'set-LDFLAGS-and-CPATH
+           (lambda* (#:key inputs outputs #:allow-other-keys)
              (setenv "LDFLAGS"
                      (string-append
                       "-Wl,-rpath="
                       (assoc-ref outputs "out") "/lib/darktable"))
-             #t)))))
+
+             ;; Ensure the OpenEXR headers are found.
+             (setenv "CPATH"
+                     (string-append (assoc-ref inputs "ilmbase")
+                                    "/include/OpenEXR:" (or (getenv "CPATH") "")))
+             #t))
+          (add-after 'install 'wrap-program
+            (lambda* (#:key inputs outputs #:allow-other-keys)
+              (wrap-program (string-append (assoc-ref outputs "out")
+                                           "/bin/darktable")
+                ;; For GtkFileChooserDialog.
+                `("GSETTINGS_SCHEMA_DIR" =
+                  (,(string-append (assoc-ref inputs "gtk+")
+                                   "/share/glib-2.0/schemas"))))
+              #t)))))
     (native-inputs
-     `(("llvm" ,llvm-3.9.1)
-       ("clang" ,clang-3.9.1)))
-    (inputs
-     `(("libxslt" ,libxslt)
-       ("libxml2" ,libxml2)
-       ("pugixml" ,pugixml)
-       ("gtk+" ,gtk+)
-       ("sqlite" ,sqlite)
-       ("libjpeg" ,libjpeg)
-       ("libpng" ,libpng)
-       ("cairo" ,cairo)
-       ("lcms" ,lcms)
-       ("exiv2" ,exiv2)
-       ("libtiff" ,libtiff)
-       ("curl" ,curl)
-       ("libgphoto2" ,libgphoto2)
-       ("dbus-glib" ,dbus-glib)
-       ("openexr" ,openexr)
-       ("ilmbase" ,ilmbase)
-       ("libsoup" ,libsoup)
-       ("python-jsonschema" ,python-jsonschema)
+     `(("clang" ,clang-9)
+       ("desktop-file-utils" ,desktop-file-utils)
+       ("glib:bin" ,glib "bin")
+       ("gobject-introspection" ,gobject-introspection)
        ("intltool" ,intltool)
+       ("llvm" ,llvm-9) ;should match the Clang version
+       ("opencl-headers" ,opencl-headers)
        ("perl" ,perl)
        ("pkg-config" ,pkg-config)
-       ("libwebp" ,libwebp)
-       ("lensfun" ,lensfun)
-       ("librsvg" ,librsvg)
+       ("po4a" ,po4a)))
+    (inputs
+     `(("cairo" ,cairo)
+       ("colord-gtk" ,colord-gtk)
+       ("cups" ,cups)
+       ("curl" ,curl)
+       ("dbus-glib" ,dbus-glib)
+       ("exiv2" ,exiv2)
+       ("freeimage" ,freeimage)
+       ("gmic" ,gmic)
+       ("graphicsmagick" ,graphicsmagick)
+       ("gsettings-desktop-schemas" ,gsettings-desktop-schemas)
+       ("gtk+" ,gtk+)
+       ("ilmbase" ,ilmbase)
+       ("iso-codes" ,iso-codes)
        ("json-glib" ,json-glib)
-       ("freeimage" ,freeimage)))
+       ("lcms" ,lcms)
+       ("lensfun" ,lensfun)
+       ("libgphoto2" ,libgphoto2)
+       ("libjpeg" ,libjpeg-turbo)
+       ("libomp" ,libomp)
+       ("libpng" ,libpng)
+       ("librsvg" ,librsvg)
+       ("libsecret" ,libsecret)
+       ("libsoup" ,libsoup)
+       ("libtiff" ,libtiff)
+       ("libwebp" ,libwebp)
+       ("libxml2" ,libxml2)
+       ("libxslt" ,libxslt)
+       ("lua" ,lua) ;for plugins
+       ("openexr" ,openexr)
+       ("openjpeg" ,openjpeg)
+       ("osm-gps-map" ,osm-gps-map)
+       ("pugixml" ,pugixml)
+       ("python-jsonschema" ,python-jsonschema)
+       ("sqlite" ,sqlite)))
     (home-page "https://www.darktable.org")
     (synopsis "Virtual lighttable and darkroom for photographers")
     (description "Darktable is a photography workflow application and RAW
@@ -425,12 +564,57 @@ them through a zoomable lighttable and enables you to develop raw images
 and enhance them.")
     ;; See src/is_supported_platform.h for supported platforms.
     (supported-systems '("i686-linux" "x86_64-linux" "aarch64-linux"))
+    (license (list license:gpl3+ ;; Darktable itself.
+                   license:lgpl2.1+)))) ;; Rawspeed library.
+
+(define-public photoflare
+  (package
+    (name "photoflare")
+    (version "1.6.5")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/photoflare/photoflare")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "0a394324h7ds567z3i3pw6kkii78n4qwdn129kgkkm996yh03q89"))))
+    (build-system gnu-build-system)
+    (arguments
+     '(#:tests? #f                      ;no tests
+       #:phases
+       (modify-phases %standard-phases
+         (replace 'configure
+           (lambda* (#:key inputs outputs #:allow-other-keys)
+             (let ((magickpp (assoc-ref inputs "graphicsmagick"))
+                   (out (assoc-ref outputs "out")))
+               (invoke "qmake"
+                       (string-append "INCLUDEPATH += " magickpp
+                                      "/include/GraphicsMagick")
+                       (string-append "PREFIX=" out)
+                       "Photoflare.pro")))))))
+    (native-inputs
+     `(("pkg-config" ,pkg-config)
+       ("qttools" ,qttools)))
+    (inputs
+     `(("graphicsmagick" ,graphicsmagick)
+       ("libomp" ,libomp)
+       ("qtbase" ,qtbase)))
+    (home-page "https://photoflare.io")
+    (synopsis "Quick, simple but powerful image editor")
+    (description "Photoflare is a cross-platform image editor with an aim
+to balance between powerful features and a very friendly graphical user
+interface.  It suits a wide variety of different tasks and users who value a
+more nimble workflow.  Features include basic image editing capabilities,
+paint brushes, image filters, colour adjustments and more advanced features
+such as Batch image processing.")
     (license license:gpl3+)))
 
 (define-public hugin
   (package
     (name "hugin")
-    (version "2019.0.0")
+    (version "2019.2.0")
     (source (origin
               (method url-fetch)
               (uri (string-append "mirror://sourceforge/hugin/hugin/hugin-"
@@ -438,10 +622,10 @@ and enhance them.")
                                   "/hugin-" version ".tar.bz2"))
               (sha256
                (base32
-                "1l925qslp98gg7yzmgps10h6dq0nb60wbfk345anlxsv0g2ifizr"))))
+                "0gjsm5bgz10wbr5q3y74f8dzb238dh32xx0p5wa3yca6lbzbv9lb"))))
     (build-system cmake-build-system)
     (native-inputs
-     `(("gettext" ,gnu-gettext)
+     `(("gettext" ,gettext-minimal)
        ("pkg-config" ,pkg-config)))
     (inputs
      `(("boost" ,boost)
@@ -452,7 +636,7 @@ and enhance them.")
        ("freeglut" ,freeglut)
        ("glew" ,glew)
        ("lcms" ,lcms)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libpano13" ,libpano13)
        ("libpng" ,libpng)
        ("libtiff" ,libtiff)
@@ -500,14 +684,14 @@ a complete panorama and stitch any series of overlapping pictures.")
 (define-public rawtherapee
   (package
     (name "rawtherapee")
-    (version "5.6")
+    (version "5.8")
     (source (origin
               (method url-fetch)
               (uri (string-append "http://rawtherapee.com/shared/source/"
                                   "rawtherapee-" version ".tar.xz"))
               (sha256
                (base32
-                "0x0dcfp6f3j08gr11wq5ah4prp790xy4iadbgsm9kgc0jlalpspr"))))
+                "0lq8qi7g0a28h3rab7bk5bbbd4gvfma42bvlz1dfn8p9mah2h19n"))))
     (build-system cmake-build-system)
     (arguments
      '(#:tests? #f                      ; no test suite
@@ -537,7 +721,7 @@ a complete panorama and stitch any series of overlapping pictures.")
        ("lensfun" ,lensfun)
        ("libcanberra" ,libcanberra)
        ("libiptcdata" ,libiptcdata)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libpng" ,libpng)
        ("librsvg" ,librsvg)
        ("libsigc++" ,libsigc++)

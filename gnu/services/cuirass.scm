@@ -1,6 +1,6 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2016 Mathieu Lirzin <mthl@gnu.org>
-;;; Copyright © 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2017 Mathieu Othacehe <m.othacehe@gmail.com>
 ;;; Copyright © 2017 Jan Nieuwenhuizen <janneke@gnu.org>
 ;;; Copyright © 2018, 2019 Ricardo Wurmus <rekado@elephly.net>
@@ -25,8 +25,8 @@
   #:use-module (guix gexp)
   #:use-module (guix records)
   #:use-module (gnu packages admin)
-  #:autoload   (gnu packages ci) (cuirass)
-  #:autoload   (gnu packages version-control) (git)
+  #:use-module (gnu packages ci)
+  #:use-module (gnu packages version-control)
   #:use-module (gnu services)
   #:use-module (gnu services base)
   #:use-module (gnu services shepherd)
@@ -77,74 +77,77 @@
   (one-shot?        cuirass-configuration-one-shot? ;boolean
                     (default #f))
   (fallback?        cuirass-configuration-fallback? ;boolean
-                    (default #f)))
+                    (default #f))
+  (extra-options    cuirass-configuration-extra-options
+                    (default '())))
 
 (define (cuirass-shepherd-service config)
   "Return a <shepherd-service> for the Cuirass service with CONFIG."
-  (and
-   (cuirass-configuration? config)
-   (let ((cuirass          (cuirass-configuration-cuirass config))
-         (cache-directory  (cuirass-configuration-cache-directory config))
-         (web-log-file     (cuirass-configuration-web-log-file config))
-         (log-file         (cuirass-configuration-log-file config))
-         (user             (cuirass-configuration-user config))
-         (group            (cuirass-configuration-group config))
-         (interval         (cuirass-configuration-interval config))
-         (database         (cuirass-configuration-database config))
-         (ttl              (cuirass-configuration-ttl config))
-         (port             (cuirass-configuration-port config))
-         (host             (cuirass-configuration-host config))
-         (specs            (cuirass-configuration-specifications config))
-         (use-substitutes? (cuirass-configuration-use-substitutes? config))
-         (one-shot?        (cuirass-configuration-one-shot? config))
-         (fallback?        (cuirass-configuration-fallback? config)))
-     (list (shepherd-service
-            (documentation "Run Cuirass.")
-            (provision '(cuirass))
-            (requirement '(guix-daemon networking))
-            (start #~(make-forkexec-constructor
-                      (list (string-append #$cuirass "/bin/cuirass")
-                            "--cache-directory" #$cache-directory
-                            "--specifications"
-                            #$(scheme-file "cuirass-specs.scm" specs)
-                            "--database" #$database
-                            "--ttl" #$(string-append (number->string ttl) "s")
-                            "--interval" #$(number->string interval)
-                            #$@(if use-substitutes? '("--use-substitutes") '())
-                            #$@(if one-shot? '("--one-shot") '())
-                            #$@(if fallback? '("--fallback") '()))
+  (let ((cuirass          (cuirass-configuration-cuirass config))
+        (cache-directory  (cuirass-configuration-cache-directory config))
+        (web-log-file     (cuirass-configuration-web-log-file config))
+        (log-file         (cuirass-configuration-log-file config))
+        (user             (cuirass-configuration-user config))
+        (group            (cuirass-configuration-group config))
+        (interval         (cuirass-configuration-interval config))
+        (database         (cuirass-configuration-database config))
+        (ttl              (cuirass-configuration-ttl config))
+        (port             (cuirass-configuration-port config))
+        (host             (cuirass-configuration-host config))
+        (specs            (cuirass-configuration-specifications config))
+        (use-substitutes? (cuirass-configuration-use-substitutes? config))
+        (one-shot?        (cuirass-configuration-one-shot? config))
+        (fallback?        (cuirass-configuration-fallback? config))
+        (extra-options    (cuirass-configuration-extra-options config)))
+    (list (shepherd-service
+           (documentation "Run Cuirass.")
+           (provision '(cuirass))
+           (requirement '(guix-daemon networking))
+           (start #~(make-forkexec-constructor
+                     (list (string-append #$cuirass "/bin/cuirass")
+                           "--cache-directory" #$cache-directory
+                           "--specifications"
+                           #$(scheme-file "cuirass-specs.scm" specs)
+                           "--database" #$database
+                           "--ttl" #$(string-append (number->string ttl) "s")
+                           "--interval" #$(number->string interval)
+                           #$@(if use-substitutes? '("--use-substitutes") '())
+                           #$@(if one-shot? '("--one-shot") '())
+                           #$@(if fallback? '("--fallback") '())
+                           #$@extra-options)
 
-                      #:environment-variables
-                      (list "GIT_SSL_CAINFO=/etc/ssl/certs/ca-certificates.crt"
-                            (string-append "GIT_EXEC_PATH=" #$git
-                                           "/libexec/git-core"))
+                     #:environment-variables
+                     (list "GIT_SSL_CAINFO=/etc/ssl/certs/ca-certificates.crt"
+                           (string-append "GIT_EXEC_PATH=" #$git
+                                          "/libexec/git-core"))
 
-                      #:user #$user
-                      #:group #$group
-                      #:log-file #$log-file))
-            (stop #~(make-kill-destructor)))
-           (shepherd-service
-            (documentation "Run Cuirass web interface.")
-            (provision '(cuirass-web))
-            (requirement '(guix-daemon networking))
-            (start #~(make-forkexec-constructor
-                      (list (string-append #$cuirass "/bin/cuirass")
-                            "--cache-directory" #$cache-directory
-                            "--specifications"
-                            #$(scheme-file "cuirass-specs.scm" specs)
-                            "--database" #$database
-                            "--ttl" #$(string-append (number->string ttl) "s")
-                            "--web"
-                            "--port" #$(number->string port)
-                            "--listen" #$host
-                            "--interval" #$(number->string interval)
-                            #$@(if use-substitutes? '("--use-substitutes") '())
-                            #$@(if fallback? '("--fallback") '()))
+                     #:user #$user
+                     #:group #$group
+                     #:log-file #$log-file))
+           (stop #~(make-kill-destructor)))
+          (shepherd-service
+           (documentation "Run Cuirass web interface.")
+           (provision '(cuirass-web))
+           (requirement '(guix-daemon networking))
+           (start #~(make-forkexec-constructor
+                     (list (string-append #$cuirass "/bin/cuirass")
+                           "--cache-directory" #$cache-directory
+                           "--specifications"
+                           #$(scheme-file "cuirass-specs.scm" specs)
+                           "--database" #$database
+                           "--ttl" #$(string-append (number->string ttl) "s")
+                           "--web"
+                           "--port" #$(number->string port)
+                           "--listen" #$host
+                           "--interval" #$(number->string interval)
+                           #$@(if use-substitutes? '("--use-substitutes") '())
+                           #$@(if fallback? '("--fallback") '())
+                           #$@extra-options)
 
-                      #:user #$user
-                      #:group #$group
-                      #:log-file #$web-log-file))
-            (stop #~(make-kill-destructor)))))))
+                     #:user #$user
+                     #:group #$group
+                     #:log-file #$web-log-file))
+           (stop #~(make-kill-destructor))))))
 
 (define (cuirass-account config)
   "Return the user accounts and user groups for CONFIG."
@@ -166,6 +169,7 @@
   (let ((cache (cuirass-configuration-cache-directory config))
         (db    (dirname (cuirass-configuration-database config)))
         (user  (cuirass-configuration-user config))
+        (log   "/var/log/cuirass")
         (group (cuirass-configuration-group config)))
     (with-imported-modules '((guix build utils))
       #~(begin
@@ -173,11 +177,13 @@
 
           (mkdir-p #$cache)
           (mkdir-p #$db)
+          (mkdir-p #$log)
 
           (let ((uid (passwd:uid (getpw #$user)))
                 (gid (group:gid (getgr #$group))))
             (chown #$cache uid gid)
-            (chown #$db uid gid))))))
+            (chown #$db uid gid)
+            (chown #$log uid gid))))))
 
 (define (cuirass-log-rotations config)
   "Return the list of log rotations that corresponds to CONFIG."

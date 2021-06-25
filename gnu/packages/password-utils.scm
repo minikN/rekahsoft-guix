@@ -1,18 +1,18 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2015 Steve Sprang <scs@stevesprang.com>
-;;; Copyright © 2015, 2016, 2017, 2018, 2019 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2015, 2016, 2017, 2018, 2019, 2020 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2015 Aljosha Papsch <misc@rpapsch.de>
 ;;; Copyright © 2016 Christopher Allan Webber <cwebber@dustycloud.org>
 ;;; Copyright © 2016 Jessica Tallon <tsyesika@tsyesika.se>
 ;;; Copyright © 2016 Andreas Enge <andreas@enge.fr>
 ;;; Copyright © 2016 Lukas Gradl <lgradl@openmailbox.org>
-;;; Copyright © 2016, 2019 Alex Griffin <a@ajgrf.com>
+;;; Copyright © 2016, 2019, 2020 Alex Griffin <a@ajgrf.com>
 ;;; Copyright © 2017 Leo Famulari <leo@famulari.name>
 ;;; Copyright © 2017, 2018 Clément Lassieur <clement@lassieur.org>
 ;;; Copyright © 2017, 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2017 Jelle Licht <jlicht@fsfe.org>
-;;; Copyright © 2017 Eric Bavier <bavier@member.fsf.org>
-;;; Copyright © 2017 Nicolas Goaziou <mail@nicolasgoaziou.fr>
+;;; Copyright © 2017, 2019 Eric Bavier <bavier@member.fsf.org>
+;;; Copyright © 2017, 2020 Nicolas Goaziou <mail@nicolasgoaziou.fr>
 ;;; Copyright © 2017 Manolis Fragkiskos Ragkousis <manolis837@gmail.com>
 ;;; Copyright © 2017 Rutger Helling <rhelling@mykolab.com>
 ;;; Copyright © 2018 Marius Bakke <mbakke@fastmail.com>
@@ -21,8 +21,13 @@
 ;;; Copyright © 2018 Arun Isaac <arunisaac@systemreboot.net>
 ;;; Copyright © 2018 Pierre Neidhardt <mail@ambrevar.xyz>
 ;;; Copyright © 2018 Amirouche Boubekki <amirouche@hypermove.net>
-;;; Copyright © 2018 Tim Gesthuizen <tim.gesthuizen@yahoo.de>
+;;; Copyright © 2018, 2019, 2020 Tim Gesthuizen <tim.gesthuizen@yahoo.de>
 ;;; Copyright © 2019 Jens Mølgaard <jens@zete.tk>
+;;; Copyright © 2019 Tanguy Le Carrour <tanguy@bioneland.org>
+;;; Copyright © 2020 Guillaume Le Vaillant <glv@posteo.net>
+;;; Copyright © 2020 Brice Waegeneire <brice@waegenei.re>
+;;; Copyright © 2020 Jean-Baptiste Note <jean-baptiste.note@m4x.org>
+;;; Copyright © 2020 Michael Rohleder <mike@rohleder.de>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -43,6 +48,8 @@
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (guix build-system cmake)
   #:use-module (guix build-system gnu)
+  #:use-module (guix build-system go)
+  #:use-module (guix build-system trivial)
   #:use-module (guix download)
   #:use-module (guix git-download)
   #:use-module (guix packages)
@@ -54,12 +61,15 @@
   #:use-module (gnu packages check)
   #:use-module (gnu packages compression)
   #:use-module (gnu packages crypto)
+  #:use-module (gnu packages cryptsetup)
   #:use-module (gnu packages curl)
+  #:use-module (gnu packages docbook)
   #:use-module (gnu packages file)
   #:use-module (gnu packages freedesktop)
   #:use-module (gnu packages gettext)
   #:use-module (gnu packages glib)
   #:use-module (gnu packages gnupg)
+  #:use-module (gnu packages golang)
   #:use-module (gnu packages gtk)
   #:use-module (gnu packages guile)
   #:use-module (gnu packages kerberos)
@@ -75,6 +85,9 @@
   #:use-module (gnu packages python)
   #:use-module (gnu packages python-web)
   #:use-module (gnu packages python-xyz)
+  #:use-module (gnu packages readline)
+  #:use-module (gnu packages ruby)
+  #:use-module (gnu packages security-token)
   #:use-module (gnu packages suckless)
   #:use-module (gnu packages tcl)
   #:use-module (gnu packages tls)
@@ -109,36 +122,49 @@ human.")
 (define-public keepassxc
   (package
     (name "keepassxc")
-    (version "2.4.3")
+    (version "2.6.0")
     (source
      (origin
        (method url-fetch)
-       (uri (string-append "https://github.com/keepassxreboot/" name
+       (uri (string-append "https://github.com/keepassxreboot/keepassxc"
                            "/releases/download/" version "/keepassxc-"
                            version "-src.tar.xz"))
        (sha256
-        (base32
-         "0d17izx6qvcsxsxlsmaa17rgn38fvxsp5yzqqf4pc11i44cm5jfp"))))
+        (base32 "0fpx6pq336g1xwjl5yzvsky6vqvaa38zb8pwkgswph9slybkvlnh"))))
     (build-system cmake-build-system)
     (arguments
-     '(#:configure-flags '("-DWITH_XC_NETWORKING=YES"
-                           "-DWITH_XC_BROWSER=YES"
-                           "-DWITH_XC_SSHAGENT=YES"
-                           "-DWITH_XC_UPDATECHECK=NO")))
+     '(#:configure-flags '("-DWITH_XC_ALL=YES"
+                           "-DWITH_XC_UPDATECHECK=NO")
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'install 'wrap-bin
+           (lambda* (#:key outputs inputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out")))
+               (wrap-program (string-append out "/bin/keepassxc")
+                 `("QT_PLUGIN_PATH" ":" prefix
+                   ,(map (lambda (label)
+                           (string-append (assoc-ref inputs label)
+                                          "/lib/qt5/plugins"))
+                         '("qtbase" "qtsvg")))))
+             #t)))))
+    (native-inputs
+     `(("asciidoctor" ,ruby-asciidoctor)
+       ("qttools" ,qttools)))
     (inputs
      `(("argon2" ,argon2)
-       ("curl" ,curl)                   ; XC_NETWORKING
        ("libgcrypt" ,libgcrypt)
        ("libsodium" ,libsodium)         ; XC_BROWSER
+       ("libyubikey" ,libyubikey)       ; XC_YUBIKEY
        ("libxi" ,libxi)
        ("libxtst" ,libxtst)
        ("qrencode" ,qrencode)
        ("qtbase" ,qtbase)
        ("qtsvg" ,qtsvg)
        ("qtx11extras" ,qtx11extras)
+       ("quazip" ,quazip)               ; XC_KEESHARE
+       ("readline" ,readline)
+       ("yubikey-personalization" ,yubikey-personalization) ; XC_YUBIKEY
        ("zlib" ,zlib)))
-    (native-inputs
-     `(("qttools" ,qttools)))
     (home-page "https://www.keepassxc.org")
     (synopsis "Password manager")
     (description "KeePassXC is a password manager or safe which helps you to
@@ -146,7 +172,8 @@ manage your passwords in a secure way.  You can put all your passwords in one
 database, which is locked with one master key or a key-file which can be stored
 on an external storage device.  The databases are encrypted using the
 algorithms AES or Twofish.")
-    ;; Non-functional parts use various licences.
+    ;; While various parts of the software are licensed under different licenses,
+    ;; the combined work falls under the GPLv3.
     (license license:gpl3)))
 
 (define-public keepassx
@@ -183,24 +210,26 @@ algorithms AES or Twofish.")
 (define-public pwsafe
   (package
     (name "pwsafe")
-    (version "3.48.0")
-    (home-page "https://www.pwsafe.org/" )
+    (version "3.52.0")
+    (home-page "https://www.pwsafe.org/")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/pwsafe/pwsafe.git")
+             (url "https://github.com/pwsafe/pwsafe")
              (commit version)))
-       (sha256 (base32 "0hxv23yh76liggxbjn4m132z15sklra8ms341xgzl4n5vjx30ihi"))
-       (file-name (string-append name "-" version "-checkout"))))
+       (sha256
+        (base32 "1ka7xsl63v0559fzf3pwc1iqr37gwr4vq5iaxa2hzar2g28hsxvh"))
+       (file-name (git-file-name name version))))
     (build-system cmake-build-system)
-    (native-inputs `(("gettext" ,gettext-minimal)
-                     ("perl" ,perl)
-                     ("zip" ,zip)))
+    (native-inputs
+     `(("gettext" ,gettext-minimal)
+       ("gtest" ,googletest)
+       ("perl" ,perl)
+       ("zip" ,zip)))
     (inputs `(("curl" ,curl)
               ("file" ,file)
-              ("gtest" ,googletest)
-              ("libuuid" ,util-linux)
+              ("libuuid" ,util-linux "lib")
               ("libxt" ,libxt)
               ("libxtst" ,libxtst)
               ("openssl" ,openssl)
@@ -217,15 +246,7 @@ algorithms AES or Twofish.")
                                   (display "find_package(GTest)
 add_subdirectory(src/test)\n" cmake-port)
                                   (close cmake-port)
-                                  #t)))
-                            (add-after 'add-gtest 'patch-executables
-                              (lambda* (#:key inputs #:allow-other-keys)
-                                (chmod "src/test/OSTest.cpp" #o644)
-                                (substitute* "src/os/unix/media.cpp"
-                                  (("/usr/bin/file")
-                                   (string-append (assoc-ref inputs "file")
-                                                  "/bin/file")))
-                                #t)))))
+                                  #t))))))
     (synopsis "Password safe with automatic input and key generation")
     (description "pwsafe is a password manager originally designed by Bruce
 Schneier.  It offers a simple UI to manage passwords for different services.
@@ -285,21 +306,22 @@ applications, there is xclip integration." )
 (define-public yapet
   (package
     (name "yapet")
-    (version "1.1")
-    (source (origin
-              (method url-fetch)
-              (uri (string-append "http://www.guengel.ch/myapps/yapet/downloads/yapet-"
-                                  version
-                                  ".tar.bz2"))
-              (sha256
-               (base32
-                "1lq46mpxdsbl6qw4cj58hp9q7jckmyvbsi08p5zr77rjgqadxyyy"))))
+    (version "2.3")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "https://yapet.guengel.ch/downloads/yapet-"
+                           version ".tar.xz"))
+       (sha256
+        (base32 "1fl4s7v1psl52ndd6i7716i9f493aj8ipl6lgmraadnn5h26l3pm"))))
     (build-system gnu-build-system)
     (inputs
-     `(("ncurses" ,ncurses)
+     `(("argon2" ,argon2)
+       ("ncurses" ,ncurses)
        ("openssl" ,openssl)))
     (native-inputs
-     `(("pkg-config" ,pkg-config)))
+     `(("cppunit" ,cppunit)
+       ("pkg-config" ,pkg-config)))
     (synopsis "Yet Another Password Encryption Tool")
     (description "YAPET is a text based password manager using the Blowfish
 encryption algorithm.  Because of its small footprint and very few library
@@ -307,7 +329,7 @@ dependencies, it is suited for installing on desktop and server systems alike.
 The text based user interface allows you to run YAPET easily in a Secure Shell
 session.  Two companion utilities enable users to convert CSV files to YAPET
 and vice versa.")
-    (home-page "http://www.guengel.ch/myapps/yapet/")
+    (home-page "https://yapet.guengel.ch/")
     (license license:gpl3+)))
 
 (define-public cracklib
@@ -344,19 +366,19 @@ them out, at the source.")
 (define-public libpwquality
   (package
     (name "libpwquality")
-    (version "1.4.0")
+    (version "1.4.2")
     (source (origin
               (method url-fetch)
               (uri (list
-                    (string-append "https://github.com/" name "/" name
-                                   "/releases/download/" name  "-" version
-                                   "/" name "-" version ".tar.bz2")
+                    (string-append "https://github.com/libpwquality/libpwquality"
+                                   "/releases/download/libpwquality-" version
+                                   "/libpwquality-" version ".tar.bz2")
                     (string-append "https://launchpad.net/libpwquality/trunk/"
                                    version "/+download/"
-                                   name "-" version ".tar.bz2")))
+                                   "libpwquality-" version ".tar.bz2")))
               (sha256
                (base32
-                "0syyz8r54l8mqmbb0mw19qz4z2cx8gdgidicb8k2s5zjdh2gzrhx"))))
+                "13hw532fmzc5xjpy75d74rlfdlxf2a8ibb4hyy9c0s92wsgf0qsj"))))
     (build-system gnu-build-system)
     (arguments
      ;; XXX: have RUNPATH issue.
@@ -486,17 +508,11 @@ any X11 window.")
                                 "sed" "tree" "which" "xclip"))))
                (wrap-program (string-append out "/bin/pass")
                  `("PATH" ":" prefix (,(string-join path ":"))))
-               #t)))
-         (add-after 'wrap-path 'install-shell-completions
-           (lambda* (#:key outputs #:allow-other-keys)
-             (let* ((out      (assoc-ref outputs "out"))
-                    (bashcomp (string-append out "/etc/bash_completion.d")))
-               ;; TODO: install fish and zsh completions.
-               (mkdir-p bashcomp)
-               (copy-file "src/completion/pass.bash-completion"
-                          (string-append bashcomp "/pass"))
                #t))))
-       #:make-flags (list "CC=gcc" (string-append "PREFIX=" %output))
+       #:make-flags (list "CC=gcc" (string-append "PREFIX=" %output)
+                          "WITH_ALLCOMP=yes"
+                          (string-append "BASHCOMPDIR="
+                                         %output "/etc/bash_completion.d"))
        ;; Parallel tests may cause a race condition leading to a
        ;; timeout in some circumstances.
        #:parallel-tests? #f
@@ -504,6 +520,7 @@ any X11 window.")
     (native-search-paths
      (list (search-path-specification
             (variable "PASSWORD_STORE_SYSTEM_EXTENSION_DIR")
+            (separator #f)                        ;single entry
             (files '("lib/password-store/extensions")))))
     (inputs
      `(("dmenu" ,dmenu)
@@ -578,20 +595,25 @@ key URIs using the standard otpauth:// scheme.")
 (define-public qtpass
   (package
     (name "qtpass")
-    (version "1.2.3")
+    (version "1.3.2")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/IJHack/QtPass.git")
+             (url "https://github.com/IJHack/QtPass")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
         (base32
-         "1vfhfyccrxq9snyvayqfzm5rqik8ny2gysyv7nipc91kvhq3bhky"))))
+         "0748hjvhjrybi33ci3c8hcr74k9pdrf5jv8npf9hrsrmdyy1kr9x"))))
     (build-system gnu-build-system)
     (arguments
-     `(#:phases
+     `(#:modules ((guix build gnu-build-system)
+                  (guix build qt-utils)
+                  (guix build utils))
+       #:imported-modules (,@%gnu-build-system-modules
+                            (guix build qt-utils))
+       #:phases
        (modify-phases %standard-phases
          (replace 'configure
            (lambda* (#:key inputs outputs #:allow-other-keys)
@@ -627,6 +649,10 @@ key URIs using the standard otpauth:// scheme.")
                             (string-append icons "/qtpass-icon.svg"))
                (install-file "qtpass.1" man)
                #t)))
+         (add-after 'install 'wrap-qt
+           (lambda* (#:key outputs #:allow-other-keys)
+             (wrap-qt-program (assoc-ref outputs "out") "qtpass")
+             #t))
          (add-before 'check 'check-setup
            ;; Make Qt render "offscreen", required for tests.
            (lambda _
@@ -647,44 +673,150 @@ templates, clipboard handling, and per folder settings for multi-recipient
 encryption.")
     (license license:gpl3+)))
 
-(define-public argon2
+(define-public rofi-pass
   (package
-    (name "argon2")
-    (version "20171227")
+    (name "rofi-pass")
+    (version "2.0.2")
     (source
      (origin
        (method url-fetch)
        (uri
-        (string-append "https://github.com/P-H-C/phc-winner-argon2/archive/"
-                       version ".tar.gz"))
-       (file-name (string-append name "-" version ".tar.gz"))
+        (string-append "https://raw.githubusercontent.com/carnager/rofi-pass/"
+                       version "/rofi-pass"))
+       (sha256
+        (base32 "0msldkndqp40nx1s5s7ggcr97ir4nshpmnyzvj5hqw1l7m3gvw6j"))
+       (file-name name)))
+    (build-system trivial-build-system)
+    (arguments
+     `(#:modules ((guix build utils))
+       #:builder
+       (begin
+         (use-modules (guix build utils))
+         (let ((source (string-append (assoc-ref %build-inputs "source")))
+               (script "rofi-pass")
+               (out (assoc-ref %outputs "out")))
+           (copy-file source script)
+           (chmod script #o555)
+           (install-file script (string-append out "/bin"))))))
+    (propagated-inputs
+     `(("password-store" ,password-store)
+       ("rofi" ,rofi)
+       ("xdotool" ,xdotool)))
+    (home-page "https://github.com/carnager/rofi-pass")
+    (synopsis "Rofi frontend for password-store")
+    (description "Rofi-pass provides a way to manipulate information stored
+using password-store through rofi interface:
+@enumerate
+@item open URLs of entries with hotkey;
+@item type any field from entry;
+@item auto-typing of user and/or password fields;
+@item auto-typing username based on path;
+@item auto-typing of more than one field, using the autotype entry;
+@item bookmarks mode (open stored URLs in browser, default: Alt+x).
+@end enumerate")
+    (license license:gpl3)))
+
+(define-public browserpass-native
+  (package
+    (name "browserpass-native")
+    (version "3.0.6")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/browserpass/browserpass-native")
+             (commit version)))
+       (file-name (git-file-name name version))
        (sha256
         (base32
-         "1n6w5y3va7lrcym7cxr0nikapldqm80wxjdns584bvplq5r03spa"))))
+         "0q3bsla07zjl6i69nj1axbkg2ia89pvh0jg6nlqgbm2kpzzbn0pz"))))
+    (build-system go-build-system)
+    (arguments
+     `(#:import-path "github.com/browserpass/browserpass-native"
+       #:install-source? #f
+       #:phases
+       (modify-phases %standard-phases
+         (add-before 'build 'patch-makefile
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out")))
+               ;; This doesn't go in #:make-flags because the Makefile itself
+               ;; gets installed.
+               (substitute*
+                   "src/github.com/browserpass/browserpass-native/Makefile"
+                 (("PREFIX \\?= /usr")
+                  (string-append "PREFIX ?= " out)))
+               #t)))
+         (add-before 'build 'configure
+           (lambda _
+               (with-directory-excursion
+                   "src/github.com/browserpass/browserpass-native"
+                 (invoke "make" "configure"))
+             #t))
+         (replace 'build
+           (lambda _
+               (with-directory-excursion
+                   "src/github.com/browserpass/browserpass-native"
+                 (invoke "make"))
+             #t))
+         (replace 'install
+           (lambda _
+             (with-directory-excursion
+                 "src/github.com/browserpass/browserpass-native"
+               (invoke "make" "install"))
+             #t))
+         (add-after 'install 'wrap-executable
+           (lambda* (#:key inputs outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out"))
+                   (gnupg (assoc-ref inputs "gnupg")))
+               (wrap-program (string-append out "/bin/browserpass")
+                 `("PATH" ":" prefix
+                   (,(string-append gnupg "/bin"))))
+               #t))))))
+    (native-inputs
+     `(("which" ,which)))
+    (inputs
+     `(("gnupg" ,gnupg)
+       ("go-github-com-mattn-go-zglob" ,go-github-com-mattn-go-zglob)
+       ("go-github-com-rifflock-lfshook" ,go-github-com-rifflock-lfshook)
+       ("go-github-com-sirupsen-logrus" ,go-github-com-sirupsen-logrus)
+       ("go-golang-org-x-sys" ,go-golang-org-x-sys)))
+    (home-page "https://github.com/browserpass/browserpass-native")
+    (synopsis "Browserpass native messaging host")
+    (description "Browserpass is a browser extension for pass, a
+UNIX-based password store manager.  It allows you to auto-fill or copy to
+clipboard credentials for the current domain, protecting you from phishing
+attacks.
+
+This package only contains the Browserpass native messaging host.  You must
+also install the browser extension for GNU IceCat or ungoogled-chromium
+separately.")
+    (license license:isc)))
+
+(define-public argon2
+  (package
+    (name "argon2")
+    (version "20190702")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+              (url "https://github.com/P-H-C/phc-winner-argon2")
+              (commit version)))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32
+         "01rwanr4wmr9vm6c712x411wig543q195z2icn388z892a93lc7p"))))
     (build-system gnu-build-system)
     (arguments
      `(#:test-target "test"
-       #:make-flags '("CC=gcc"
-                      "OPTTEST=1")     ;disable CPU optimization
+       #:make-flags (list "CC=gcc"
+                          (string-append "PREFIX=" (assoc-ref %outputs "out"))
+                          "LIBRARY_REL=lib"
+                          (string-append "ARGON2_VERSION=" ,version)
+                          "OPTTEST=1")  ; disable CPU optimization
        #:phases
        (modify-phases %standard-phases
-         (add-after 'unpack 'patch-Makefile
-           (lambda* (#:key outputs #:allow-other-keys)
-             (let ((out (assoc-ref outputs "out")))
-               (substitute* "Makefile"
-                 (("PREFIX = /usr") (string-append "PREFIX = " out)))
-               (substitute* "libargon2.pc"
-                 (("prefix=/usr") (string-append "prefix=" out))
-                 (("@HOST_MULTIARCH@") "")
-                 (("@UPSTREAM_VER@") ,version))
-               #t)))
-         (delete 'configure)
-         (add-after 'install 'install-argon2.pc
-           (lambda* (#:key outputs #:allow-other-keys)
-             (let ((out (assoc-ref outputs "out")))
-               (install-file "libargon2.pc"
-                             (string-append out "/lib/pkgconfig"))
-               #t))))))
+         (delete 'configure))))         ; No configure script.
     (home-page "https://www.argon2.com/")
     (synopsis "Password hashing library")
     (description "Argon2 provides a key derivation function that was declared
@@ -696,15 +828,17 @@ winner of the 2015 Password Hashing Competition.")
 (define-public pass-git-helper
   (package
     (name "pass-git-helper")
-    (version "0.3.1")
+    (version "1.1.0")
     (source
      (origin
-       (method url-fetch)
-       (uri (string-append "https://github.com/languitar/pass-git-helper/archive/release-"
-                           version ".tar.gz"))
+       (method git-fetch)
+       (uri (git-reference
+              (url "https://github.com/languitar/pass-git-helper")
+              (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
        (sha256
         (base32
-         "0lz5ncy44pz7z1j2nnyildx8sq33zi3xvg5nkwg25n11nasqh2xn"))))
+         "18nvwlp0w4aqj268wly60rnjzqw2d8jl0hbs6bkwp3hpzzz5g6yd"))))
     (build-system python-build-system)
     (arguments
      `(#:phases
@@ -713,22 +847,30 @@ winner of the 2015 Password Hashing Competition.")
            (lambda* (#:key inputs #:allow-other-keys)
              (let* ((password-store (assoc-ref inputs "password-store"))
                     (pass (string-append password-store "/bin/pass")))
-               (substitute* "pass-git-helper"
+               (substitute* '("passgithelper.py"
+                              "test_passgithelper.py")
                  (("'pass'") (string-append "'" pass "'")))
-               #t))))))
+               #t)))
+         (replace 'check
+           (lambda _
+             (setenv "HOME" (getcwd))
+             (invoke "pytest"))))))
     (inputs
      `(("python-pyxdg" ,python-pyxdg)
        ("password-store" ,password-store)))
+    (native-inputs
+     `(("python-pytest" ,python-pytest)
+       ("python-pytest-mock" ,python-pytest-mock)))
     (home-page "https://github.com/languitar/pass-git-helper")
     (synopsis "Git credential helper interfacing with pass")
-    (description "pass-git-helper is a git credential helper which allows to
-use pass, the standard unix password manager, as the credential backend for
+    (description "pass-git-helper is a git credential helper which
+uses pass, the standard unix password manager, as the credential backend for
 your git repositories.  This is achieved by explicitly defining mappings
 between hosts and entries in the password store.")
     (license license:lgpl3+)))
 
 (define-public john-the-ripper-jumbo
-  (let ((official-version "1.8.0")
+  (let ((official-version "1.9.0")
         (jumbo-version "1"))
     (package
       (name "john-the-ripper-jumbo")
@@ -740,78 +882,86 @@ between hosts and entries in the password store.")
                              official-version "-jumbo-" jumbo-version ".tar.xz"))
          (sha256
           (base32
-           "08q92sfdvkz47rx6qjn7qv57cmlpy7i7rgddapq5384mb413vjds"))
-         (patches
-          (list (origin
-                  (method url-fetch)
-                  (uri (string-append "https://github.com/magnumripper/"
-                                      "JohnTheRipper/commit/"
-                                      "e2e868db3e153b3f959e119a51703d4afb99c624.patch"))
-                  (file-name "john-the-ripper-jumbo-gcc5-inline.patch")
-                  (sha256
-                   (base32
-                    "1shvcf1y2097115mxhzdkm64dr106a8zr6pqjqyh171q5ng5vfra")))
-                (origin
-                  (method url-fetch)
-                  (uri (string-append "https://github.com/magnumripper/"
-                                      "JohnTheRipper/commit/"
-                                      "480e95b0e449863be3e1a5b0bc634a67df28b618.patch"))
-                  (file-name "john-the-ripper-jumbo-non-x86.patch")
-                  (sha256
-                   (base32
-                    "1ffd9dvhk0sb6ss8dv5yalh01lz30i7rilqilf2xv68gax2hyjqx")))))))
+           "0fvz3v41hnaiv1ggpxanfykyfjq79cwp9qcqqn63vic357w27lgm"))))
       (build-system gnu-build-system)
+      (native-inputs
+       `(("perl" ,perl)))
       (inputs
        `(("gmp" ,gmp)
-         ("krb5" ,mit-krb5)
          ("libpcap" ,libpcap)
          ("nss" ,nss)
-         ("openssl" ,openssl)
+         ("openssl" ,openssl-1.0)
+         ("python" ,python-2)           ; For "python" and "python2" shebangs
+         ("ruby" ,ruby)                 ; For genincstats.rb
          ("zlib" ,zlib)))
       (arguments
        `(#:configure-flags
-         (list (string-append
-                "CFLAGS=-O2 -g "
-                "-DJOHN_SYSTEMWIDE=1 "
-                "-DJOHN_SYSTEMWIDE_EXEC='\"" %output "/libexec/john\"' "
-                "-DJOHN_SYSTEMWIDE_HOME='\"" %output "/share/john\"'")
-               ;; For now, do not test for instruction set in configure, and
-               ;; do not pass '-march=native' to gcc:
+         (list "--with-systemwide"
+               ;; Do not test for instruction set in configure, and do not
+               ;; pass '-march=native' to gcc:
                "--disable-native-tests"
-               "--disable-native-macro")
-         #:tests? #f ;tests try to create '.john' in the build user's $HOME
+               "--disable-native-march"
+               ,(string-append
+                 "--enable-simd="
+                 (let ((system (or (%current-target-system)
+                                   (%current-system))))
+                   (cond
+                    ((or (string-prefix? "x86_64" system)
+                         (string-prefix? "i686" system)) "sse2")
+                    ((string-prefix? "aarch" system) "neon")
+                    (else "no")))))
          #:phases
          (modify-phases %standard-phases
            (add-before 'configure 'chdir-src
-             (lambda _ (chdir "src")))
+             (lambda _ (chdir "src") #t))
            (replace 'install
              (lambda _
                (let ((bindir (string-append %output "/bin"))
                      (docdir (string-append %output "/share/doc/john"))
                      (execdir (string-append %output "/libexec/john"))
-                     (homedir (string-append %output "/share/john"))
+                     (datadir (string-append %output "/share/john"))
                      (install-file-to (lambda (dir)
                                         (lambda (f) (install-file f dir))))
                      (symlink? (lambda (_ s) (eq? (stat:type s) 'symlink))))
                  (with-directory-excursion "../run"
+                   (for-each (install-file-to bindir)
+                             (cons*
+                              "john" "makechr" "cprepair" "SIPdump" "tgtsnarf"
+                              "genmkvpwd" "mkvcalcproba" "calc_stat" "raw2dyna"
+                              (find-files "." "(to|2)?john(-[^.]*)?$")))
+                   (for-each (lambda (f) ; Install symlinked aliases
+                               (let ((tgt (string-append bindir "/" (basename f))))
+                                 ;; The use of install-file above dereferences
+                                 ;; symlinks.  We'd rather have the symlinks
+                                 ;; for clarity, so remove tgt before linking.
+                                 (when (file-exists? tgt) (delete-file tgt))
+                                 (symlink "john" tgt)))
+                             (find-files "." symlink?))
                    (for-each (install-file-to execdir)
-                             (cons* "mailer" "benchmark-unify"
-                                    (find-files "." ".*\\.(py|rb|pl)")))
-                   (for-each (install-file-to homedir)
+                             (cons* "mailer" "benchmark-unify" "relbench"
+                                    (find-files "." ".*\\.js")))
+                   (for-each (lambda (f)
+                               (let* ((base (basename f))
+                                      (name (substring base 0 (string-index base #\.)))
+                                      (link (string-append bindir "/" name)))
+                                 (install-file f execdir)
+                                 (when (and (executable-file? f)
+                                            (not (file-exists? link)))
+                                   (symlink (string-append execdir "/" base) link))))
+                             (find-files "." ".*\\.(pl|py|rb|lua)"))
+                   (for-each (install-file-to datadir)
                              (append (find-files "." "(stats|dictionary.*)")
                                      (find-files "." "(.*\\.chr|.*\\.lst)")
                                      (find-files "." ".*\\.conf")))
-                   (for-each (install-file-to bindir)
-                             '("tgtsnarf" "genmkvpwd" "mkvcalcproba"
-                               "raw2dyna" "luks2john" "vncpcap2john"
-                               "uaf2john" "calc_stat" "wpapcap2john"
-                               "cprepair" "relbench"  "SIPdump" "john"))
-                   (for-each (lambda (f) ;install symlinked aliases
-                               (symlink "john"
-                                        (string-append bindir "/" (basename f))))
-                             (find-files "." symlink?)))
+                   (copy-recursively "rules" (string-append datadir "/rules")))
                  (copy-recursively "../doc" docdir)
-                 #t))))))
+                 #t)))
+           (delete 'check) ; Tests need installed .conf files; move after install
+           (add-after 'install 'check
+             (lambda args
+               (setenv "HOME" "/tmp")   ; Some tests need to write to ~/.john
+               (setenv "OMP_NUM_THREADS" (number->string (parallel-job-count)))
+               (apply (assoc-ref %standard-phases 'check) args))))))
       (home-page "http://www.openwall.com/john/")
       (synopsis "Password cracker")
       (description "John the Ripper is a fast password cracker.  Its primary
@@ -901,21 +1051,22 @@ to use a different password manager.")
     (name "pass-rotate")
     (version "0.1")
     (source
-     (origin
-       (method url-fetch)
-       (uri (string-append "https://github.com/SirCmpwn/pass-rotate/archive/"
-                           version ".tar.gz"))
-       (sha256
-        (base32
-         "1svm5nj8bczv2dg8lh2zqqhbsrljqsw9680r03qwgl9vlci90210"))
-       (file-name (string-append name "-" version ".tar.gz"))))
+      (origin
+        (method git-fetch)
+        (uri (git-reference
+               (url "https://github.com/ddevault/pass-rotate")
+               (commit version)))
+        (file-name (git-file-name name version))
+        (sha256
+         (base32
+          "1m067vvdlc85csbpkp8aw4s3ags7q8s3jszrr32kmj9qhk5c254f"))))
     (build-system python-build-system)
     (inputs
      `(("python-beautifulsoup4" ,python-beautifulsoup4)
        ("python-docopt" ,python-docopt)
        ("python-html5lib" ,python-html5lib)
        ("python-requests" ,python-requests)))
-    (home-page "https://github.com/SirCmpwn/pass-rotate")
+    (home-page "https://github.com/ddevault/pass-rotate")
     (synopsis "Rotate password on online services")
     (description "pass-rotate is a command line utility and python library for
 rotating passwords on various web services.  It makes it easier to rotate your
@@ -926,7 +1077,7 @@ your online accounts makes it necessary.")
 (define-public hashcat
   (package
     (name "hashcat")
-    (version "5.1.0")
+    (version "6.1.1")
     (source
      (origin
        (method url-fetch)
@@ -934,7 +1085,7 @@ your online accounts makes it necessary.")
                            version ".tar.gz"))
        (sha256
         (base32
-         "0f73y4cg8c7a6q7x34qvpfi4g3lw6j9bnn0a13g43aqyiskflfr8"))))
+         "104z63m7lqbb0sdrxhf9yi15l4a9zwf9m6zs9dbb3gf0nfxl1h9r"))))
     (native-inputs
      `(("opencl-headers" ,opencl-headers)))
     (build-system gnu-build-system)
@@ -1007,3 +1158,112 @@ binaries.  All of these utils are designed to execute only one specific
 function.  Since they all work with @code{STDIN} and @code{STDOUT} you can
 group them into chains.")
     (license license:expat)))
+
+(define-public bruteforce-luks
+  (package
+    (name "bruteforce-luks")
+    (version "1.4.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "https://github.com/glv2/bruteforce-luks/releases/download/"
+                           version
+                           "/bruteforce-luks-"
+                           version
+                           ".tar.lz"))
+       (sha256
+        (base32 "0yawrlbbklhmvwr99wm7li3r0d5kxvpkwf33a12rji7z0ya5p340"))))
+    (build-system gnu-build-system)
+    (native-inputs
+     `(("lzip" ,lzip)))
+    (inputs
+     `(("cryptsetup" ,cryptsetup)))
+    (synopsis "LUKS encrypted volume cracker")
+    (description
+     "This is a cracker for LUKS encrypted volumes.  It can be used either in
+exhaustive mode to try every password given a charset or in dictionary mode to
+try every password contained in a file.")
+    (home-page "https://github.com/glv2/bruteforce-luks")
+    (license license:gpl3+)))
+
+(define-public makepasswd
+  (let ((commit "3545d57d3a589a392d7eb0df36a5286785345c9e")
+        (revision "1"))
+    (package
+      (name "makepasswd")
+      (version (git-version "0.5.4" revision commit))
+      (source
+       (origin
+         (method git-fetch)
+         (uri (git-reference
+               (url "https://github.com/khorben/makepasswd")
+               (commit commit)))
+         (file-name (git-file-name name version))
+         (sha256
+          (base32 "0lspqyyxbk6h28yxnp7pd5aib161vrkzgasam5jpzn35n1jacx2j"))))
+      (build-system gnu-build-system)
+      (native-inputs
+       `(("pkg-config" ,pkg-config)
+         ("libxslt" ,libxslt)
+         ("libxml2" ,libxml2)
+         ("docbook-xsl" ,docbook-xsl)
+         ("docbook-xml" ,docbook-xml)))
+      (inputs
+       `(("openssl" ,openssl)))
+      (arguments
+       `(#:phases
+         (modify-phases %standard-phases
+           (delete 'configure))
+         #:make-flags (list "CC=gcc"
+                            (string-append "PREFIX=" (assoc-ref %outputs "out")))
+         #:tests? #f))  ;no tests
+      (synopsis "Generate (pseudo-)random passwords and hashes")
+      (description
+       "Makepasswd is a program that generates pseudo-random passwords of a
+desired length.  It can also generate their corresponding hashes for a given
+encryption algorithm if so desired.")
+      (home-page "https://github.com/khorben/makepasswd")
+      (license license:gpl3))))
+
+(define-public pass-tomb
+  (package
+    (name "pass-tomb")
+    (version "1.2")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/roddhjav/pass-tomb")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "1qj7vx7svk1ljwihj3kv310k17mafnf919n30n4qn1yxmmsvj924"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:make-flags
+       (let ((out (assoc-ref %outputs "out")))
+         (list (string-append "PREFIX=" out)
+               (string-append "BASHCOMPDIR=" out "/etc/bash_completion.d")))
+       #:test-target "tests"
+       ;; tests are very dependent on system state (swap partition) and require
+       ;; access to /tmp/zsh which is not in the build container.
+       #:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'set-tomb-path
+           (lambda* (#:key inputs #:allow-other-keys)
+             (let ((tomb (assoc-ref inputs "tomb")))
+               (substitute* "tomb.bash"
+                 ((":-tomb")
+                  (string-append ":-" tomb "/bin/tomb"))))))
+         (delete 'configure))))
+    (inputs
+     `(("tomb" ,tomb)))
+    (home-page "https://github.com/roddhjav/pass-tomb")
+    (synopsis "Pass extension keeping the tree of passwords encrypted")
+    (description "Pass-tomb provides a convenient solution to put your
+password store in a Tomb and then keep your password tree encrypted when you
+are not using it.  It uses the same GPG key to encrypt passwords and tomb,
+therefore you don't need to manage more key or secret.  Moreover, you can ask
+pass-tomb to automatically close your store after a given time.")
+    (license license:gpl3+)))

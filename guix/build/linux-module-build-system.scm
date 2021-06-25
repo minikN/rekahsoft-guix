@@ -1,5 +1,6 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2019 Danny Milosavljevic <dannym@scratchpost.org>
+;;; Copyright © 2020 Mathieu Othacehe <m.othacehe@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -33,14 +34,13 @@
 ;; Code:
 
 ;; Copied from make-linux-libre's "configure" phase.
-(define* (configure #:key inputs target #:allow-other-keys)
+(define* (configure #:key inputs target arch #:allow-other-keys)
   (setenv "KCONFIG_NOTIMESTAMP" "1")
   (setenv "KBUILD_BUILD_TIMESTAMP" (getenv "SOURCE_DATE_EPOCH"))
-  ;(let ((arch ,(system->linux-architecture
-  ;                         (or (%current-target-system)
-  ;                             (%current-system)))))
-  ;  (setenv "ARCH" arch)
-  ;  (format #t "`ARCH' set to `~a'~%" (getenv "ARCH")))
+
+  (setenv "ARCH" arch)
+  (format #t "`ARCH' set to `~a'~%" (getenv "ARCH"))
+
   (when target
     (setenv "CROSS_COMPILE" (string-append target "-"))
     (format #t "`CROSS_COMPILE' set to `~a'~%"
@@ -58,22 +58,27 @@
 
 ;; This block was copied from make-linux-libre--only took the "modules_install"
 ;; part.
-(define* (install #:key inputs native-inputs outputs #:allow-other-keys)
+(define* (install #:key make-flags inputs native-inputs outputs
+                  #:allow-other-keys)
   (let* ((out (assoc-ref outputs "out"))
-         (moddir (string-append out "/lib/modules"))
-         (kmod (assoc-ref (or native-inputs inputs) "kmod")))
+         (moddir (string-append out "/lib/modules")))
     ;; Install kernel modules
     (mkdir-p moddir)
-    (invoke "make" "-C"
+    (apply invoke "make" "-C"
             (string-append (assoc-ref inputs "linux-module-builder")
                            "/lib/modules/build")
             (string-append "M=" (getcwd))
-            (string-append "DEPMOD=" kmod "/bin/depmod")
+            ;; Disable depmod because the Guix system's module directory
+            ;; is an union of potentially multiple packages.  It is not
+            ;; possible to use depmod to usefully calculate a dependency
+            ;; graph while building only one of those packages.
+            "DEPMOD=true"
             (string-append "MODULE_DIR=" moddir)
             (string-append "INSTALL_PATH=" out)
             (string-append "INSTALL_MOD_PATH=" out)
             "INSTALL_MOD_STRIP=1"
-            "modules_install")))
+            "modules_install"
+            (or make-flags '()))))
 
 (define %standard-phases
   (modify-phases gnu:%standard-phases
@@ -81,9 +86,11 @@
     (replace 'build build)
     (replace 'install install)))
 
-(define* (linux-module-build #:key inputs (phases %standard-phases)
-                       #:allow-other-keys #:rest args)
-  "Build the given package, applying all of PHASES in order, with a Linux kernel in attendance."
+(define* (linux-module-build #:key inputs
+                             (phases %standard-phases)
+                             #:allow-other-keys #:rest args)
+  "Build the given package, applying all of PHASES in order, with a Linux
+kernel in attendance."
   (apply gnu:gnu-build
          #:inputs inputs #:phases phases
          args))

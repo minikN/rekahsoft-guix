@@ -1,8 +1,8 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2016 David Craven <david@craven.ch>
-;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2019 Rutger Helling <rhelling@mykolab.com>
-;;; Copyright © 2019 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2019, 2020 Marius Bakke <mbakke@fastmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -21,6 +21,7 @@
 
 (define-module (gnu packages spice)
   #:use-module (gnu packages)
+  #:use-module (gnu packages base)
   #:use-module (gnu packages compression)
   #:use-module (gnu packages cyrus-sasl)
   #:use-module (gnu packages gl)
@@ -31,15 +32,18 @@
   #:use-module (gnu packages image)
   #:use-module (gnu packages libusb)
   #:use-module (gnu packages linux)
+  #:use-module (gnu packages nss)
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages pulseaudio)
   #:use-module (gnu packages python)
+  #:use-module (gnu packages security-token)
   #:use-module (gnu packages tls)
   #:use-module (gnu packages xorg)
   #:use-module (gnu packages xdisorg)
   #:use-module (gnu packages xiph)
   #:use-module (gnu packages xml)
   #:use-module (guix build-system gnu)
+  #:use-module (guix build-system meson)
   #:use-module (guix download)
   #:use-module (guix packages)
   #:use-module ((guix licenses) #:prefix license:)
@@ -98,16 +102,26 @@ system to use the host GPU to accelerate 3D rendering.")
 (define-public spice-protocol
   (package
     (name "spice-protocol")
-    (version "0.14.0")
+    (version "0.14.2")
     (source (origin
               (method url-fetch)
               (uri (string-append
                 "https://www.spice-space.org/download/releases/"
-                "spice-protocol-" version ".tar.bz2"))
+                "spice-protocol-" version ".tar.xz"))
               (sha256
                (base32
-                "1b3f44c13pqsp7aabmcinfbmgl79038bp5548l5pjs16lcfam95n"))))
-    (build-system gnu-build-system)
+                "1sgi9ksb781qs47pdbw0bmnyg8dgayn5xrzj6vzdy043nv466flg"))))
+    (build-system meson-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'install-documentation
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (doc (string-append out "/share/doc/"
+                                        ,name "-" ,version)))
+               (install-file "COPYING" doc)
+               #t))))))
     (synopsis "Protocol headers for the SPICE protocol")
     (description "SPICE (the Simple Protocol for Independent Computing
 Environments) is a remote-display system built for virtual environments
@@ -146,7 +160,7 @@ which allows users to view a desktop computing environment.")
         ("gobject-introspection" ,gobject-introspection)
         ("json-glib" ,json-glib)
         ("libepoxy" ,libepoxy)
-        ("libjpeg" ,libjpeg)
+        ("libjpeg" ,libjpeg-turbo)
         ("libxcb" ,libxcb)
         ("lz4" ,lz4)
         ("mesa" ,mesa)
@@ -157,12 +171,14 @@ which allows users to view a desktop computing environment.")
     (native-inputs
       `(("glib:bin" ,glib "bin")
         ("intltool" ,intltool)
-        ("pkg-config" ,pkg-config)))
+        ("pkg-config" ,pkg-config)
+        ("vala" ,vala)))
     (arguments
       `(#:configure-flags
         '("--enable-gstaudio"
           "--enable-gstvideo"
           "--enable-pulse"
+          "--enable-vala"
           "--enable-introspection")
         #:phases
          (modify-phases %standard-phases
@@ -173,6 +189,16 @@ which allows users to view a desktop computing environment.")
                (substitute* "tests/Makefile"
                  (("test-session\\$\\(EXEEXT\\) ") ""))
                #t))
+           (add-after 'install 'patch-la-files
+             (lambda* (#:key inputs outputs #:allow-other-keys)
+               (let ((out (assoc-ref outputs "out"))
+                     (libjpeg (assoc-ref inputs "libjpeg")))
+                 ;; Add an absolute reference for libjpeg in the .la files
+                 ;; so it does not have to be propagated.
+                 (substitute* (find-files (string-append out "/lib") "\\.la$")
+                   (("-ljpeg")
+                    (string-append "-L" libjpeg "/lib -ljpeg")))
+                 #t)))
            (add-after
             'install 'wrap-spicy
             (lambda* (#:key inputs outputs #:allow-other-keys)
@@ -189,7 +215,7 @@ which allows users to view a desktop computing environment.")
 (define-public spice
   (package
     (name "spice")
-    (version "0.14.2")
+    (version "0.14.3")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -197,7 +223,7 @@ which allows users to view a desktop computing environment.")
                 "spice-server/spice-" version ".tar.bz2"))
               (sha256
                (base32
-                "19r999py9v9c7md2bb8ysj809ag1hh6djl1ik8jcgx065s4b60xj"))))
+                "05512vkfayw18ypg4acqbbpr72nsnsz9bj7k8c2wyrvnl3j4n7am"))))
     (build-system gnu-build-system)
     (propagated-inputs
       `(("openssl" ,openssl)
@@ -207,6 +233,7 @@ which allows users to view a desktop computing environment.")
       `(("cyrus-sasl" ,cyrus-sasl)
         ("glib" ,glib)
         ("libjpeg-turbo" ,libjpeg-turbo)
+        ("libcacard" ,libcacard)        ; smartcard support
         ("lz4" ,lz4)
         ("opus" ,opus)
         ("orc" ,orc)
@@ -284,6 +311,51 @@ Internet and from a wide variety of machine architectures.")
 resolution scaling on graphical console window resize.")
     (home-page "https://www.spice-space.org")
     (license license:gpl3+)))
+
+(define-public libcacard
+  (package
+    (name "libcacard")
+    (version "2.7.0")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append
+                    "https://gitlab.freedesktop.org/spice/libcacard/uploads/"
+                    "56cb2499198e78e560a1d4c716cd8ab1"
+                    "/libcacard-" version ".tar.xz"))
+              (sha256
+               (base32
+                "0vyvkk4b6xjwq1ccggql13c1x7g4y90clpkqw28257azgn2a1c8n"))))
+    (build-system gnu-build-system)
+    (arguments
+     '(#:tests? #f                      ; TODO Tests require gnutls built with
+                                        ; p11-kit
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'patch-tests
+           (lambda* (#:key inputs #:allow-other-keys)
+             (substitute* "tests/setup-softhsm2.sh"
+               (("\\/usr\\/lib64\\/pkcs11\\/libsofthsm2\\.so")
+                (string-append (assoc-ref inputs "softhsm")
+                               "/lib/softhsm/libsofthsm2.so")))
+             #t)))))
+    (propagated-inputs
+     `(("glib" ,glib)                   ; Requires: in the pkg-config file
+       ("nss" ,nss)))                   ; Requires.private: in the pkg-config
+                                        ; file
+    (native-inputs
+     `(("openssl" ,openssl)
+       ("nss" ,nss "bin")
+       ("opensc" ,opensc)
+       ("softhsm" ,softhsm)
+       ("gnutls" ,gnutls)
+       ("pkg-config" ,pkg-config)
+       ("which" ,which)))
+    (synopsis "Emulate and share smart cards with virtual machines")
+    (description
+     "The @acronym{CAC,Common Access Card} library can be used to emulate and
+share smart cards from client system to local or remote virtual machines.")
+    (home-page "https://gitlab.freedesktop.org/spice/libcacard")
+    (license license:lgpl2.1+)))
 
 (define-public virt-viewer
   (package

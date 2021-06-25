@@ -2,6 +2,7 @@
 ;;; Copyright © 2016 Federico Beffa <beffa@fbengineering.ch>
 ;;; Copyright © 2016 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2017, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2019 Brett Gilio <brettg@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -31,6 +32,7 @@
   #:use-module (gnu packages compression)
   #:use-module (gnu packages ncurses)
   #:use-module (gnu packages ghostscript)
+  #:use-module (gnu packages linux)
   #:use-module (gnu packages netpbm)
   #:use-module (gnu packages tex)
   #:use-module (gnu packages compression)
@@ -44,7 +46,7 @@
     (origin
       (method git-fetch)
       (uri (git-reference
-            (url "https://github.com/nanopass/nanopass-framework-scheme.git")
+            (url "https://github.com/nanopass/nanopass-framework-scheme")
             (commit (string-append "v" version))))
       (sha256 (base32 "0lrngdna6w7v9vlp1a873hgwrwsz2p0pgkccswa4smzvdyhgfsri"))
       (file-name (git-file-name "nanopass" version)))))
@@ -54,7 +56,7 @@
     (origin
       (method git-fetch)
       (uri (git-reference
-            (url "https://github.com/dybvig/stex.git")
+            (url "https://github.com/dybvig/stex")
             (commit (string-append "v" version))))
       (sha256 (base32 "1jiawhhqnsj42hzmlbq5xby3iarhf8vhiqs0kg1a0zg5jsn6cf8n"))
       (file-name (git-file-name "stex" version)))))
@@ -62,26 +64,20 @@
 (define-public chez-scheme
   (package
     (name "chez-scheme")
-    (version "9.5")
+    (version "9.5.2")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/cisco/ChezScheme.git")
+             (url "https://github.com/cisco/ChezScheme")
              (commit (string-append "v" version))))
        (sha256
-        (base32 "132fal5hwiq0bqzvfhjsqr4d11cfdh1670f6286ks29xxj1c04zq"))
-       (file-name (git-file-name name version))
-       (modules '((guix build utils)))
-       (snippet
-        ;; Fix compilation with glibc >= 2.26, which removed xlocale.h.
-        '(begin
-           (substitute* "c/expeditor.c"
-             (("xlocale\\.h") "locale.h"))
-           #t))))
+        (base32 "1hagrqdp649n2g0wq2a9gfnz7mjcjakkw7ziplbj3db412bb7kx5"))
+       (file-name (git-file-name name version))))
     (build-system gnu-build-system)
     (inputs
      `(("ncurses" ,ncurses)
+       ("libuuid" ,util-linux "lib")
        ("libx11" ,libx11)
        ("xorg-rgb" ,xorg-rgb)
        ("nanopass" ,nanopass)
@@ -116,15 +112,6 @@
            (lambda _ (substitute* "configure"
                        (("uname -a") "uname -m"))
                    #t))
-         (add-after 'unpack 'patch-broken-documentation
-           (lambda _
-             ;; Work around an oversight in the 9.5 release tarball that causes
-             ;; building the documentation to fail. This should be fixed in the
-             ;; next one; see <https://github.com/cisco/ChezScheme/issues/209>.
-             (substitute* "csug/copyright.stex"
-               (("\\\\INSERTREVISIONMONTHSPACEYEAR" )
-                "October 2017"))       ; tarball release date
-             #t))
          ;; Adapt the custom 'configure' script.
          (replace 'configure
            (lambda* (#:key inputs outputs #:allow-other-keys)
@@ -145,10 +132,11 @@
                        (invoke "mv" orig-name new-name)))
                     `((,nanopass "source" "nanopass")
                       (,stex "source" "stex")))
-               ;; The Makefile wants to download and compile "zlib".  We patch
-               ;; it to use the one from our 'zlib' package.
+               ;; The configure step wants to CURL all submodules as it
+               ;; detects a checkout without submodules. Disable curling,
+               ;; and manually patch the needed modules for compilation.
                (substitute* "configure"
-                 (("rmdir zlib .*$") "echo \"using system zlib\"\n"))
+                 (("! -f '") "-d '")) ; working around CURL.
                (substitute* (find-files "./c" "Mf-[a-zA-Z0-9.]+")
                  (("\\$\\{Kernel\\}: \\$\\{kernelobj\\} \\.\\./zlib/libz\\.a")
                   "${Kernel}: ${kernelobj}")
@@ -225,7 +213,7 @@
     ;; Cross-compiling for the Raspberry Pi is supported, but not native ARM.
     (supported-systems (fold delete %supported-systems
                              '("mips64el-linux" "armhf-linux")))
-    (home-page "http://www.scheme.com")
+    (home-page "https://cisco.github.io/ChezScheme/")
     (synopsis "R6RS Scheme compiler and run-time")
     (description
      "Chez Scheme is a compiler and run-time system for the language of the
@@ -242,7 +230,7 @@ and 32-bit PowerPC architectures.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/fedeinthemix/chez-srfi.git")
+             (url "https://github.com/fedeinthemix/chez-srfi")
              (commit (string-append "v" version))))
        (sha256
         (base32 "1vgn984mj2q4w6r2q66h7qklp2hrh85wwh4k9yisga5fi0ps7myf"))
@@ -273,7 +261,7 @@ and 32-bit PowerPC architectures.")
        (origin
          (method git-fetch)
          (uri (git-reference
-               (url "https://github.com/arcfide/ChezWEB.git")
+               (url "https://github.com/arcfide/ChezWEB")
                (commit commit)))
          (file-name (git-file-name name version))
          (sha256
@@ -338,7 +326,7 @@ programming in Scheme.")
        (origin
          (method git-fetch)
          (uri (git-reference
-               (url "https://github.com/arcfide/chez-sockets.git")
+               (url "https://github.com/arcfide/chez-sockets")
                (commit commit)))
          (file-name (git-file-name name version))
          (sha256
@@ -468,7 +456,7 @@ Chez Scheme.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/fedeinthemix/chez-irregex.git")
+             (url "https://github.com/fedeinthemix/chez-irregex")
              (commit (string-append "v" version))))
        (sha256
         (base32 "0jh6piylw545j81llay9wfivgpv6lcnwd81gm4w17lkasslir50q"))

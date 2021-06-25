@@ -4,6 +4,7 @@
 ;;; Copyright © 2017 Frederick Muriithi <fredmanglis@gmail.com>
 ;;; Copyright © 2017 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2017, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2020 Guy Fleury Iteriteka <gfleury@disroot.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -35,9 +36,11 @@
   #:use-module (gnu packages gdb)
   #:use-module (gnu packages libedit)
   #:use-module (gnu packages llvm)
+  #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages python)
   #:use-module (gnu packages python-xyz)
-  #:use-module (gnu packages textutils))
+  #:use-module (gnu packages textutils)
+  #:use-module (gnu packages xorg))
 
 (define-public rdmd
   (package
@@ -85,7 +88,7 @@ and freshness without requiring additional information from the user.")
        (origin
          (method git-fetch)
          (uri (git-reference
-               (url "https://github.com/ldc-developers/ldc.git")
+               (url "https://github.com/ldc-developers/ldc")
                (commit (string-append "v" version))))
          (file-name (git-file-name name version))
          (sha256
@@ -153,7 +156,7 @@ and freshness without requiring additional information from the user.")
           ,(origin
              (method git-fetch)
              (uri (git-reference
-                   (url "https://github.com/ldc-developers/phobos.git")
+                   (url "https://github.com/ldc-developers/phobos")
                    (commit (string-append "ldc-v" version))))
              (file-name (git-file-name "phobos" version))
              (sha256
@@ -163,7 +166,7 @@ and freshness without requiring additional information from the user.")
           ,(origin
              (method git-fetch)
              (uri (git-reference
-                   (url "https://github.com/ldc-developers/druntime.git")
+                   (url "https://github.com/ldc-developers/druntime")
                    (commit (string-append "ldc-v" version))))
              (file-name (git-file-name "druntime" version))
              (sha256
@@ -172,7 +175,7 @@ and freshness without requiring additional information from the user.")
           ,(origin
              (method git-fetch)
              (uri (git-reference
-                   (url "https://github.com/ldc-developers/dmd-testsuite.git")
+                   (url "https://github.com/ldc-developers/dmd-testsuite")
                    (commit (string-append "ldc-v" version))))
              (file-name (git-file-name "dmd-testsuite" version))
              (sha256
@@ -203,7 +206,7 @@ bootstrapping more recent compilers written in D.")
        (origin
          (method git-fetch)
          (uri (git-reference
-               (url "https://github.com/ldc-developers/ldc.git")
+               (url "https://github.com/ldc-developers/ldc")
                (commit (string-append "v" version))))
          (file-name (git-file-name name version))
          (sha256
@@ -270,7 +273,7 @@ bootstrapping more recent compilers written in D.")
           ,(origin
              (method git-fetch)
              (uri (git-reference
-                   (url "https://github.com/ldc-developers/phobos.git")
+                   (url "https://github.com/ldc-developers/phobos")
                    (commit (string-append "ldc-v" older-version))))
              (file-name (git-file-name "phobos" older-version))
              (sha256
@@ -289,7 +292,7 @@ bootstrapping more recent compilers written in D.")
           ,(origin
              (method git-fetch)
              (uri (git-reference
-                   (url "https://github.com/ldc-developers/druntime.git")
+                   (url "https://github.com/ldc-developers/druntime")
                    (commit (string-append "ldc-v" older-version))))
              (file-name (git-file-name "druntime" older-version))
              (sha256
@@ -298,7 +301,7 @@ bootstrapping more recent compilers written in D.")
           ,(origin
              (method git-fetch)
              (uri (git-reference
-                   (url "https://github.com/ldc-developers/dmd-testsuite.git")
+                   (url "https://github.com/ldc-developers/dmd-testsuite")
                    (commit (string-append "ldc-v" older-version))))
              (file-name (git-file-name "dmd-testsuite" older-version))
              (sha256
@@ -312,7 +315,7 @@ bootstrapping more recent compilers written in D.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/dlang/dub.git")
+             (url "https://github.com/dlang/dub")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
@@ -348,3 +351,49 @@ The design emphasis is on maximum simplicity for simple projects,
 while providing the opportunity to customize things when
 needed.")
     (license license:expat)))
+
+(define-public gtkd
+  (package
+    (name "gtkd")
+    (version "3.9.0")
+    (source
+     (origin
+      (method url-fetch/zipbomb)
+      (uri (string-append "https://gtkd.org/Downloads/sources/GtkD-"
+                          version ".zip"))
+      (sha256
+       (base32 "0qv8qlpwwb1d078pnrf0a59vpbkziyf53cf9p6m8ms542wbcxllp"))))
+    (build-system gnu-build-system)
+    (native-inputs
+     `(("unzip" ,unzip)
+       ("ldc" ,ldc)
+       ("pkg-config" ,pkg-config)
+       ("xorg-server-for-tests" ,xorg-server-for-tests)))
+    (arguments
+     `(#:test-target "test"
+       #:make-flags
+       `("DC=ldc2"
+         ,(string-append "prefix=" (assoc-ref %outputs "out"))
+         ,(string-append "libdir=" (assoc-ref %outputs "out")
+                         "/lib"))
+       #:phases
+       (modify-phases %standard-phases
+         (delete 'configure)
+         (add-before 'build 'patch-makefile
+           (lambda* (#:key outputs #:allow-other-keys)
+             (substitute* "GNUmakefile"
+               ;; We do the tests ourselves.
+               (("default-goal: libs test") "default-goal: libs")
+               (("all: libs shared-libs test") "all: libs shared-libs")
+               ;; Work around upstream bug.
+               (("\\$\\(prefix\\)\\/\\$\\(libdir\\)") "$(libdir)"))
+             #t))
+         (add-before 'check 'prepare-x
+           (lambda _
+             (system "Xvfb :1 &")
+             (setenv "DISPLAY" ":1")
+             #t)))))
+    (home-page "https://gtkd.org/")
+    (synopsis "D binding and OO wrapper of GTK+")
+    (description "This package provides bindings to GTK+ for D.")
+    (license license:lgpl2.1)))

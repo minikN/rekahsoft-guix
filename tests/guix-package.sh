@@ -33,7 +33,7 @@ profile="t-profile-$$"
 tmpfile="t-guix-package-file-$$"
 rm -f "$profile" "$tmpfile"
 
-trap 'rm -f "$profile" "$profile-"[0-9]* "$tmpfile"; rm -rf "$module_dir" t-home-'"$$" EXIT
+trap 'rm -f "$profile" "$profile.lock" "$profile-"[0-9]* "$tmpfile"; rm -rf "$module_dir" t-home-'"$$" EXIT
 
 # Use `-e' with a non-package expression.
 if guix package --bootstrap -e +;
@@ -189,8 +189,7 @@ emacs_tarball="$module_dir/emacs-42.5.9rc7.tar.gz"
 touch "$emacs_tarball"
 guix package -p "$profile" -i emacs --with-source="$emacs_tarball" -n \
      2> "$tmpfile"
-grep -E 'emacs[[:blank:]]+42\.5\.9rc7[[:blank:]]+.*-emacs-42.5.9rc7' \
-     "$tmpfile"
+grep -E 'emacs[[:blank:]]+42\.5\.9rc7' "$tmpfile"
 rm "$emacs_tarball" "$tmpfile"
 rmdir "$module_dir"
 
@@ -331,6 +330,17 @@ cat > "$module_dir/package.scm"<<EOF
 EOF
 guix package --bootstrap --install-from-file="$module_dir/package.scm"
 
+# Make sure an error is raised if the file doesn't return a package.
+cat > "$module_dir/package.scm"<<EOF
+(use-modules (gnu packages base))
+
+(define my-package coreutils)   ;returns *unspecified*
+EOF
+if guix package --bootstrap --install-from-file="$module_dir/package.scm"
+then false; else true; fi
+
+rm "$module_dir/package.scm"
+
 # This one should not show up in searches since it's no supported on the
 # current system.
 test "`guix package -A super-non-portable-emacs`" = ""
@@ -383,6 +393,19 @@ guix package -I | grep guile
 test `guix package -I | wc -l` -eq 1
 guix package --rollback --bootstrap
 
+# Applying two manifests.
+cat > "$module_dir/manifest2.scm"<<EOF
+(use-modules (gnu packages bootstrap) (guix))
+(define p (package (inherit %bootstrap-guile) (name "eliug")))
+(packages->manifest (list p))
+EOF
+guix package --bootstrap \
+     -m "$module_dir/manifest.scm" -m "$module_dir/manifest2.scm"
+guix package -I | grep guile
+guix package -I | grep eliug
+test `guix package -I | wc -l` -eq 2
+guix package --rollback --bootstrap
+
 # Applying a manifest file with inferior packages.
 cat > "$module_dir/manifest.scm"<<EOF
 (use-modules (guix inferior))
@@ -427,7 +450,7 @@ cat > "$module_dir/foo.scm"<<EOF
     (version "dummy-version")
     (outputs '("out" "dummy-output"))
     (source #f)
-    ;; Without a real build system, the "guix pacakge -s" command will fail.
+    ;; Without a real build system, the "guix package -s" command will fail.
     (build-system trivial-build-system)
     (synopsis "dummy-synopsis")
     (description "dummy-description")
@@ -437,3 +460,17 @@ EOF
 guix package -L "$module_dir" -s dummy-output > /tmp/out
 test "`guix package -L "$module_dir" -s dummy-output | grep ^name:`" = "name: dummy-package"
 rm -rf "$module_dir"
+
+# Make sure we can see user profiles.
+guix package --list-profiles | grep "$profile"
+guix package --list-profiles | grep '\.guix-profile'
+
+# Make sure we can properly lock a profile.
+mkdir "$module_dir"
+echo "(open-output-file \"$module_dir/ready\") (sleep 60)" \
+     > "$module_dir/manifest.scm"
+guix package -m "$module_dir/manifest.scm" -p "$module_dir/profile" &
+pid=$!
+while [ ! -f "$module_dir/ready" ] ; do sleep 0.5 ; done
+if guix install emacs -p "$module_dir/profile"; then kill $pid; false; else true; fi
+kill $pid

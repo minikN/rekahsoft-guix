@@ -1,8 +1,9 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2013, 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2014, 2015, 2016, 2017, 2018, 2019 Mark H Weaver <mhw@netris.org>
-;;; Copyright © 2016, 2017, 2018 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2016, 2017, 2018, 2019 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2017, 2018 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2020 Marius Bakke <mbakke@fastmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -34,7 +35,7 @@
 (define-public nspr
   (package
     (name "nspr")
-    (version "4.21")
+    (version "4.25")
     (source (origin
              (method url-fetch)
              (uri (string-append
@@ -42,13 +43,14 @@
                    version "/src/nspr-" version ".tar.gz"))
              (sha256
               (base32
-               "0nkbgk0x31nfm4xl8la0a3vrnpa8gzkh7g4k65p7n880n73k5shm"))))
+               "0mjjk2b7ika3v4y99cnaqz3z1iq1a50r1psn9i3s87gr46z0khqb"))))
     (build-system gnu-build-system)
     (native-inputs
      `(("perl" ,perl)))
     (arguments
      `(#:tests? #f ; no check target
-       #:configure-flags (list "--enable-64bit"
+       #:configure-flags (list "--disable-static"
+                               "--enable-64bit"
                                (string-append "LDFLAGS=-Wl,-rpath="
                                               (assoc-ref %outputs "out")
                                               "/lib"))
@@ -70,7 +72,7 @@ in the Mozilla clients.")
 (define-public nss
   (package
     (name "nss")
-    (version "3.45")
+    (version "3.52.1")
     (source (origin
               (method url-fetch)
               (uri (let ((version-with-underscores
@@ -81,11 +83,17 @@ in the Mozilla clients.")
                       "nss-" version ".tar.gz")))
               (sha256
                (base32
-                "12sfq9xvpwpc22qnjsg1if1lmchiy33byrh92wn91phz7li0abqi"))
+                "0y4jb9095f7bbgw7d7kvzm4c3g4p5i6y68fwhb8wlkpb7b1imj5w"))
               ;; Create nss.pc and nss-config.
               (patches (search-patches "nss-pkgconfig.patch"
-                                       "nss-freebl-stubs.patch"
-                                       "nss-increase-test-timeout.patch"))))
+                                       "nss-increase-test-timeout.patch"))
+              (modules '((guix build utils)))
+              (snippet
+               '(begin
+                  ;; Delete the bundled copy of these libraries.
+                  (delete-file-recursively "nss/lib/zlib")
+                  (delete-file-recursively "nss/lib/sqlite")
+                  #t))))
     (build-system gnu-build-system)
     (outputs '("out" "bin"))
     (arguments
@@ -130,7 +138,7 @@ in the Mozilla clients.")
              ;; leading to test failures:
              ;; <https://bugzilla.mozilla.org/show_bug.cgi?id=609734>.  To
              ;; work around that, set the time to roughly the release date.
-             (invoke "faketime" "2019-05-01" "./nss/tests/all.sh")))
+             (invoke "faketime" "2020-02-01" "./nss/tests/all.sh")))
            (replace 'install
              (lambda* (#:key outputs #:allow-other-keys)
                (let* ((out (assoc-ref outputs "out"))

@@ -1,5 +1,6 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © Jan (janneke) Nieuwenhuizen <janneke@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -22,13 +23,14 @@
   #:use-module (guix monads)
   #:use-module (guix grafts)
   #:use-module ((guix gexp) #:select (local-file local-file-file))
-  #:use-module ((guix utils)
+  #:use-module (guix utils)
+  #:use-module ((guix diagnostics)
                 ;; Rename the 'location' binding to allow proper syntax
                 ;; matching when setting the 'location' field of a package.
                 #:renamer (lambda (name)
                             (cond ((eq? name 'location) 'make-location)
                                   (else name))))
-  #:use-module (gcrypt hash)
+  #:use-module ((gcrypt hash) #:prefix gcrypt:)
   #:use-module (guix derivations)
   #:use-module (guix packages)
   #:use-module (guix grafts)
@@ -36,6 +38,7 @@
   #:use-module (guix build-system)
   #:use-module (guix build-system trivial)
   #:use-module (guix build-system gnu)
+  #:use-module (guix memoization)
   #:use-module (guix profiles)
   #:use-module (guix scripts package)
   #:use-module (gnu packages)
@@ -49,6 +52,7 @@
   #:use-module (srfi srfi-34)
   #:use-module (srfi srfi-35)
   #:use-module (srfi srfi-64)
+  #:use-module (rnrs bytevectors)
   #:use-module (rnrs io ports)
   #:use-module (ice-9 vlist)
   #:use-module (ice-9 regex)
@@ -98,11 +102,47 @@
   (let* ((old (dummy-package "foo" (version "1")))
          (tx  (mock ((gnu packages) find-best-packages-by-name
                      (const '()))
-                    ((@@ (guix scripts package) transaction-upgrade-entry)
+                    (transaction-upgrade-entry
+                     #f                           ;no store access needed
                      (manifest-entry
                        (inherit (package->manifest-entry old))
                        (item (string-append (%store-prefix) "/"
                                             (make-string 32 #\e) "-foo-1")))
+                     (manifest-transaction)))))
+    (manifest-transaction-null? tx)))
+
+(test-assert "transaction-upgrade-entry, zero upgrades, equivalent package"
+  (let* ((old (dummy-package "foo" (version "1")))
+         (drv (package-derivation %store old))
+         (tx  (mock ((gnu packages) find-best-packages-by-name
+                     (const (list old)))
+                    (transaction-upgrade-entry
+                     %store
+                     (manifest-entry
+                       (inherit (package->manifest-entry old))
+                       (item (derivation->output-path drv)))
+                     (manifest-transaction)))))
+    (manifest-transaction-null? tx)))
+
+(test-assert "transaction-upgrade-entry, zero upgrades, propagated inputs"
+  ;; Properly detect equivalent packages even when they have propagated
+  ;; inputs.  See <https://bugs.gnu.org/35872>.
+  (let* ((dep (dummy-package "dep" (version "2")))
+         (old (dummy-package "foo" (version "1")
+                             (propagated-inputs `(("dep" ,dep)))))
+         (drv (package-derivation %store old))
+         (tx  (mock ((gnu packages) find-best-packages-by-name
+                     (const (list old)))
+                    (transaction-upgrade-entry
+                     %store
+                     (manifest-entry
+                       (inherit (package->manifest-entry old))
+                       (item (derivation->output-path drv))
+                       (dependencies
+                        (list (manifest-entry
+                                (inherit (package->manifest-entry dep))
+                                (item (derivation->output-path
+                                       (package-derivation %store dep)))))))
                      (manifest-transaction)))))
     (manifest-transaction-null? tx)))
 
@@ -111,7 +151,8 @@
          (new (dummy-package "foo" (version "2")))
          (tx  (mock ((gnu packages) find-best-packages-by-name
                      (const (list new)))
-                    ((@@ (guix scripts package) transaction-upgrade-entry)
+                    (transaction-upgrade-entry
+                     #f                           ;no store access needed
                      (manifest-entry
                        (inherit (package->manifest-entry old))
                        (item (string-append (%store-prefix) "/"
@@ -128,7 +169,8 @@
          (dep (deprecated-package "foo" new))
          (tx  (mock ((gnu packages) find-best-packages-by-name
                      (const (list dep)))
-                    ((@@ (guix scripts package) transaction-upgrade-entry)
+                    (transaction-upgrade-entry
+                     #f                           ;no store access needed
                      (manifest-entry
                        (inherit (package->manifest-entry old))
                        (item (string-append (%store-prefix) "/"
@@ -142,6 +184,30 @@
             (and (string=? (manifest-pattern-name pattern) "foo")
                  (string=? (manifest-pattern-version pattern) "1")
                  (string=? (manifest-pattern-output pattern) "out")))))))
+
+(test-assert "transaction-upgrade-entry, grafts"
+  ;; Ensure that, when grafts are enabled, 'transaction-upgrade-entry' doesn't
+  ;; try to build stuff.
+  (with-build-handler (const 'failed!)
+    (parameterize ((%graft? #t))
+      (let* ((old (dummy-package "foo" (version "1")))
+             (bar (dummy-package "bar" (version "0")
+                                 (replacement old)))
+             (new (dummy-package "foo" (version "1")
+                                 (inputs `(("bar" ,bar)))))
+             (tx  (mock ((gnu packages) find-best-packages-by-name
+                         (const (list new)))
+                        (transaction-upgrade-entry
+                         %store
+                         (manifest-entry
+                           (inherit (package->manifest-entry old))
+                           (item (string-append (%store-prefix) "/"
+                                                (make-string 32 #\e) "-foo-1")))
+                         (manifest-transaction)))))
+        (and (match (manifest-transaction-install tx)
+               ((($ <manifest-entry> "foo" "1" "out" item))
+                (eq? item new)))
+             (null? (manifest-transaction-remove tx)))))))
 
 (test-assert "package-field-location"
   (let ()
@@ -336,18 +402,55 @@
   ;; Here GNU-BUILD-SYSTEM adds implicit inputs that build only on
   ;; %SUPPORTED-SYSTEMS.  Thus the others must be ignored.
   (let ((p (dummy-package "foo"
+               (build-system gnu-build-system)
+               (supported-systems
+                `("does-not-exist" "foobar" ,@%supported-systems)))))
+    (parameterize ((%current-system "armhf-linux")) ; a traditionally-bootstrapped architecture
+      (package-transitive-supported-systems p))))
+
+(test-equal "package-transitive-supported-systems: reduced binary seed, implicit inputs"
+  '("x86_64-linux" "i686-linux")
+
+  ;; Here GNU-BUILD-SYSTEM adds implicit inputs that build only on
+  ;; %SUPPORTED-SYSTEMS.  Thus the others must be ignored.
+  (let ((p (dummy-package "foo"
              (build-system gnu-build-system)
              (supported-systems
               `("does-not-exist" "foobar" ,@%supported-systems)))))
-    (package-transitive-supported-systems p)))
+    (parameterize ((%current-system "x86_64-linux"))
+      (package-transitive-supported-systems p))))
 
 (test-assert "supported-package?"
-  (let ((p (dummy-package "foo"
-             (build-system gnu-build-system)
-             (supported-systems '("x86_64-linux" "does-not-exist")))))
+  (let* ((d (dummy-package "dep"
+              (build-system trivial-build-system)
+              (supported-systems '("x86_64-linux"))))
+         (p (dummy-package "foo"
+              (build-system gnu-build-system)
+              (inputs `(("d" ,d)))
+              (supported-systems '("x86_64-linux" "armhf-linux")))))
     (and (supported-package? p "x86_64-linux")
-         (not (supported-package? p "does-not-exist"))
-         (not (supported-package? p "i686-linux")))))
+         (not (supported-package? p "i686-linux"))
+         (not (supported-package? p "armhf-linux")))))
+
+(test-assert "supported-package? vs. system-dependent graph"
+  ;; The inputs of a package can depend on (%current-system).  Thus,
+  ;; 'supported-package?' must make sure that it binds (%current-system)
+  ;; appropriately before traversing the dependency graph.  In the example
+  ;; below, 'supported-package?' must thus return true for both systems.
+  (let* ((p0a (dummy-package "foo-arm"
+                (build-system trivial-build-system)
+                (supported-systems '("armhf-linux"))))
+         (p0b (dummy-package "foo-x86_64"
+                (build-system trivial-build-system)
+                (supported-systems '("x86_64-linux"))))
+         (p   (dummy-package "bar"
+                (build-system trivial-build-system)
+                (inputs
+                 (if (string=? (%current-system) "armhf-linux")
+                     `(("foo" ,p0a))
+                     `(("foo" ,p0b)))))))
+    (and (supported-package? p "x86_64-linux")
+         (supported-package? p "armhf-linux"))))
 
 (test-skip (if (not %store) 8 0))
 
@@ -395,6 +498,58 @@
                  (call-with-input-file
                      (search-path %load-path "guix/base32.scm")
                    get-bytevector-all)))))
+
+(test-equal "package-source-derivation, origin, sha512"
+  "hello"
+  (let* ((bash    (search-bootstrap-binary "bash" (%current-system)))
+         (builder (add-text-to-store %store "my-fixed-builder.sh"
+                                     "echo -n hello > $out" '()))
+         (method  (lambda* (url hash-algo hash #:optional name
+                                #:rest rest)
+                    (and (eq? hash-algo 'sha512)
+                         (raw-derivation name bash (list builder)
+                                         #:sources (list builder)
+                                         #:hash hash
+                                         #:hash-algo hash-algo))))
+         (source  (origin
+                    (method method)
+                    (uri "unused://")
+                    (file-name "origin-sha512")
+                    (hash (content-hash
+                           (gcrypt:bytevector-hash (string->utf8 "hello")
+                                                   (gcrypt:lookup-hash-algorithm
+                                                    'sha512))
+                           sha512))))
+         (drv    (package-source-derivation %store source))
+         (output (derivation->output-path drv)))
+    (build-derivations %store (list drv))
+    (call-with-input-file output get-string-all)))
+
+(test-equal "package-source-derivation, origin, sha3-512"
+  "hello, sha3"
+  (let* ((bash    (search-bootstrap-binary "bash" (%current-system)))
+         (builder (add-text-to-store %store "my-fixed-builder.sh"
+                                     "echo -n hello, sha3 > $out" '()))
+         (method  (lambda* (url hash-algo hash #:optional name
+                                #:rest rest)
+                    (and (eq? hash-algo 'sha3-512)
+                         (raw-derivation name bash (list builder)
+                                         #:sources (list builder)
+                                         #:hash hash
+                                         #:hash-algo hash-algo))))
+         (source  (origin
+                    (method method)
+                    (uri "unused://")
+                    (file-name "origin-sha3")
+                    (hash (content-hash
+                           (gcrypt:bytevector-hash (string->utf8 "hello, sha3")
+                                                   (gcrypt:lookup-hash-algorithm
+                                                    'sha3-512))
+                           sha3-512))))
+         (drv    (package-source-derivation %store source))
+         (output (derivation->output-path drv)))
+    (build-derivations %store (list drv))
+    (call-with-input-file output get-string-all)))
 
 (unless (network-reachable?) (test-skip 1))
 (test-equal "package-source-derivation, snippet"
@@ -463,12 +618,11 @@
          (string=? (derivation->output-path drv)
                    (package-output %store package "out")))))
 
-(test-assert "patch not found yields a run-time error"
-  (guard (c ((condition-has-type? c &message)
-             (and (string-contains (condition-message c)
-                                   "does-not-exist.patch")
-                  (string-contains (condition-message c)
-                                   "not found"))))
+(test-equal "patch not found yields a run-time error"
+  '("~a: patch not found\n" "does-not-exist.patch")
+  (guard (c ((formatted-message? c)
+             (cons (formatted-message-string c)
+                   (formatted-message-arguments c))))
     (let ((p (package
                (inherit (dummy-package "p"))
                (source (origin
@@ -772,6 +926,30 @@
                                                          (replacement #f))))
                     (replacement (package-derivation %store new)))))))
 
+(test-assert "package-grafts, dependency on several outputs"
+  ;; Make sure we get one graft per output; see <https://bugs.gnu.org/41796>.
+  (letrec* ((p0  (dummy-package "p0"
+                   (version "1.0")
+                   (replacement p0*)
+                   (arguments '(#:implicit-inputs? #f))
+                   (outputs '("out" "lib"))))
+            (p0* (package (inherit p0) (version "1.1")))
+            (p1  (dummy-package "p1"
+                   (arguments '(#:implicit-inputs? #f))
+                   (inputs `(("p0" ,p0)
+                             ("p0:lib" ,p0 "lib"))))))
+    (lset= equal? (pk (package-grafts %store p1))
+           (list (graft
+                   (origin (package-derivation %store p0))
+                   (origin-output "out")
+                   (replacement (package-derivation %store p0*))
+                   (replacement-output "out"))
+                 (graft
+                   (origin (package-derivation %store p0))
+                   (origin-output "lib")
+                   (replacement (package-derivation %store p0*))
+                   (replacement-output "lib"))))))
+
 (test-assert "replacement also grafted"
   ;; We build a DAG as below, where dotted arrows represent replacements and
   ;; solid arrows represent dependencies:
@@ -878,6 +1056,39 @@
           (assoc-ref (bag-build-inputs bag) "libc")
           (assoc-ref (bag-build-inputs bag) "coreutils"))))
 
+(test-assert "package->bag, sensitivity to %current-target-system"
+  ;; https://bugs.gnu.org/41713
+  (let* ((lower (lambda* (name #:key system target inputs native-inputs
+                               #:allow-other-keys)
+                  (and (not target)
+                       (bag (name name) (system system) (target target)
+                            (build-inputs native-inputs)
+                            (host-inputs inputs)
+                            (build (lambda* (store name inputs
+                                                   #:key system target
+                                                   #:allow-other-keys)
+                                     (build-expression->derivation
+                                      store "foo" '(mkdir %output))))))))
+         (bs    (build-system
+                  (name 'build-system-without-cross-compilation)
+                  (description "Does not support cross compilation.")
+                  (lower lower)))
+         (dep   (dummy-package "dep" (build-system bs)))
+         (pkg   (dummy-package "example"
+                  (native-inputs `(("dep" ,dep)))))
+         (do-not-build (lambda (continue store lst . _) lst)))
+    (equal? (with-build-handler do-not-build
+              (parameterize ((%current-target-system "powerpc64le-linux-gnu")
+                             (%graft? #t))
+                (package-cross-derivation %store pkg
+                                          (%current-target-system)
+                                          #:graft? #t)))
+            (with-build-handler do-not-build
+              (package-cross-derivation %store
+                                        (package (inherit pkg))
+                                        "powerpc64le-linux-gnu"
+                                        #:graft? #t)))))
+
 (test-equal "package->bag, cross-compilation"
   `(,(%current-system) "foo86-hurd"
     (,(package-source gnu-make))
@@ -899,6 +1110,33 @@
       (("dep" package)
        (eq? package dep)))))
 
+(test-assert "package->bag, sensitivity to %current-system"
+  (let* ((dep (dummy-package "dep"
+                (propagated-inputs (if (string=? (%current-system)
+                                                 "i586-gnu")
+                                       `(("libxml2" ,libxml2))
+                                       '()))))
+         (pkg (dummy-package "foo"
+                (native-inputs `(("dep" ,dep)))))
+         (bag (package->bag pkg (%current-system) "i586-gnu")))
+    (equal? (parameterize ((%current-system "x86_64-linux"))
+              (bag-transitive-inputs bag))
+            (parameterize ((%current-system "i586-gnu"))
+              (bag-transitive-inputs bag)))))
+
+(test-assert "package->bag, sensitivity to %current-target-system"
+  (let* ((dep (dummy-package "dep"
+                (propagated-inputs (if (%current-target-system)
+                                       `(("libxml2" ,libxml2))
+                                       '()))))
+         (pkg (dummy-package "foo"
+                (native-inputs `(("dep" ,dep)))))
+         (bag (package->bag pkg (%current-system) "foo86-hurd")))
+    (equal? (parameterize ((%current-target-system "foo64-gnu"))
+              (bag-transitive-inputs bag))
+            (parameterize ((%current-target-system #f))
+              (bag-transitive-inputs bag)))))
+
 (test-assert "bag->derivation"
   (parameterize ((%graft? #f))
     (let ((bag (package->bag gnu-make))
@@ -918,9 +1156,9 @@
 (when (or (not (network-reachable?)) (shebang-too-long?))
   (test-skip 1))
 (test-assert "GNU Make, bootstrap"
-  ;; GNU Make is the first program built during bootstrap; we choose it
-  ;; here so that the test doesn't last for too long.
-  (let ((gnu-make (@@ (gnu packages commencement) gnu-make-boot0)))
+  ;; GNU-MAKE-FOR-TESTS can be built cheaply; we choose it here so that the
+  ;; test doesn't last for too long.
+  (let ((gnu-make gnu-make-for-tests))
     (and (package? gnu-make)
          (or (location? (package-location gnu-make))
              (not (package-location gnu-make)))

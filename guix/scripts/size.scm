@@ -1,5 +1,6 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2019 Simon Tournier <zimon.toutoune@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -19,6 +20,7 @@
 (define-module (guix scripts size)
   #:use-module (guix ui)
   #:use-module (guix scripts)
+  #:use-module (guix scripts build)
   #:use-module (guix store)
   #:use-module (guix monads)
   #:use-module (guix combinators)
@@ -228,8 +230,8 @@ the name of a PNG file."
 ;;;
 
 (define (show-help)
-  (display (G_ "Usage: guix size [OPTION]... PACKAGE
-Report the size of PACKAGE and its dependencies.\n"))
+  (display (G_ "Usage: guix size [OPTION]... PACKAGE|STORE-ITEM
+Report the size of the PACKAGE or STORE-ITEM, with its dependencies.\n"))
   (display (G_ "
       --substitute-urls=URLS
                          fetch substitute from URLS if they are authorized"))
@@ -240,6 +242,9 @@ Report the size of PACKAGE and its dependencies.\n"))
       --sort=KEY         sort according to KEY--\"closure\" or \"self\""))
   (display (G_ "
   -m, --map-file=FILE    write to FILE a graphical map of disk usage"))
+  (newline)
+  (display (G_ "
+  -L, --load-path=DIR    prepend DIR to the package module search path"))
   (newline)
   (display (G_ "
   -h, --help             display this help and exit"))
@@ -273,6 +278,9 @@ Report the size of PACKAGE and its dependencies.\n"))
         (option '(#\m "map-file") #t #f
                 (lambda (opt name arg result)
                   (alist-cons 'map-file arg result)))
+        (find (lambda (option)
+                (member "load-path" (option-names option)))
+              %standard-build-options)
         (option '(#\h "help") #f #f
                 (lambda args
                   (show-help)

@@ -1,15 +1,19 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2015, 2016, 2017, 2018, 2019 Ricardo Wurmus <rekado@elephly.net>
+;;; Copyright © 2015, 2016, 2017, 2018, 2019, 2020 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2016 Leo Famulari <leo@famulari.name>
 ;;; Copyright © 2016, 2017 Roel Janssen <roel@gnu.org>
-;;; Copyright © 2017 Carlo Zancanaro <carlo@zancanaro.id.au>
-;;; Copyright © 2017, 2018 Julien Lepiller <julien@lepiller.eu>
+;;; Copyright © 2017, 2019 Carlo Zancanaro <carlo@zancanaro.id.au>
+;;; Copyright © 2017-2020 Julien Lepiller <julien@lepiller.eu>
 ;;; Copyright © 2017 Thomas Danckaert <post@thomasdanckaert.be>
 ;;; Copyright © 2016, 2017, 2018 Alex Vong <alexvong1995@gmail.com>
 ;;; Copyright © 2017, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018, 2019 Gábor Boskovits <boskovits@gmail.com>
 ;;; Copyright © 2018 Chris Marusich <cmmarusich@gmail.com>
-;;; Copyright © 2018 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2018, 2019, 2020 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2019, 2020 Björn Höfling <bjoern.hoefling@bjoernhoefling.de>
+;;; Copyright © 2020 Jan (janneke) Nieuwenhuizen <janneke@gnu.org>
+;;; Copyright © 2020 Raghav Gururajan <raghavgururajan@disroot.org>
+;;; Copyright © 2020 Maxim Cournoyer <maxim.cournoyer@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -50,7 +54,6 @@
   #:use-module (gnu packages fontutils)
   #:use-module (gnu packages gawk)
   #:use-module (gnu packages gettext)
-  #:use-module (gnu packages gcc)
   #:use-module (gnu packages gl)
   #:use-module (gnu packages ghostscript) ;lcms
   #:use-module (gnu packages gnome)
@@ -63,6 +66,8 @@
   #:use-module (gnu packages libffi)
   #:use-module (gnu packages linux) ;alsa
   #:use-module (gnu packages maths)
+  #:use-module (gnu packages maven)
+  #:use-module (gnu packages maven-parent-pom)
   #:use-module (gnu packages nss)
   #:use-module (gnu packages onc-rpc)
   #:use-module (gnu packages web)
@@ -104,6 +109,44 @@
 ;; build framework.  We then build the more recent JDKs Icedtea 2.x and
 ;; Icedtea 3.x.
 
+(define-public libantlr3c
+  (package
+    (name "libantlr3c")
+    (version "3.4")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+        (string-append "https://www.antlr3.org/download/C/"
+                       name "-" version ".tar.gz"))
+       (sha256
+        (base32 "0lpbnb4dq4azmsvlhp6khq1gy42kyqyjv8gww74g5lm2y6blm4fa"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:configure-flags (list "--enable-debuginfo" "--disable-static")
+       #:phases (modify-phases %standard-phases
+                  (replace 'configure
+                    (lambda* (#:key build target native-inputs inputs outputs
+                              (configure-flags '()) out-of-source? system
+                              #:allow-other-keys)
+                      (let ((configure (assoc-ref %standard-phases 'configure))
+                            (enable-64bit? (member system '("aarch64-linux"
+                                                            "x86_64-linux"
+                                                            "mips64el-linux"))))
+                        (configure #:build build #:target target
+                                   #:native-inputs native-inputs
+                                   #:inputs inputs #:outputs outputs
+                                   #:configure-flags `(,(if enable-64bit?
+                                                            "--enable-64bit"
+                                                            '())
+                                                       ,@configure-flags)
+                                   #:out-of-source? out-of-source?)))))))
+    (synopsis "ANTLR C Library")
+    (description "LIBANTLR3C provides run-time C libraries for ANTLR3 (ANother
+Tool for Language Recognition v3).")
+    (home-page "https://www.antlr3.org/")
+    (license license:bsd-3)))
+
 (define jikes
   (package
     (name "jikes")
@@ -122,6 +165,64 @@
 defined in The Java Language Specification into the bytecoded instruction set
 and binary format defined in The Java Virtual Machine Specification.")
     (license license:ibmpl1.0)))
+
+(define-public drip
+  ;; Last release is from 2014, with a few important commits afterwards.
+  (let ((commit "a4bd00df0199e78243847f06cc04ecaea31f8f08"))
+    (package
+      (name "drip")
+      (version (git-version "0.2.4" "1" commit))
+      (source (origin
+                (method git-fetch)
+                (uri (git-reference
+                      (url "https://github.com/ninjudd/drip")
+                      (commit commit)))
+                (file-name (git-file-name name version))
+                (sha256
+                 (base32
+                  "0wzmjwfyldr3jn49517xd8yn7dgdk8h88qkga3kjyg1zc375ylg2"))))
+      (build-system gnu-build-system)
+      (native-inputs
+       `(("jdk" ,icedtea "jdk")))
+      (arguments
+       `(#:tests? #f                    ; No tests.
+         #:phases
+         (modify-phases %standard-phases
+           (delete 'configure)
+           (add-before 'install 'fix-wrapper
+             (lambda* (#:key inputs #:allow-other-keys)
+               (let ((jps (string-append (assoc-ref inputs "jdk") "/bin/jps")))
+                 (substitute* "bin/drip"
+                   (("jps") jps)
+                   (("brew update && brew upgrade drip") "guix pull && guix install drip")
+                   ;; No need to make:
+                   (("\\(cd -- \"\\$drip_dir\" && make -s\\) \\|\\| exit 1") "")
+                   ;; No need to include source:
+                   (("\\[\\[ -r \\$drip_dir/src/org/flatland/drip/Main\\.java \\]\\]")
+                    "true"))
+                 #t)))
+           (replace 'install
+             (lambda* (#:key outputs #:allow-other-keys)
+               (let* ((out (assoc-ref outputs "out"))
+                      (bin (string-append out "/bin"))
+                      (share (string-append out "/share/drip")))
+                 (mkdir-p bin)
+                 (for-each
+                  (lambda (file)
+                    (install-file (string-append "bin/" file) bin))
+                  '("drip" "drip_daemon" "drip_proxy"))
+                 (install-file "drip.jar" share)
+                 (substitute* (string-append bin "/drip")
+                   (("drip_dir=\\$bin_dir/..")
+                    (string-append "drip_dir=" share)))
+                 #t))))))
+      (home-page "https://github.com/ninjudd/drip")
+      (synopsis "Faster Java Virtual Machine launching")
+      (description "Drip is a launcher for the Java Virtual Machine that
+provides much faster startup times than the @command{java} command.  The @command{drip}
+script is intended to be a drop-in replacement for the @command{java} command,
+only faster.")
+      (license license:epl1.0))))
 
 ;; This is the last version of GNU Classpath that can be built without ECJ.
 (define classpath-bootstrap
@@ -152,6 +253,17 @@ and binary format defined in The Java Virtual Machine Specification.")
              "--disable-gjdoc")
        #:phases
        (modify-phases %standard-phases
+         ;; XXX: This introduces a memory leak as we remove a call to free up
+         ;; memory for the file name string.  This was necessary because of a
+         ;; runtime error that would have prevented us from building
+         ;; ant-bootstrap later.  See https://issues.guix.gnu.org/issue/36685
+         ;; for the gnarly details.
+         (add-after 'unpack 'remove-call-to-free
+           (lambda _
+             (substitute* "native/jni/java-io/java_io_VMFile.c"
+               (("result = cpio_isFileExists.*" m)
+                (string-append m "\n//")))
+             #t))
          (add-after 'install 'install-data
            (lambda _ (invoke "make" "install-data"))))))
     (native-inputs
@@ -181,15 +293,25 @@ language.")
               (patches (search-patches "jamvm-arm.patch"))
               (sha256
                (base32
-                "06lhi03l3b0h48pc7x58bk9my2nrcf1flpmglvys3wyad6yraf36"))))
+                "06lhi03l3b0h48pc7x58bk9my2nrcf1flpmglvys3wyad6yraf36"))
+              (snippet
+               '(begin
+                  ;; Remove precompiled software.
+                  (delete-file "lib/classes.zip")
+                  #t))))
     (build-system gnu-build-system)
     (arguments
      `(#:configure-flags
        (list (string-append "--with-classpath-install-dir="
-                            (assoc-ref %build-inputs "classpath")))))
+                            (assoc-ref %build-inputs "classpath"))
+             "--disable-int-caching"
+             "--enable-runtime-reloc-checks"
+             "--enable-ffi")))
     (inputs
      `(("classpath" ,classpath-bootstrap)
        ("jikes" ,jikes)
+       ("libffi" ,libffi)
+       ("zip" ,zip)
        ("zlib" ,zlib)))
     (home-page "http://jamvm.sourceforge.net/")
     (synopsis "Small Java Virtual Machine")
@@ -208,7 +330,7 @@ JNI.")
     (version "1.8.4")
     (source (origin
               (method url-fetch)
-              (uri (string-append "http://archive.apache.org/dist/"
+              (uri (string-append "mirror://apache/"
                                   "ant/source/apache-ant-"
                                   version "-src.tar.bz2"))
               (sha256
@@ -303,7 +425,7 @@ JNI.")
        ("jamvm" ,jamvm-1-bootstrap)
        ("unzip" ,unzip)
        ("zip" ,zip)))
-    (home-page "http://ant.apache.org")
+    (home-page "https://ant.apache.org")
     (synopsis "Build tool for Java")
     (description
      "Ant is a platform-independent build tool for Java.  It is similar to
@@ -639,7 +761,14 @@ machine.")))
                                   version ".tar.gz"))
               (sha256
                (base32
-                "1nl0zxz8y5x8gwsrm7n32bry4dx8x70p8z3s9jbdvs8avyb8whkn"))))
+                "1nl0zxz8y5x8gwsrm7n32bry4dx8x70p8z3s9jbdvs8avyb8whkn"))
+              (patches
+               (search-patches "jamvm-2.0.0-disable-branch-patching.patch"))
+              (snippet
+               '(begin
+                  ;; Remove precompiled software.
+                  (delete-file "src/classlib/gnuclasspath/lib/classes.zip")
+                  #t))))
     (build-system gnu-build-system)
     (arguments
      `(#:configure-flags
@@ -648,6 +777,7 @@ machine.")))
     (inputs
      `(("classpath" ,classpath-devel)
        ("ecj-javac-wrapper" ,ecj-javac-wrapper)
+       ("zip" ,zip)
        ("zlib" ,zlib)))))
 
 (define ecj-javac-wrapper-final
@@ -740,6 +870,9 @@ machine.")))
              (with-directory-excursion "openjdk"
                (invoke "tar" "xvf" (assoc-ref inputs "hotspot-src"))
                (rename-file "hg-checkout" "hotspot"))
+             (substitute* "patches/freetypeversion.patch"
+               (("REQUIRED_FREETYPE_VERSION = 2.2.1")
+                "REQUIRED_FREETYPE_VERSION = 2.10.1"))
              (substitute* "Makefile.in"
                (("echo \"ERROR: No up-to-date OpenJDK zip available\"; exit -1;")
                 "echo \"trust me\";")
@@ -907,14 +1040,13 @@ machine.")))
        ("fastjar" ,fastjar)
        ("fontconfig" ,fontconfig)
        ("freetype" ,freetype)
-       ("gcc" ,gcc-4.9) ; there's a segmentation fault when compiling with gcc-5 or gcc-7
        ("gtk" ,gtk+-2)
        ("gawk" ,gawk)
        ("giflib" ,giflib)
        ("grep" ,grep)
        ("jamvm" ,jamvm)
        ("lcms" ,lcms)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libnsl" ,libnsl)
        ("libpng" ,libpng)
        ("libtool" ,libtool)
@@ -1107,6 +1239,18 @@ bootstrapping purposes.")
                                             ((name . _) name))
                                           inputs))))
                  #t)))
+           (add-after 'unpack 'patch-bitrot
+             (lambda _
+               (substitute* '("patches/boot/revert-6973616.patch"
+                              "openjdk.src/jdk/make/common/shared/Defs-versions.gmk")
+                 (("REQUIRED_FREETYPE_VERSION = 2.2.1")
+                  "REQUIRED_FREETYPE_VERSION = 2.10.1"))
+               ;; As of attr 2.4.48 this header is no longer
+               ;; included.  It is provided by the libc instead.
+               (substitute* '("configure"
+                              "openjdk.src/jdk/src/solaris/native/sun/nio/fs/LinuxNativeDispatcher.c")
+                 (("attr/xattr.h") "sys/xattr.h"))
+               #t))
            (add-after 'unpack 'fix-x11-extension-include-path
              (lambda* (#:key inputs #:allow-other-keys)
                (substitute* "openjdk.src/jdk/make/sun/awt/mawt.gmk"
@@ -1372,7 +1516,24 @@ bootstrapping purposes.")
            (add-after 'install 'install-libjvm
              (lambda* (#:key inputs outputs #:allow-other-keys)
                (let* ((lib-path (string-append (assoc-ref outputs "out")
-                                               "/lib/amd64")))
+                                               ;; See 'INSTALL_ARCH_DIR' in
+                                               ;; 'configure'.
+                                               ,(match (%current-system)
+                                                  ("i686-linux"
+                                                   "/lib/i386")
+                                                  ("x86_64-linux"
+                                                   "/lib/amd64")
+                                                  ("armhf-linux"
+                                                   "/lib/arm")
+                                                  ("aarch64-linux"
+                                                   "/lib/aarch64")
+                                                  ;; We need a catch-all, dropping
+                                                  ;; '-linux' works in most cases.
+                                                  (_
+                                                    (string-append
+                                                      "/lib/"
+                                                      (string-drop-right
+                                                        (%current-system) 6)))))))
                  (symlink (string-append lib-path "/server/libjvm.so")
                           (string-append lib-path "/libjvm.so")))
                #t))
@@ -1505,7 +1666,7 @@ bootstrapping purposes.")
          ("libxi" ,libxi)
          ("libxinerama" ,libxinerama)
          ("libxrender" ,libxrender)
-         ("libjpeg" ,libjpeg)
+         ("libjpeg" ,libjpeg-turbo)
          ("libpng" ,libpng)
          ("mit-krb5" ,mit-krb5)
          ("nss" ,nss)
@@ -1520,6 +1681,10 @@ bootstrapping purposes.")
       (description
        "This package provides the Java development kit OpenJDK built with the
 IcedTea build harness.")
+
+      ;; 'configure' lists "mips" and "mipsel", but not "mips64el'.
+      (supported-systems (delete "mips64el-linux" %supported-systems))
+
       ;; IcedTea is released under the GPL2 + Classpath exception, which is the
       ;; same license as both GNU Classpath and OpenJDK.
       (license license:gpl2+))))
@@ -1586,6 +1751,7 @@ IcedTea build harness.")
                  (delete 'patch-paths)
                  (delete 'set-additional-paths)
                  (delete 'patch-patches)
+                 (delete 'patch-bitrot)
                  ;; Prevent the keytool from recording the current time when
                  ;; adding certificates at build time.
                  (add-after 'unpack 'patch-keystore
@@ -1698,14 +1864,14 @@ new Date();"))
               (modules '((guix build utils)))
               (snippet
                 `(begin
-                   (for-each delete-file (find-files "." ".*.bin$"))
-                   (for-each delete-file (find-files "." ".*.exe$"))
-                   (for-each delete-file (find-files "." ".*.jar$"))
+                   (for-each delete-file
+                             (find-files "." ".*.(bin|exe|jar)$"))
                    #t))))
     (build-system gnu-build-system)
     (outputs '("out" "jdk" "doc"))
     (arguments
      `(#:tests? #f; require jtreg
+       #:make-flags '("all")
        #:imported-modules
        ((guix build syscalls)
         ,@%gnu-build-system-modules)
@@ -1730,14 +1896,20 @@ new Date();"))
                      "--with-libjpeg=system"
                      (string-append "--prefix=" (assoc-ref outputs "out")))
              #t))
-         (replace 'build
+         (add-before 'build 'write-source-revision-file
            (lambda _
              (with-output-to-file ".src-rev"
                (lambda _
                  (display ,version)))
-             (setenv "GUIX_LD_WRAPPER_ALLOW_IMPURITIES" "yes")
-             (invoke "make" "all")
              #t))
+         (replace 'build
+           (lambda* (#:key make-flags parallel-build? #:allow-other-keys)
+             (apply invoke "make"
+                    `(,@(if parallel-build?
+                            (list (string-append "JOBS="
+                                                 (number->string (parallel-job-count))))
+                            '())
+                      ,@make-flags))))
          ;; Some of the libraries in the lib/ folder link to libjvm.so.
          ;; But that shared object is located in the server/ folder, so it
          ;; cannot be found.  This phase creates a symbolic link in the
@@ -1797,7 +1969,7 @@ new Date();"))
        ("giflib" ,giflib)
        ("lcms" ,lcms)
        ("libelf" ,libelf)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libice" ,libice)
        ("libpng" ,libpng)
        ("libx11" ,libx11)
@@ -1810,6 +1982,8 @@ new Date();"))
     (native-inputs
      `(("icedtea-8" ,icedtea-8)
        ("icedtea-8:jdk" ,icedtea-8 "jdk")
+       ;; XXX: The build system fails with newer versions of GNU Make.
+       ("make@4.2" ,gnu-make-4.2)
        ("unzip" ,unzip)
        ("which" ,which)
        ("zip" ,zip)))
@@ -1836,9 +2010,7 @@ new Date();"))
               (modules '((guix build utils)))
               (snippet
                 `(begin
-                   (for-each delete-file (find-files "." ".*.bin$"))
-                   (for-each delete-file (find-files "." ".*.exe$"))
-                   (for-each delete-file (find-files "." ".*.jar$"))
+                   (for-each delete-file (find-files "." ".*.(bin|exe|jar)$"))
                    #t))))
     (arguments
       (substitute-keyword-arguments (package-arguments openjdk9)
@@ -1866,6 +2038,7 @@ new Date();"))
     (native-inputs
      `(("openjdk9" ,openjdk9)
        ("openjdk9:jdk" ,openjdk9 "jdk")
+       ("make@4.2" ,gnu-make-4.2)
        ("unzip" ,unzip)
        ("which" ,which)
        ("zip" ,zip)))))
@@ -1884,9 +2057,7 @@ new Date();"))
               (modules '((guix build utils)))
               (snippet
                 `(begin
-                   (for-each delete-file (find-files "." ".*.bin$"))
-                   (for-each delete-file (find-files "." ".*.exe$"))
-                   (for-each delete-file (find-files "." ".*.jar$"))
+                   (for-each delete-file (find-files "." ".*.(bin|exe|jar)$"))
                    #t))))
     (build-system gnu-build-system)
     (outputs '("out" "jdk" "doc"))
@@ -1898,11 +2069,6 @@ new Date();"))
         ,@%gnu-build-system-modules)
        #:tests? #f; requires jtreg
        ;; TODO package jtreg
-       ;; disable parallel builds, as the openjdk build system does not like -j
-       #:parallel-build? #f
-       #:parallel-tests? #f
-       ;; reenable parallel builds and tests by adding the flags manually
-       #:make-flags (list (string-append "JOBS=" (number->string (parallel-job-count))))
        #:configure-flags
        `("--disable-option-checking" ; --enable-fast-install default flag errors otherwise
          "--disable-warnings-as-errors"
@@ -1919,7 +2085,6 @@ new Date();"))
                          (assoc-ref %build-inputs "freetype") "/include")
          ,(string-append "--with-freetype-lib="
                          (assoc-ref %build-inputs "freetype") "/lib"))
-       ;; TODO
        #:phases
        (modify-phases %standard-phases
          (add-after 'patch-source-shebangs 'fix-java-shebangs
@@ -1929,22 +2094,32 @@ new Date();"))
              (substitute* "make/data/blacklistedcertsconverter/blacklisted.certs.pem"
                (("^#!.*") "#! java BlacklistedCertsConverter SHA-256\n"))
              #t))
-         (replace 'build
+         (add-before 'build 'write-source-revision-file
            (lambda _
              (with-output-to-file ".src-rev"
                (lambda _
                  (display ,version)))
-             (setenv "GUIX_LD_WRAPPER_ALLOW_IMPURITIES" "yes")
-             (invoke "make" "all")
              #t))
+         (replace 'build
+           (lambda* (#:key parallel-build? make-flags #:allow-other-keys)
+             (apply invoke "make" "all"
+                    `(,@(if parallel-build?
+                            (list (string-append "JOBS="
+                                                 (number->string (parallel-job-count))))
+                            '())
+                      ,@make-flags))))
          ;; jdk 11 does not build jre by default any more
          ;; building it anyways
          ;; for further information see:
          ;; https://github.com/AdoptOpenJDK/openjdk-build/issues/356
          (add-after 'build 'build-jre
-           (lambda _
-             (invoke "make" "legacy-jre-image")
-             #t))
+           (lambda* (#:key parallel-build? make-flags #:allow-other-keys)
+             (apply invoke "make" "legacy-jre-image"
+                    `(,@(if parallel-build?
+                            (list (string-append "JOBS="
+                                                 (number->string (parallel-job-count))))
+                            '())
+                      ,@make-flags))))
          (replace 'install
            (lambda* (#:key outputs #:allow-other-keys)
              (let ((out (assoc-ref outputs "out"))
@@ -2075,7 +2250,7 @@ new Date();"))
        ("freetype" ,freetype)
        ("giflib" ,giflib)
        ("lcms" ,lcms)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libpng" ,libpng)
        ("libx11" ,libx11)
        ("libxext" ,libxext)
@@ -2086,6 +2261,7 @@ new Date();"))
      `(("autoconf" ,autoconf)
        ("openjdk10" ,openjdk10)
        ("openjdk10:jdk" ,openjdk10 "jdk")
+       ("make" ,gnu-make-4.2)
        ("pkg-config" ,pkg-config)
        ("unzip" ,unzip)
        ("which" ,which)
@@ -2111,9 +2287,7 @@ new Date();"))
               (modules '((guix build utils)))
               (snippet
                `(begin
-                  (for-each delete-file (find-files "." ".*.bin$"))
-                  (for-each delete-file (find-files "." ".*.exe$"))
-                  (for-each delete-file (find-files "." ".*.jar$"))
+                  (for-each delete-file (find-files "." ".*.(bin|exe|jar)$"))
                   #t))))
     (inputs
      `(("alsa-lib" ,alsa-lib)
@@ -2122,7 +2296,7 @@ new Date();"))
        ("freetype" ,freetype)
        ("giflib" ,giflib)
        ("lcms" ,lcms)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libpng" ,libpng)
        ("libx11" ,libx11)
        ("libxext" ,libxext)
@@ -2134,11 +2308,100 @@ new Date();"))
      `(("autoconf" ,autoconf)
        ("openjdk11" ,openjdk11)
        ("openjdk11:jdk" ,openjdk11 "jdk")
+       ("make@4.2" ,gnu-make-4.2)
        ("pkg-config" ,pkg-config)
        ("unzip" ,unzip)
        ("which" ,which)
        ("zip" ,zip)))
     (home-page "https://openjdk.java.net/projects/jdk/12")))
+
+(define-public openjdk13
+  (package
+    (inherit openjdk12)
+    (name "openjdk")
+    (version "13.0")
+    (source (origin
+	     (method url-fetch)
+	     (uri "http://hg.openjdk.java.net/jdk/jdk13/archive/9c250a7600e1.tar.bz2")
+	     (file-name (string-append name "-" version ".tar.bz2"))
+	     (sha256
+	      (base32
+	       "0v0ljvx5dyzp96dw4z4ksw3pvasil7783mgnmd1wk9gads5ab8iq"))
+	     (modules '((guix build utils)))
+	     (snippet
+	      `(begin
+		 (for-each delete-file (find-files "." ".*.(bin|exe|jar)$"))
+		 #t))))
+    (inputs
+     `(("alsa-lib" ,alsa-lib)
+       ("cups" ,cups)
+       ("fontconfig" ,fontconfig)
+       ("freetype" ,freetype)
+       ("giflib" ,giflib)
+       ("lcms" ,lcms)
+       ("libjpeg" ,libjpeg-turbo)
+       ("libpng" ,libpng)
+       ("libx11" ,libx11)
+       ("libxext" ,libxext)
+       ("libxrandr" ,libxrandr)
+       ("libxrender" ,libxrender)
+       ("libxt" ,libxt)
+       ("libxtst" ,libxtst)))
+    (native-inputs
+     `(("autoconf" ,autoconf)
+       ("openjdk12:jdk" ,openjdk12 "jdk")
+       ("make@4.2" ,gnu-make-4.2)
+       ("pkg-config" ,pkg-config)
+       ("unzip" ,unzip)
+       ("which" ,which)
+       ("zip" ,zip)))
+    (home-page "https://openjdk.java.net/projects/jdk/13")))
+
+(define-public openjdk14
+  (package
+    (inherit openjdk13)
+    (name "openjdk")
+    (version "14.0")
+    (source (origin
+	      (method url-fetch)
+	      (uri "http://hg.openjdk.java.net/jdk/jdk14/archive/bc54620a3848.tar.bz2")
+	      (file-name (string-append name "-" version ".tar.bz2"))
+	      (sha256
+	       (base32
+	        "0z485pk7r1xpw8004g4nrwrzj17sabgx8yfdbxwfvzkjp8qyajch"))
+	      (modules '((guix build utils)))
+	      (snippet
+	       `(begin
+                  ;; The m4 macro uses 'help' to search for builtins, which is
+                  ;; not available in bash-minimal
+                  (substitute* "make/autoconf/basics.m4"
+                    (("if help") "if command -v"))
+		  (for-each delete-file (find-files "." ".*.(bin|exe|jar)$"))
+		  #t))))
+    (inputs
+     `(("alsa-lib" ,alsa-lib)
+       ("cups" ,cups)
+       ("fontconfig" ,fontconfig)
+       ("freetype" ,freetype)
+       ("giflib" ,giflib)
+       ("lcms" ,lcms)
+       ("libjpeg" ,libjpeg-turbo)
+       ("libpng" ,libpng)
+       ("libx11" ,libx11)
+       ("libxext" ,libxext)
+       ("libxrandr" ,libxrandr)
+       ("libxrender" ,libxrender)
+       ("libxt" ,libxt)
+       ("libxtst" ,libxtst)))
+    (native-inputs
+     `(("autoconf" ,autoconf)
+       ("make@4.2" ,gnu-make-4.2)
+       ("openjdk13:jdk" ,openjdk13 "jdk")
+       ("pkg-config" ,pkg-config)
+       ("unzip" ,unzip)
+       ("which" ,which)
+       ("zip" ,zip)))
+    (home-page "https://openjdk.java.net/projects/jdk/14")))
 
 (define-public icedtea icedtea-8)
 
@@ -2271,6 +2534,121 @@ new Date();"))
      `(("java-junit" ,java-junit)
        ,@(package-inputs ant/java8)))))
 
+(define-public java-openjfx-build
+  (package
+    (name "java-openjfx-build")
+    ;; This is a java-8 version
+    (version "8.202")
+    (source (origin
+              (method hg-fetch)
+              (uri (hg-reference
+                    (url "http://hg.openjdk.java.net/openjfx/8u-dev/rt")
+                    (changeset (string-append
+                                (string-join (string-split version #\.) "u")
+                                "-ga"))))
+              (file-name (string-append name "-" version "-checkout"))
+              (modules '((guix build utils)))
+              (snippet
+               '(begin
+                  ;; Delete included gradle jar
+                  (delete-file-recursively "gradle/wrapper")
+                  #t))
+              (sha256
+               (base32
+                "0yg38mwpivswccv9n96k06x3iv82i4px1a9xg9l8dswzwmfj259f"))
+              (patches (search-patches "java-openjfx-build-jdk_version.patch"))))
+    (build-system ant-build-system)
+    (arguments
+     `(#:jar-name "java-openjfx.jar"
+       #:source-dir "buildSrc/src/main/java"
+       #:test-dir "buildSrc/src/test"
+       #:phases
+       (modify-phases %standard-phases
+         (add-before 'configure 'generate-jsl-parser
+           (lambda _
+             (invoke "antlr3" "-o"
+                     "buildSrc/src/main/java/com/sun/scenario/effect/compiler"
+                     "buildSrc/src/main/antlr/JSL.g"))))))
+    (inputs
+     `(("antlr3" ,antlr3)
+       ("java-stringtemplate" ,java-stringtemplate)))
+    (native-inputs
+     `(("java-junit" ,java-junit)
+       ("java-hamcrest-core" ,java-hamcrest-core)))
+    (home-page "https://openjfx.io")
+    (synopsis "Graphical application toolkit in Java")
+    (description "OpenJFX is a client application platform for desktop,
+mobile and embedded systems built on Java.  Its goal is to produce a
+modern, efficient, and fully featured toolkit for developing rich client
+applications.  This package contains base classes for the OpenJFX
+distribution and helper classes for building other parts of the
+distribution.")
+    (license license:gpl2))) ;gpl2 only, with classpath exception
+
+(define-public java-openjfx-base
+  (package (inherit java-openjfx-build)
+    (name "java-openjfx-base")
+    (arguments
+     `(#:jar-name "java-openjfx-base.jar"
+       #:source-dir "modules/base/src/main/java:modules/base/src/main/java8:modules/base/src/main/version-info"
+       #:test-dir "modules/base/src/test"
+       #:phases
+       (modify-phases %standard-phases
+         (add-before 'check 'remove-empty-file
+           (lambda _
+             (with-directory-excursion "modules/base/src/test/java"
+               ;; These files are completely commented, but junit expects them to
+               ;; contain a class, so tests fail.
+               (delete-file
+                 "com/sun/javafx/property/adapter/PropertyDescriptorTest.java")
+               (delete-file
+                 "com/sun/javafx/property/adapter/ReadOnlyPropertyDescriptorTest.java")
+               (delete-file "javafx/beans/property/PropertiesTest.java")
+               (delete-file
+                 "javafx/beans/property/adapter/ReadOnlyJavaBeanPropertyBuilder_General_Test.java")
+               ;; This one fails
+               (delete-file "com/sun/javafx/runtime/VersionInfoTest.java"))
+             #t)))))
+    (propagated-inputs
+     `(("java-openjfx-build" ,java-openjfx-build)))
+    (description "OpenJFX is a client application platform for desktop,
+mobile and embedded systems built on Java.  Its goal is to produce a
+modern, efficient, and fully featured toolkit for developing rich client
+applications.  This package contains base classes for the OpenJFX
+distribution.")))
+
+(define-public java-openjfx-graphics
+  (package (inherit java-openjfx-build)
+    (name "java-openjfx-graphics")
+    (arguments
+     `(#:jar-name "java-openjfx-graphics.jar"
+       #:source-dir "modules/graphics/src/main/java"
+       #:tests? #f; require X
+       #:test-dir "modules/graphics/src/test"))
+    (propagated-inputs
+     `(("java-openjfx-base" ,java-openjfx-base)
+       ("java-swt" ,java-swt)))
+    (description "OpenJFX is a client application platform for desktop,
+mobile and embedded systems built on Java.  Its goal is to produce a
+modern, efficient, and fully featured toolkit for developing rich client
+applications.  This package contains graphics-related classes for the
+OpenJFX distribution.")))
+
+(define-public java-openjfx-media
+  (package (inherit java-openjfx-build)
+    (name "java-openjfx-media")
+    (propagated-inputs
+     `(("java-openjxf-graphics" ,java-openjfx-graphics)))
+    (arguments
+     `(#:jar-name "java-openjfx-media.jar"
+       #:source-dir "modules/media/src/main/java"
+       #:tests? #f)); no tests
+    (description "OpenJFX is a client application platform for desktop,
+mobile and embedded systems built on Java.  Its goal is to produce a
+modern, efficient, and fully featured toolkit for developing rich client
+applications.  This package contains media-related classes for the
+OpenJFX distribution.")))
+
 (define-public javacc-4
   (package
     (name "javacc")
@@ -2278,7 +2656,7 @@ new Date();"))
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/javacc/javacc.git")
+                    (url "https://github.com/javacc/javacc")
                     (commit "release_41")))
               (file-name (string-append "javacc-" version "-checkout"))
               (sha256
@@ -2319,6 +2697,35 @@ as tree building (via a tool called JJTree included with JavaCC), actions,
 debugging, etc.")
     (license license:bsd-3)))
 
+;; javacc-3, as javacc-4 is not properly bootstrapped: is contains a javacc.jar
+;; in the bootstrap/ directory.
+(define-public javacc-3
+  (package
+    (inherit javacc-4)
+    (version "3.2")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/javacc/javacc.git")
+                    (commit "release_32")))
+              (file-name (string-append "javacc-" version "-checkout"))
+              (sha256
+               (base32
+                "1pyf1xyh8gk83nxqn2v2mdws32l68ydznha41cxa4l2kkbq1v1g3"))))
+    (arguments
+     `(#:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (add-before 'build 'set-java-version
+           (lambda _
+             (for-each
+               (lambda (file)
+                 (substitute* file
+                   (("debug=") "source=\"1.4\" debug=")))
+               (find-files "." "build.xml"))
+             #t))
+         (replace 'install (install-jars "bin/lib")))))))
+
 (define-public javacc
   (package
     (inherit javacc-4)
@@ -2327,7 +2734,7 @@ debugging, etc.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/javacc/javacc.git")
+             (url "https://github.com/javacc/javacc")
              (commit version)))
        (file-name (git-file-name "javacc" version))
        (sha256
@@ -2345,7 +2752,27 @@ debugging, etc.")
        #:test-target "test"
        #:phases
        (modify-phases %standard-phases
-         (replace 'install (install-jars "target")))))
+         (replace 'install (install-jars "target"))
+         (add-after 'install 'install-bin
+           (lambda* (#:key outputs inputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (dir (string-append out "/share/java"))
+                    (bin (string-append out "/bin"))
+                    (javacc (string-append bin "/javacc")))
+               (mkdir-p bin)
+               (with-output-to-file javacc
+                 (lambda _
+                   (display
+                     (string-append "#!/bin/sh\n"
+                                    (assoc-ref inputs "jdk") "/bin/java"
+                                    " -cp " dir "/javacc.jar" " `basename $0`" " $*"))))
+               (chmod javacc #o755)
+               ;; symlink to different names to affect the first argument and
+               ;; change the behavior of the jar file.
+               (symlink javacc (string-append bin "/jjdoc"))
+               (symlink javacc (string-append bin "/jjtree"))
+               #t))))))
+
     (native-inputs
      `(("javacc" ,javacc-4)))))
 
@@ -2417,6 +2844,45 @@ Main-Class: org.eclipse.jdt.internal.compiler.batch.Main\n"
     (native-inputs
      `(("unzip" ,unzip)))))
 
+(define-public java-ecj
+  (package (inherit java-ecj-3)
+           (version "4.6.3")
+           (source
+            (origin
+              (method url-fetch)
+              (uri (string-append
+                    "http://archive.eclipse.org/eclipse/downloads/drops4/R-"
+                    version
+                    "-201703010400/ecjsrc-"
+                    version
+                    ".jar"))
+              (sha256
+               (base32
+                "11cfgsdgznja1pvlxkjbqykxd7pcd5655vkm7s44xmahmap15gpl"))))
+           (arguments
+            `(#:tests? #f ; none included
+              #:build-target "build"
+              #:phases
+              (modify-phases %standard-phases
+                (add-after 'unpack 'fix-build.xml
+                  (lambda _
+                    (substitute* "src/build.xml"
+                      (("^.*MANIFEST.*$")
+                       ""))
+                    #t))
+                (add-after 'unpack 'fix-prop
+                  (lambda _
+                    (substitute* "src/build.xml"
+                      (("^.*properties.*$")
+                       "<include name=\"**/*.properties\"/>
+ <include name=\"**/*.props\"/>"))
+                    #t))
+                (add-before 'build 'chdir
+                  (lambda _
+                    (chdir "src")
+                    #t))
+                (replace 'install (install-jars ".")))))))
+
 (define-public java-cisd-base
   (let ((revision 38938)
         (base-version "14.12.0"))
@@ -2467,9 +2933,11 @@ Main-Class: org.eclipse.jdt.internal.compiler.batch.Main\n"
                                  ,(package-version java-commons-lang) ".jar"))
                  (("\\$\\{lib\\}/commons-io/commons-io.jar")
                   (string-append (assoc-ref inputs "java-commons-io")
-                                 "/share/java/commons-io-"
+                                 "/lib/m2/commons-io/commons-io/"
                                  ,(package-version java-commons-io)
-                                 "-SNAPSHOT.jar"))
+                                 "/commons-io-"
+                                 ,(package-version java-commons-io)
+                                 ".jar"))
                  ;; Remove dependency on svn
                  (("<build-info.*") "")
                  (("\\$\\{revision.number\\}")
@@ -2760,18 +3228,19 @@ libraries from the SIS division at ETH Zurich like jHDF5.")
                                  ,(package-version java-commons-lang) ".jar"))
                  (("\\$\\{lib\\}/commons-io/commons-io.jar")
                   (string-append (assoc-ref inputs "java-commons-io")
-                                 "/share/java/commons-io-"
+                                 "/lib/m2/commons-io/commons-io/"
                                  ,(package-version java-commons-io)
-                                 "-SNAPSHOT.jar"))
+                                 "/commons-io-"
+                                 ,(package-version java-commons-io)
+                                 ".jar"))
                  (("\\$\\{lib\\}/testng/testng-jdk15.jar")
                   (string-append (assoc-ref inputs "java-testng")
                                  "/share/java/java-testng.jar"))
                  (("\\$\\{lib\\}/junit4/junit.jar")
-                  (string-append (assoc-ref inputs "java-junit")
-                                 "/share/java/junit.jar"))
+                  (car (find-files (assoc-ref inputs "java-junit") "jar$")))
                  (("\\$\\{lib\\}/jmock/hamcrest/hamcrest-core.jar")
-                  (string-append (assoc-ref inputs "java-hamcrest-core")
-                                 "/share/java/hamcrest-core.jar")))
+                  (car (find-files (assoc-ref inputs "java-hamcrest-core")
+                                   "jar$"))))
                ;; Remove dependency on ch.rinn.restrictions
                (with-directory-excursion "source/java/ch/systemsx/cisd/hdf5/"
                  (substitute* '("BitSetConversionUtils.java"
@@ -2891,20 +3360,39 @@ API and version 2.1 of the Java ServerPages API.")
   (package
     (name "java-javaee-servletapi")
     (version "3.1.0")
-    (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/javaee/servlet-spec/"
-                                  "archive/" version ".zip"))
-              (file-name (string-append name "-" version ".zip"))
-              (sha256
-               (base32
-                "0m6p13vgfb1ihich1jp5j6fqlhkjsrkn32c86bsbkryp38ipwg8w"))))
+      (source (origin
+                (method git-fetch)
+                (uri (git-reference
+                      (url "https://github.com/javaee/servlet-spec")
+                      (commit version)))
+                (file-name (git-file-name name version))
+                (sha256
+                 (base32
+                  "0s03lj8w5an70lkqbjycgfrfk0kc07vbfav91jzk87gh3awf9ksl"))))
     (build-system ant-build-system)
     (arguments
      `(#:jar-name "javax-servletapi.jar"
        ;; no tests
        #:tests? #f
-       #:source-dir "src/main/java"))
+       #:source-dir "src/main/java"
+       #:phases
+       (modify-phases %standard-phases
+         (add-before 'build 'copy-resources
+           (lambda _
+             (mkdir-p "build/classes/javax/servlet/http")
+             (let ((from-prefix "src/main/java/javax/servlet/")
+                   (to-prefix "build/classes/javax/servlet/"))
+               (for-each (lambda (f)
+                           (copy-file (string-append from-prefix f)
+                                      (string-append to-prefix f)))
+                         (list "LocalStrings_ja.properties"
+                               "LocalStrings.properties"
+                               "LocalStrings_fr.properties"
+                               "http/LocalStrings_es.properties"
+                               "http/LocalStrings_ja.properties"
+                               "http/LocalStrings.properties"
+                               "http/LocalStrings_fr.properties")))
+               #t)))))
     (native-inputs
      `(("unzip" ,unzip)))
     (home-page "https://javaee.github.io/servlet-spec/")
@@ -3004,34 +3492,6 @@ is implemented.")
               license:mpl2.0
               license:lgpl2.1+))))
 
-(define-public java-xz
-  (package
-   (name "java-xz")
-   (version "1.6")
-   (source (origin
-     (method url-fetch)
-     (uri (string-append "http://tukaani.org/xz/xz-java-" version ".zip"))
-     (sha256
-      (base32
-       "1z3p1ri1gvl07inxn0agx44ck8n7wrzfmvkz8nbq3njn8r9wba8x"))))
-   (build-system ant-build-system)
-   (arguments
-    `(#:tests? #f ; There are no tests to run.
-      #:jar-name ,(string-append "xz-" version  ".jar")
-      #:phases
-      (modify-phases %standard-phases
-        ;; The unpack phase enters the "maven" directory by accident.
-        (add-after 'unpack 'chdir
-          (lambda _ (chdir "..") #t)))))
-   (native-inputs
-    `(("unzip" ,unzip)))
-   (home-page "https://tukaani.org/xz/java.html")
-   (synopsis "Implementation of XZ data compression in pure Java")
-   (description "This library aims to be a complete implementation of XZ data
-compression in pure Java.  Single-threaded streamed compression and
-decompression and random access decompression have been fully implemented.")
-   (license license:public-domain)))
-
 ;; java-hamcrest-core uses qdox version 1.12.  We package this version instead
 ;; of the latest release.
 (define-public java-qdox-1.12
@@ -3040,7 +3500,7 @@ decompression and random access decompression have been fully implemented.")
     (version "1.12.1")
     (source (origin
               (method url-fetch)
-              (uri (string-append "http://central.maven.org/maven2/"
+              (uri (string-append "https://repo1.maven.org/maven2/"
                                   "com/thoughtworks/qdox/qdox/" version
                                   "/qdox-" version "-sources.jar"))
               (sha256
@@ -3064,7 +3524,7 @@ decompression and random access decompression have been fully implemented.")
            (lambda _
              (delete-file-recursively "src/com/thoughtworks/qdox/junit")
              #t)))))
-    (home-page "http://qdox.codehaus.org/")
+    (home-page "https://github.com/codehaus/qdox")
     (synopsis "Parse definitions from Java source files")
     (description
      "QDox is a high speed, small footprint parser for extracting
@@ -3072,6 +3532,73 @@ class/interface/method definitions from source files complete with JavaDoc
 @code{@@tags}.  It is designed to be used by active code generators or
 documentation tools.")
     (license license:asl2.0)))
+
+(define-public java-qdox
+  (package
+    (name "java-qdox")
+    ; Newer version exists, but this version is required by java-plexus-component-metadata
+    (version "2.0-M2")
+    (source (origin
+              (method url-fetch)
+              ;; 2.0-M4, -M5 at https://github.com/paul-hammant/qdox
+              ;; Older releases at https://github.com/codehaus/qdox/
+              ;; Note: The release at maven is pre-generated. The release at
+              ;; github requires jflex.
+              (uri (string-append "https://repo1.maven.org/maven2/"
+                                  "com/thoughtworks/qdox/qdox/" version
+                                  "/qdox-" version "-sources.jar"))
+              (sha256
+               (base32
+                "10xxrcaicq6axszcr2jpygisa4ch4sinyx5q7kqqxv4lknrmxp5x"))))
+    (build-system ant-build-system)
+    (arguments
+     `(#:jar-name "qdox.jar"
+       #:tests? #f; no tests
+       #:modules
+       ((guix build ant-build-system)
+        (guix build java-utils)
+        (guix build utils)
+        (sxml simple))
+       #:phases
+       (modify-phases %standard-phases
+         (add-before 'install 'create-pom
+           (lambda _
+             (with-output-to-file "pom.xml"
+               (lambda _
+                 (sxml->xml
+                   `((project
+                       (modelVersion "4.0.0")
+                       (name "QDox")
+                       (groupId "com.thoughtworks.qdox")
+                       (artifactId "qdox")
+                       (version ,,version))))))
+             #t))
+         (replace 'install
+           (install-from-pom "pom.xml")))))
+    (home-page "https://github.com/codehaus/qdox")
+    (synopsis "Parse definitions from Java source files")
+    (description "QDox is a high speed, small footprint parser for extracting
+class/interface/method definitions from source files complete with JavaDoc
+@code{@@tags}.  It is designed to be used by active code generators or
+documentation tools.")
+    (license license:asl2.0)))
+
+(define-public java-qdox-2-M9
+  (package
+    (inherit java-qdox)
+    (version "2.0-M9"); required by plexus-java
+    (source (origin
+              (method url-fetch)
+              ;; 2.0-M4, -M5 at https://github.com/paul-hammant/qdox
+              ;; Older releases at https://github.com/codehaus/qdox/
+              ;; Note: The release at maven is pre-generated. The release at
+              ;; github requires jflex.
+              (uri (string-append "https://repo1.maven.org/maven2/"
+                                  "com/thoughtworks/qdox/qdox/" version
+                                  "/qdox-" version "-sources.jar"))
+              (sha256
+               (base32
+                "1s2jnmx2dkwnaha12lcj26aynywgwa8sslc47z82wx8xai13y4fg"))))))
 
 (define-public java-jarjar
   (package
@@ -3089,10 +3616,10 @@ documentation tools.")
               (snippet
                '(begin
                   ;; Delete bundled thirds-party jar archives.
-                  ;; TODO: unbundle maven-plugin-api.
-                  (delete-file "lib/asm-4.0.jar")
-                  (delete-file "lib/asm-commons-4.0.jar")
-                  (delete-file "lib/junit-4.8.1.jar")
+                  (delete-file-recursively "lib")
+                  (delete-file "src/test/enumtest.jar")
+                  ;; the CLASSPATH needs this directory, create an empty one
+                  (mkdir-p "lib")
                   #t))))
     (build-system ant-build-system)
     (arguments
@@ -3107,11 +3634,11 @@ documentation tools.")
                (("<path id=\"path.build\">")
                 (string-append "<path id=\"path.build\"><fileset dir=\""
                                (assoc-ref inputs "java-asm-bootstrap")
-                               "/share/java\" includes=\"**/*.jar\"/>"))
+                               "/lib/m2\" includes=\"**/*.jar\"/>"))
                (("<zipfileset src=\"lib/asm-4.0.jar\"/>") "")
                (("lib/asm-commons-4.0.jar")
-                (string-append (assoc-ref inputs "java-asm-bootstrap")
-                               "/share/java/asm-6.0.jar"))
+                (car (find-files (assoc-ref inputs "java-asm-bootstrap")
+                                 "asm-6.0.jar")))
                (("<include name=\"org/objectweb/asm/commons/Remap\\*\\.class\"/>")
                 (string-append "<include name=\"org/objectweb/asm/"
                                "commons/Remap*.class\"/>"
@@ -3120,6 +3647,13 @@ documentation tools.")
                                "signature/*.class\"/>"
                                "<include name=\"org/objectweb/asm/"
                                "commons/SignatureRemapper.class\"/>")))
+             #t))
+         (add-before 'build 'remove-maven-dependency
+           (lambda _
+             ;; We do not need to build jarjar as a maven plugin just yet, so
+             ;; remove this file.  Maven requires jarjar (but not that plugin),
+             ;; so removing it improves the bootstrap.
+             (delete-file "src/main/com/tonicsystems/jarjar/JarJarMojo.java")
              #t))
          (replace 'install
            (lambda* (#:key outputs #:allow-other-keys)
@@ -3145,12 +3679,14 @@ an Ant task that extends the built-in @code{jar} task.")
     (name "java-hamcrest-core")
     (version "1.3")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/hamcrest/JavaHamcrest/"
-                                  "archive/hamcrest-java-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/hamcrest/JavaHamcrest/")
+                     (commit (string-append "hamcrest-java-" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "11g0s105fmwzijbv08lx8jlb521yravjmxnpgdx08fvg1kjivhva"))
+                "16fxxkrd31ahqvcaby30jgh3z1i0zxh51m24hxgz0z2agxj6bc63"))
               (modules '((guix build utils)))
               (snippet
                '(begin
@@ -3161,6 +3697,7 @@ an Ant task that extends the built-in @code{jar} task.")
     (arguments
      `(#:tests? #f ; Tests require junit
        #:modules ((guix build ant-build-system)
+                  (guix build java-utils)
                   (guix build utils)
                   (srfi srfi-1))
        #:make-flags (list (string-append "-Dversion=" ,version))
@@ -3214,28 +3751,18 @@ private Method[] allMethods = getSortedMethods();")))
            (lambda _
              (mkdir-p "lib/integration")
              #t))
+         (add-before 'build 'create-pom
+           (lambda _
+             (substitute* "pom/hamcrest-core.pom"
+               (("@VERSION@") ,version))
+             #t))
          (replace 'install
-           (lambda* (#:key outputs #:allow-other-keys)
-             (let* ((target (string-append (assoc-ref outputs "out")
-                                           "/share/java/"))
-                    (version-suffix ,(string-append "-" version ".jar"))
-                    (install-without-version-suffix
-                     (lambda (jar)
-                       (copy-file jar
-                                  (string-append target
-                                                 (basename jar version-suffix)
-                                                 ".jar")))))
-               (mkdir-p target)
-               (for-each
-                install-without-version-suffix
-                (find-files "build"
-                            (lambda (name _)
-                              (and (string-suffix? ".jar" name)
-                                   (not (string-suffix? "-sources.jar" name)))))))
-             #t)))))
+           (install-from-pom "pom/hamcrest-core.pom")))))
     (native-inputs
      `(("java-qdox-1.12" ,java-qdox-1.12)
        ("java-jarjar" ,java-jarjar)))
+    (propagated-inputs
+     `(("java-hamcrest-parent-pom" ,java-hamcrest-parent-pom)))
     (home-page "http://hamcrest.org/")
     (synopsis "Library of matchers for building test expressions")
     (description
@@ -3245,18 +3772,65 @@ declaratively, to be used in other frameworks.  Typical scenarios include
 testing frameworks, mocking libraries and UI validation rules.")
     (license license:bsd-2)))
 
+(define java-hamcrest-parent-pom
+  (package
+    (inherit java-hamcrest-core)
+    (name "java-hamcrest-parent-pom")
+    (propagated-inputs '())
+    (native-inputs '())
+    (arguments
+     `(#:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (delete 'configure)
+         (replace 'build
+           (lambda _
+             (substitute* "pom/hamcrest-parent.pom"
+               (("@VERSION@") ,(package-version java-hamcrest-core)))
+             #t))
+         (replace 'install
+           (install-pom-file "pom/hamcrest-parent.pom")))))))
+
+(define-public java-hamcrest-library
+  (package
+    (inherit java-hamcrest-core)
+    (name "java-hamcrest-library")
+    (arguments
+     (substitute-keyword-arguments (package-arguments java-hamcrest-core)
+      ((#:build-target _) "library")
+      ((#:phases phases)
+       `(modify-phases ,phases
+          (add-after 'unpack 'patch-classpath-for-integration
+            (lambda* (#:key inputs #:allow-other-keys)
+              (substitute* "build.xml"
+                (("build/hamcrest-core-\\$\\{version\\}\\.jar")
+                 (car (find-files (assoc-ref inputs "java-hamcrest-core")
+                                  "jar$"))))
+              #t))
+          (replace 'create-pom
+            (lambda _
+             (substitute* "pom/hamcrest-library.pom"
+               (("@VERSION@") ,(package-version java-hamcrest-core)))
+              #t))
+          (replace 'install
+            (install-from-pom "pom/hamcrest-library.pom"))))))
+    (propagated-inputs
+     `(("java-hamcrest-core" ,java-hamcrest-core)
+       ("java-hamcrest-parent-pom" ,java-hamcrest-parent-pom)))))
+
 (define-public java-junit
   (package
     (name "java-junit")
     (version "4.12")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/junit-team/junit/"
-                                  "archive/r" version ".tar.gz"))
-              (file-name (string-append name "-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/junit-team/junit/")
+                     (commit (string-append "r" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "090dn5v1vs0b3acyaqc0gjf6p8lmd2h24wfzsbq7sly6b214anws"))
+                "1j8avi91px1z8rjc89cfikwrvfifdmmsarwiyrcnr59ynvpz0v8h"))
               (modules '((guix build utils)))
               (snippet
                '(begin
@@ -3265,11 +3839,24 @@ testing frameworks, mocking libraries and UI validation rules.")
                   #t))))
     (build-system ant-build-system)
     (arguments
-     `(#:tests? #f ; no tests
-       #:jar-name "junit.jar"))
-    (inputs
+     `(#:jar-name "junit.jar"
+       #:source-dir "src/main/java"
+       #:test-dir "src/test"
+       #:test-exclude (list "**/SimpleTest.java" "**/StackTracesTest.java"
+                            "**/RuleChainTest.java" "**/TestWatchmanTest.java")
+       #:phases
+       (modify-phases %standard-phases
+         (add-before 'check 'copy-test-resources
+           (lambda _
+             (copy-recursively "src/test/resources" "build/test-classes")
+             #t))
+         (replace 'install
+           (install-from-pom "pom.xml")))))
+    (propagated-inputs
      `(("java-hamcrest-core" ,java-hamcrest-core)))
-    (home-page "http://junit.org/")
+    (native-inputs
+     `(("java-hamcrest-library" ,java-hamcrest-library)))
+    (home-page "https://junit.org/junit4/")
     (synopsis "Test framework for Java")
     (description
      "JUnit is a simple framework to write repeatable tests for Java projects.
@@ -3277,18 +3864,51 @@ JUnit provides assertions for testing expected results, test fixtures for
 sharing common test data, and test runners for running tests.")
     (license license:epl1.0)))
 
+(define-public java-junitparams
+  (package
+    (name "java-junitparams")
+    (version "1.1.1")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/Pragmatists/JUnitParams")
+                     (commit (string-append "JUnitParams-" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0rb52xdfp99invyjrras3w0bf0a81cz30yd47rkkiyqcqj0y1q9b"))))
+    (build-system ant-build-system)
+    (arguments
+     `(#:jar-name "junitparams.jar"
+       #:source-dir "src/main/java"
+       #:test-dir "src/test"
+       #:test-exclude (list "**/SuperclassTest.java")))
+    (inputs
+     `(("java-junit" ,java-junit)))
+    (native-inputs
+     `(("java-junit" ,java-junit)
+       ("java-hamcrest-core" ,java-hamcrest-core)
+       ("java-assertj" ,java-assertj)))
+    (home-page "https://github.com/Pragmatists/JUnitParams")
+    (synopsis "Parameterised test support for JUnit")
+    (description "The JUnitParams project adds a new runner to JUnit and
+provides much easier and readable parametrised tests for JUnit.")
+    (license license:asl2.0)))
+
 (define-public java-plexus-utils
   (package
     (name "java-plexus-utils")
-    (version "3.2.0")
+    ;; sisu-build-api needs this version, later versions don't work
+    (version "3.2.1")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/codehaus-plexus/"
-                                  "plexus-utils/archive/plexus-utils-"
-                                  version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/codehaus-plexus/plexus-utils")
+                     (commit (string-append "plexus-utils-" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "1ihfigar20lvk4pinii7dq05i173xphhw4iyrk6gjfy04m01j2lz"))))
+                "1w169glixyk94jbczj8jzg897lsab46jihiaa3dhw0p06g35va8b"))))
     (build-system ant-build-system)
     ;; FIXME: The default build.xml does not include a target to install
     ;; javadoc files.
@@ -3318,38 +3938,68 @@ cli/shell/BourneShell.java"
 
                ;; FIXME: The command line tests fail, maybe because they use
                ;; absolute paths.
-               (delete-file "cli/CommandlineTest.java"))
-             #t)))))
+               (delete-file "cli/CommandlineTest.java")
+
+               ;; These tests require openjdk jmh, which is not packaged yet
+               (for-each delete-file (find-files "." "PerfTest.java$")))
+             #t))
+         (add-before 'build 'copy-resources
+           (lambda _
+             (copy-recursively "src/main/resources" "build/classes")
+             #t))
+         (replace 'install (install-from-pom "pom.xml")))))
     (native-inputs
      `(("java-hamcrest-core" ,java-hamcrest-core)
        ("java-junit" ,java-junit)))
-    (home-page "http://codehaus-plexus.github.io/plexus-utils/")
+    (propagated-inputs
+     `(("plexus-parent-pom" ,plexus-parent-pom-5.1)))
+    (home-page "https://codehaus-plexus.github.io/plexus-utils/")
     (synopsis "Common utilities for the Plexus framework")
     (description "This package provides various Java utility classes for the
 Plexus framework to ease working with strings, files, command lines, XML and
 more.")
     (license license:asl2.0)))
 
+(define-public java-plexus-utils-3.3.0
+  (package
+    (inherit java-plexus-utils)
+    (version "3.3.0")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/codehaus-plexus/plexus-utils")
+                     (commit (string-append "plexus-utils-" version))))
+              (file-name (git-file-name "java-plexus-utils" version))
+              (sha256
+               (base32
+                "0d0fq21rzjy0j55kcp8w9k1rbq9rwr0r7cc8239p9jbz54vihp0g"))))))
+
 (define-public java-plexus-interpolation
   (package
     (name "java-plexus-interpolation")
-    (version "1.23")
+    (version "1.26")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/codehaus-plexus/"
-                                  "plexus-interpolation/archive/"
-                                  "plexus-interpolation-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/codehaus-plexus/plexus-interpolation")
+                     (commit (string-append "plexus-interpolation-" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "03377yzlx5q440m6sxxgv6a5qb8fl30zzcgxgc0hxk5qgl2z1jjn"))))
+                "1rahjmhywf6d5m32qzlc9izawyvcd71abfm9k03f13rs2xmfxzlh"))))
     (build-system ant-build-system)
     (arguments
      `(#:jar-name "plexus-interpolation.jar"
-       #:source-dir "src/main"))
+       #:source-dir "src/main"
+       #:phases
+       (modify-phases %standard-phases
+         (replace 'install (install-from-pom "pom.xml")))))
+    (propagated-inputs
+     `(("plexus-parent-pom-5.1" ,plexus-parent-pom-5.1)))
     (native-inputs
      `(("java-junit" ,java-junit)
        ("java-hamcrest-core" ,java-hamcrest-core)))
-    (home-page "http://codehaus-plexus.github.io/plexus-interpolation/")
+    (home-page "https://codehaus-plexus.github.io/plexus-interpolation/")
     (synopsis "Java components for interpolating ${} strings and the like")
     (description "Plexus interpolator is a modular, flexible interpolation
 framework for the expression language style commonly seen in Maven, Plexus,
@@ -3363,23 +4013,29 @@ these two libraries to vary independently of one another.")
 (define-public java-plexus-classworlds
   (package
     (name "java-plexus-classworlds")
-    (version "2.5.2")
+    (version "2.6.0")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/codehaus-plexus/"
-                                  "plexus-classworlds/archive/plexus-classworlds-"
-                                  version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/codehaus-plexus/plexus-classworlds")
+                     (commit (string-append "plexus-classworlds-" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "1qm4p0rl8d82lzhsiwnviw11jnq44s0gflg78zq152xyyr2xmh8g"))))
+                "034k2hgvj1saalwbnzrbg4n0zgzwcpz1lhlb8q4kgglsp9pmm03s"))))
     (build-system ant-build-system)
     (arguments
      `(#:jar-name "plexus-classworlds.jar"
        #:source-dir "src/main"
-       #:tests? #f));; FIXME: we need to generate some resources as in pom.xml
+       #:tests? #f;; FIXME: we need to generate some resources as in pom.xml
+       #:phases
+       (modify-phases %standard-phases
+         (replace 'install (install-from-pom "pom.xml")))))
+    (propagated-inputs
+     `(("plexus-parent-pom-5.1" ,plexus-parent-pom-5.1)))
     (native-inputs
      `(("java-junit" ,java-junit)))
-    (home-page "http://codehaus-plexus.github.io/plexus-classworlds/")
+    (home-page "https://codehaus-plexus.github.io/plexus-classworlds/")
     (synopsis "Java class loader framework")
     (description "Plexus classworlds replaces the native @code{ClassLoader}
 mechanism of Java.  It is especially useful for dynamic loading of application
@@ -3391,33 +4047,44 @@ components.")
     (name "java-plexus-container-default-bootstrap")
     (version "1.7.1")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/codehaus-plexus/plexus-containers"
-                                  "/archive/plexus-containers-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/codehaus-plexus/plexus-containers")
+                     (commit (string-append "plexus-containers-" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "0xw5g30qf4a83608rw9v2hv8pfsz7d69dkdhk6r0wia4q78hh1pc"))))
+                "1316hrp5vqfv0aw7miq2fp0wwy833h66h502h29vnh5sxj27x228"))))
     (build-system ant-build-system)
     (arguments
      `(#:jar-name "container-default.jar"
        #:source-dir "plexus-container-default/src/main/java"
        #:test-dir "plexus-container-default/src/test"
-       #:jdk ,icedtea-8
        #:tests? #f; requires plexus-archiver, which depends on this package
        #:phases
        (modify-phases %standard-phases
+         (add-before 'build 'fix-google-collections
+           (lambda _
+             ;; Google collections are now replaced with guava
+             (substitute* "plexus-container-default/pom.xml"
+               (("google-collections") "guava")
+               (("com.google.collections") "com.google.guava"))
+             #t))
          (add-before 'build 'copy-resources
            (lambda _
              (copy-recursively
                "plexus-container-default/src/main/resources/"
                "build/classes")
-             #t)))))
-    (inputs
-     `(("worldclass" ,java-plexus-classworlds)
-       ("xbean" ,java-geronimo-xbean-reflect)
-       ("utils" ,java-plexus-utils)
-       ("junit" ,java-junit)
-       ("guava" ,java-guava)))
+             #t))
+         (replace 'install
+           (install-from-pom "plexus-container-default/pom.xml")))))
+    (propagated-inputs
+     `(("java-plexus-worldclass" ,java-plexus-classworlds)
+       ("java-geronimo-xbean-reflect" ,java-geronimo-xbean-reflect)
+       ("java-plexus-utils" ,java-plexus-utils)
+       ("java-junit" ,java-junit)
+       ("java-guava" ,java-guava)
+       ("java-plexus-containers-parent-pom" ,java-plexus-containers-parent-pom)))
     (home-page "https://github.com/codehaus-plexus/plexus-containers")
     (synopsis "Inversion-of-control container")
     (description "Plexus-default-container is Plexus' inversion-of-control
@@ -3425,35 +4092,55 @@ components.")
 implementation.")
     (license license:asl2.0)))
 
+(define java-plexus-containers-parent-pom
+  (package
+    (inherit java-plexus-container-default-bootstrap)
+    (name "java-plexus-containers-parent-pom")
+    (arguments
+     `(#:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (delete 'configure)
+         (delete 'build)
+         (replace 'install
+           (install-pom-file "pom.xml")))))
+    (propagated-inputs
+     `(("plexus-parent-pom" ,plexus-parent-pom-4.0)))))
+
 (define-public java-plexus-io
   (package
     (name "java-plexus-io")
-    (version "3.0.0")
+    (version "3.2.0")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/codehaus-plexus/plexus-io"
-                                  "/archive/plexus-io-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/codehaus-plexus/plexus-io")
+                     (commit (string-append "plexus-io-" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "0f2j41kihaymxkpbm55smpxjja235vad8cgz94frfy3ppcp021dw"))))
+                "1r3wqfpbxq8vp4p914i8p88r0994rmcjw02hz14n11cfb6gsyvlr"))))
     (build-system ant-build-system)
     (arguments
      `(#:jar-name "plexus-io.jar"
        #:source-dir "src/main/java"
        #:test-dir "src/test"
-       #:jdk ,icedtea-8
        #:phases
        (modify-phases %standard-phases
          (add-before 'build 'copy-resources
            (lambda _
-             (mkdir-p "build/classes/META-INF/plexus")
-             (copy-file "src/main/resources/META-INF/plexus/components.xml"
-                        "build/classes/META-INF/plexus/components.xml")
-             #t)))))
+             (mkdir-p "build/classes")
+             (copy-recursively "src/main/resources" "build/classes")
+             (mkdir-p "build/test-classes")
+             (copy-recursively "src/test/resources" "build/test-classes")
+             #t))
+         (replace 'install (install-from-pom "pom.xml")))))
+    (propagated-inputs
+     `(("java-plexus-utils" ,java-plexus-utils-3.3.0)
+       ("java-commons-io" ,java-commons-io)
+       ("plexus-parent-pom" ,plexus-parent-pom-5.1)))
     (inputs
-     `(("utils" ,java-plexus-utils)
-       ("commons-io" ,java-commons-io)
-       ("java-jsr305" ,java-jsr305)))
+     `(("java-jsr305" ,java-jsr305)))
     (native-inputs
      `(("junit" ,java-junit)
        ("hamcrest" ,java-hamcrest-core)
@@ -3471,19 +4158,18 @@ reusing it in maven.")
 (define-public java-plexus-archiver
   (package
     (name "java-plexus-archiver")
-    (version "4.1.0")
+    (version "4.2.2")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://github.com/codehaus-plexus/plexus-archiver"
                                   "/archive/plexus-archiver-" version ".tar.gz"))
               (sha256
                (base32
-                "0ry6i92gli0mvdmfih2vgs0lkf9yvx18h2ajxim66yg6yipnp0hg"))))
+                "144n971r3lfrx3l12nf2scm80x4xdvgbkk4bjpa4vcvvdrll6qys"))))
     (build-system ant-build-system)
     (arguments
      `(#:jar-name "plexus-archiver.jar"
        #:source-dir "src/main/java"
-       #:jdk ,icedtea-8
        #:test-dir "src/test"
        #:test-exclude (list "**/Abstract*.java" "**/Base*.java")
        #:phases
@@ -3501,25 +4187,28 @@ reusing it in maven.")
              #t))
          (add-before 'build 'copy-resources
            (lambda _
-             (mkdir-p "build/classes/META-INF/plexus")
-             (copy-file "src/main/resources/META-INF/plexus/components.xml"
-                        "build/classes/META-INF/plexus/components.xml")
-             #t)))))
+             (mkdir-p "build/classes")
+             (copy-recursively "src/main/resources" "build/classes")
+             (mkdir-p "build/test-classes")
+             (copy-recursively "src/test/resources" "build/test-classes")
+             #t))
+         (replace 'install (install-from-pom "pom.xml")))))
+    (propagated-inputs
+     `(("java-plexus-utils" ,java-plexus-utils-3.3.0)
+       ("java-plexus-io" ,java-plexus-io)
+       ("java-iq80-snappy" ,java-iq80-snappy)
+       ("java-commons-compress" ,java-commons-compress)
+       ("plexus-parent-pom" ,plexus-parent-pom-6.1)))
     (inputs
-     `(("utils" ,java-plexus-utils)
-       ("commons-io" ,java-commons-io)
-       ("snappy" ,java-iq80-snappy)
-       ("io" ,java-plexus-io)
-       ("compress" ,java-commons-compress)
-       ("container-default" ,java-plexus-container-default-bootstrap)
-       ("snappy" ,java-snappy)
-       ("java-jsr305" ,java-jsr305)))
+     `(("java-jsr305" ,java-jsr305)
+       ("java-plexus-container-default"
+        ,java-plexus-container-default-bootstrap)))
     (native-inputs
      `(("java-hamcrest-core" ,java-hamcrest-core)
        ("junit" ,java-junit)
        ("classworld" ,java-plexus-classworlds)
        ("xbean" ,java-geronimo-xbean-reflect)
-       ("xz" ,java-tukaani-xz)
+       ("xz" ,java-xz)
        ("guava" ,java-guava)))
     (home-page "https://github.com/codehaus-plexus/plexus-archiver")
     (synopsis "Archiver component of the Plexus project")
@@ -3542,9 +4231,15 @@ archives (jar).")
                             ;; Failures
                             "**/ComponentRealmCompositionTest.java"
                             "**/PlexusContainerTest.java")
-       #:jdk ,icedtea-8
        #:phases
        (modify-phases %standard-phases
+         (add-before 'build 'fix-google-collections
+           (lambda _
+             ;; Google collections are now replaced with guava
+             (substitute* "plexus-container-default/pom.xml"
+               (("google-collections") "guava")
+               (("com.google.collections") "com.google.guava"))
+             #t))
          (add-before 'build 'copy-resources
            (lambda _
              (copy-recursively
@@ -3559,7 +4254,9 @@ archives (jar).")
                    dir "/plexus/component/composition/"
                    "ComponentRealmCompositionTest.java")
                  (("src/test") "plexus-container-default/src/test"))
-               #t))))))
+               #t)))
+         (replace 'install
+           (install-from-pom "plexus-container-default/pom.xml")))))
     (inputs
      `(("worldclass" ,java-plexus-classworlds)
        ("xbean" ,java-geronimo-xbean-reflect)
@@ -3577,29 +4274,81 @@ archives (jar).")
     (arguments
      `(#:jar-name "plexus-component-annotations.jar"
        #:source-dir "plexus-component-annotations/src/main/java"
-       #:tests? #f)); no tests
+       #:tests? #f; no tests
+       #:phases
+       (modify-phases %standard-phases
+         (replace 'install
+           (install-from-pom "plexus-component-annotations/pom.xml")))))
+    (propagated-inputs
+     `(("java-plexus-containers-parent-pom" ,java-plexus-containers-parent-pom)))
     (inputs '())
     (native-inputs '())
     (synopsis "Plexus descriptors generator")
     (description "This package is a Maven plugin to generate Plexus descriptors
 from source tags and class annotations.")))
 
+(define-public java-plexus-component-metadata
+  (package
+    (inherit java-plexus-container-default)
+    (name "java-plexus-component-metadata")
+    (arguments
+     `(#:jar-name "plexus-component-metadata.jar"
+       #:source-dir "src/main/java"
+       #:test-dir "src/test"
+       #:jdk ,icedtea-8
+       #:phases
+       (modify-phases %standard-phases
+         (add-before 'configure 'chdir
+           (lambda _
+             (chdir "plexus-component-metadata")
+             #t))
+         (add-before 'build 'copy-resources
+           (lambda _
+             (copy-recursively "src/main/resources"
+                               "build/classes/")
+             #t)))))
+    (propagated-inputs
+     `(("java-plexus-container-default" ,java-plexus-container-default)
+       ("java-plexu-component-annotations" ,java-plexus-component-annotations)
+       ("java-plexus-utils" ,java-plexus-utils)
+       ("java-plexus-cli" ,java-plexus-cli)
+       ("java-plexus-classworlds" ,java-plexus-classworlds)
+       ("maven-plugin-api" ,maven-plugin-api)
+       ("maven-plugin-annotations" ,maven-plugin-annotations)
+       ("maven-core-bootstrap" ,maven-core-bootstrap)
+       ("maven-model" ,maven-model)
+       ("java-commons-cli" ,java-commons-cli)
+       ("java-qdox" ,java-qdox)
+       ("java-jdom2" ,java-jdom2)
+       ("java-asm" ,java-asm)))
+    (native-inputs
+     `(("java-junit" ,java-junit)
+       ("java-guava" ,java-guava)
+       ("java-geronimo-xbean-reflect" ,java-geronimo-xbean-reflect)))
+    (synopsis "Inversion-of-control container for Maven")
+    (description "The Plexus project provides a full software stack for creating
+and executing software projects.  Based on the Plexus container, the
+applications can utilise component-oriented programming to build modular,
+reusable components that can easily be assembled and reused.  This package
+provides the Maven plugin generating the component metadata.")))
+
 (define-public java-plexus-cipher
   (package
     (name "java-plexus-cipher")
     (version "1.7")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/codehaus-plexus/plexus-cipher"
-                                  "/archive/plexus-cipher-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/codehaus-plexus/plexus-cipher")
+                     (commit (string-append "plexus-cipher-" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "1j3r8xzlxlk340snkjp6lk2ilkxlkn8qavsfiq01f43xmvv8ymk3"))))
+                "0m638nzlxbmnbcj5cwdpgs326ab584yv0k803zlx37r6iqwvf6b0"))))
     (build-system ant-build-system)
     (arguments
      `(#:jar-name "plexus-cipher.jar"
        #:source-dir "src/main/java"
-       #:jdk ,icedtea-8
        #:tests? #f; FIXME: requires sisu-inject-bean
        #:phases
        (modify-phases %standard-phases
@@ -3610,14 +4359,81 @@ from source tags and class annotations.")))
              (with-output-to-file "build/classes/META-INF/sisu/javax.inject.Named"
                (lambda _
                  (display "org.sonatype.plexus.components.cipher.DefaultPlexusCipher\n")))
-             #t)))))
+             #t))
+         (add-before 'install 'fix-test-dependency
+           (lambda _
+             ;; sisu-inject-bean is only used for tests, but its scope is "provided".
+             (substitute* "pom.xml"
+               (("provided") "test"))
+             #t))
+         (replace 'install (install-from-pom "pom.xml")))))
     (inputs
      `(("java-cdi-api" ,java-cdi-api)
        ("java-javax-inject" ,java-javax-inject)))
+    (propagated-inputs
+     `(("java-sonatype-spice-parent-pom" ,java-sonatype-spice-parent-pom-15)))
+    (native-inputs
+     `(("java-junit" ,java-junit)))
     (home-page "https://github.com/sonatype/plexus-cipher")
     (synopsis "Encryption/decryption Component")
     (description "Plexus-cipher contains a component to deal with encryption
 and decryption.")
+    (license license:asl2.0)))
+
+(define-public java-plexus-java
+  (package
+    (name "java-plexus-java")
+    (version "0.9.10")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/codehaus-plexus/plexus-languages")
+                     (commit (string-append "plexus-languages-" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0vmvgq5hfxs90yyxgssfpwq78l7vwx1ljwpkk594mrdr8sm668b5"))
+              (modules '((guix build utils)))
+              (snippet
+               `(begin
+                  (for-each delete-file (find-files "." ".*.jar$"))
+                  #t))))
+    (build-system ant-build-system)
+    (arguments
+     `(#:jar-name "plexus-java.java"
+       #:source-dir "plexus-java/src/main/java"
+       #:test-dir "plexus-java/src/test"
+       #:tests? #f; require mockito 2
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'build 'generate-metadata
+           (lambda _
+             (invoke "java" "-cp" (string-append (getenv "CLASSPATH") ":build/classes")
+                     "org.codehaus.plexus.metadata.PlexusMetadataGeneratorCli"
+                     "--source" "plexus-java/src/main/java"
+                     "--output" "build/classes/META-INF/plexus/components.xml"
+                     "--classes" "build/classes"
+                     "--descriptors" "build/classes/META-INF")
+             (invoke "ant" "jar")
+             #t))
+         (add-before 'install 'install-parent
+           (install-pom-file "pom.xml"))
+         (replace 'install
+           (install-from-pom "plexus-java/pom.xml")))))
+    (propagated-inputs
+     `(("java-asm" ,java-asm)
+       ("java-qdox" ,java-qdox-2-M9)
+       ("java-javax-inject" ,java-javax-inject)
+       ("plexus-parent-pom" ,plexus-parent-pom-4.0)))
+    (inputs
+     `(("java-plexus-component-annotations" ,java-plexus-component-annotations)))
+    (native-inputs
+     `(("java-plexus-component-metadata" ,java-plexus-component-metadata)
+       ("java-junit" ,java-junit)))
+    (home-page "https://codehaus-plexus.github.io/plexus-languages/plexus-java")
+    (synopsis "Shared language features for Java")
+    (description "This package contains shared language features of the Java
+language, for the plexus project.")
     (license license:asl2.0)))
 
 (define-public java-plexus-compiler-api
@@ -3625,20 +4441,26 @@ and decryption.")
     (name "java-plexus-compiler-api")
     (version "2.8.4")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/codehaus-plexus/plexus-compiler"
-                                  "/archive/plexus-compiler-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/codehaus-plexus/plexus-compiler")
+                     (commit (string-append "plexus-compiler-" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "09vmxs0807wsd26nbrwwj5l8ycmzazqycj52l7w6wjvkryywi69h"))))
+                "1nq1gnn3s6z1j29gmi1hqbklsmm8b1lmnafb0191914f95mn18gk"))))
     (build-system ant-build-system)
     (arguments
      `(#:jar-name "plexus-compiler-api.jar"
        #:source-dir "plexus-compiler-api/src/main/java"
-       #:jdk ,icedtea-8
-       #:test-dir "plexus-compiler-api/src/test"))
-    (inputs
+       #:test-dir "plexus-compiler-api/src/test"
+       #:phases
+       (modify-phases %standard-phases
+         (replace 'install
+           (install-from-pom "plexus-compiler-api/pom.xml")))))
+    (propagated-inputs
      `(("java-plexus-container-default" ,java-plexus-container-default)
+       ("java-plexus-compiler-pom" ,java-plexus-compiler-pom)
        ("java-plexus-util" ,java-plexus-utils)))
     (native-inputs
      `(("java-junit" ,java-junit)))
@@ -3649,6 +4471,91 @@ compilers.")
     (license (list license:asl2.0
                    license:expat))))
 
+(define java-plexus-compiler-pom
+  (package
+    (inherit java-plexus-compiler-api)
+    (name "java-plexus-compiler-pom")
+    (arguments
+     `(#:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (delete 'configure)
+         (delete 'build)
+         (replace 'install
+           (install-pom-file "pom.xml"))
+         (add-after 'install 'install-compilers
+           (install-pom-file "plexus-compilers/pom.xml")))))
+    (propagated-inputs
+     `(("plexus-components-parent-pom-4.0" ,plexus-components-parent-pom-4.0)))))
+
+(define plexus-components-parent-pom-4.0
+  (package
+    (name "plexus-components-parent-pom")
+    (version "4.0")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/codehaus-plexus/plexus-components")
+                     (commit (string-append "plexus-components-" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "041bm8yv0m2i17mqg8zljib4ykpha7ijls2qfdwvkma4d39lhysi"))))
+    (build-system ant-build-system)
+    (arguments
+     `(#:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (delete 'configure)
+         (delete 'build)
+         (replace 'install
+           (install-pom-file "pom.xml")))))
+    (propagated-inputs
+      `(("plexus-parent-pom-4.0" ,plexus-parent-pom-4.0)))
+    (home-page "https://codehaus-plexus.github.io/plexus-components")
+    (synopsis "Plexus parent pom")
+    (description "This package contains the Plexus components parent POM.")
+    (license license:asl2.0)))
+
+(define-public java-plexus-compiler-manager
+  (package
+    (inherit java-plexus-compiler-api)
+    (name "java-plexus-compiler-manager")
+    (arguments
+     `(#:jar-name "compiler-compiler-manager.java"
+       #:source-dir "plexus-compiler-manager/src/main/java"
+       #:test-dir "plexus-compiler-manager/src/test"
+       #:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'build 'generate-metadata
+           (lambda _
+             (invoke "java" "-cp" (string-append (getenv "CLASSPATH") ":build/classes")
+                     "org.codehaus.plexus.metadata.PlexusMetadataGeneratorCli"
+                     "--source" "plexus-compiler-manager/src/main/java"
+                     "--output" "build/classes/META-INF/plexus/components.xml"
+                     "--classes" "build/classes"
+                     "--descriptors" "build/classes/META-INF")
+             (invoke "ant" "jar")
+             #t))
+         (add-after 'generate-metadata 'rebuild
+           (lambda _
+             (invoke "ant" "jar")
+             #t))
+         (replace 'install
+           (install-from-pom "plexus-compiler-manager/pom.xml")))))
+    (propagated-inputs
+     `(("java-plexus-compiler-api" ,java-plexus-compiler-api)
+       ("java-plexus-compiler-pom" ,java-plexus-compiler-pom)
+       ("java-plexus-container-default" ,java-plexus-container-default)))
+    (native-inputs
+     `(("unzip" ,unzip)
+       ("java-plexus-component-metadata" ,java-plexus-component-metadata)))
+    (synopsis "Compiler management for Plexus Compiler component")
+    (description "Plexus Compiler is a Plexus component to use different
+compilers through a uniform API.  This component chooses the compiler
+implementation to use in a project.")))
+
 (define-public java-plexus-compiler-javac
   (package
     (inherit java-plexus-compiler-api)
@@ -3658,16 +4565,104 @@ compilers.")
        #:source-dir "plexus-compilers/plexus-compiler-javac/src/main/java"
        #:jdk ,icedtea-8
        #:tests? #f; depends on compiler-test -> maven-core -> ... -> this package.
-       #:test-dir "plexus-compilers/plexus-compiler-javac/src/test"))
-    (inputs
+       #:test-dir "plexus-compilers/plexus-compiler-javac/src/test"
+       #:modules ((guix build ant-build-system)
+                  (guix build utils)
+                  (guix build java-utils)
+                  (sxml simple))
+       #:phases
+       (modify-phases %standard-phases
+         ;; We cannot use java-plexus-component-metadata to generate the metadata
+         ;; because it ultimately depends on this package.
+         ;; Create it manually instead
+         (add-before 'build 'create-metadata
+           (lambda _
+             (let* ((dir "build/classes/META-INF/plexus")
+                    (file (string-append dir "/components.xml")))
+               (mkdir-p dir)
+               (with-output-to-file file
+                 (lambda _
+                   (sxml->xml
+                     `(component-set
+                        (components
+                          (component
+                            (role "org.codehaus.plexus.compiler.Compiler")
+                            (role-hint "javac")
+                            (implementation "org.codehaus.plexus.compiler.javac.JavacCompiler")
+                            (isolated-realm "false"))))))))
+             #t))
+         (replace 'install
+           (install-from-pom "plexus-compilers/plexus-compiler-javac/pom.xml")))))
+    (propagated-inputs
      `(("java-plexus-compiler-api" ,java-plexus-compiler-api)
        ("java-plexus-utils" ,java-plexus-utils)
        ("java-plexus-container-default" ,java-plexus-container-default)))
-    (native-inputs
-     `(("java-junit" ,java-junit)))
     (synopsis "Javac Compiler support for Plexus Compiler component")
     (description "This package contains the Javac Compiler support for Plexus
 Compiler component.")))
+
+(define plexus-components-pom-1.1.20
+  (package
+    (name "plexus-components-pom-1.1.20")
+    (version "1.1.20")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/codehaus-plexus/plexus-components")
+                     (commit (string-append "plexus-components-" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "1q254k95m9icyfsvaw8c226midg8v6v436wvivhv7im825mnp5yb"))))
+    (build-system ant-build-system)
+    (arguments
+     `(#:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (delete 'configure)
+         (delete 'build)
+         (replace 'install
+           (install-pom-file "pom.xml")))))
+    (propagated-inputs
+     `(("plexus-parent-pom" ,plexus-parent-pom-3.1)))
+    (home-page "https://github.com/codehaus-plexus/plexus-components")
+    (synopsis "Maven parent pom for plexus packages")
+    (description "This package contains the parent pom for plexus component
+packages.")
+    (license license:asl2.0)))
+
+(define-public java-plexus-digest
+  (package
+    (name "java-plexus-digest")
+    (version "1.2")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/codehaus-plexus/plexus-digest")
+                     (commit "2a52ad1bda8297fa0e287163d2fa37245ec6a430")))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "19w5wxsliz8r42niry68qa665kvjsb8081dazg9vgd3pca72w07x"))))
+    (build-system ant-build-system)
+    (arguments
+     `(#:jar-name "plexus-digest.jar"
+       #:source-dir "src/main/java"
+       #:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (replace 'install
+           (install-from-pom "pom.xml")))))
+    (propagated-inputs
+     `(("java-plexus-utils" ,java-plexus-utils)
+       ("plexus-components-pom-1.1.20" ,plexus-components-pom-1.1.20)))
+    (native-inputs
+     `(("java-junit" ,java-junit)))
+    (home-page "https://github.com/codehaus-plexus/plexus-digest")
+    (synopsis "Hash function utilities for Java")
+    (description "This package is a plexus component that contains hash
+function utilities.")
+    (license license:asl2.0)))
 
 (define-public java-plexus-sec-dispatcher
   (package
@@ -3676,17 +4671,17 @@ Compiler component.")))
     (source (origin
               ;; This project doesn't tag releases or publish tarballs, so we take
               ;; the "prepare release plexus-sec-dispatcher-1.4" git commit.
-              (method url-fetch)
-              (uri (string-append "https://github.com/sonatype/plexus-sec-dispatcher/"
-                                  "archive/7db8f88048.tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/sonatype/plexus-sec-dispatcher/")
+                     (commit "7db8f880486e192a1c5ea9544e01e756c3d49d0f")))
               (sha256
                (base32
-                "1smfrk4n7xbrsxpxcp2j4i0j8q86j73w0w6xg7qz83dp6dagdjgp"))
-              (file-name (string-append name "-" version ".tar.gz"))))
+                "1ng4yliy4cqpjr4fxxjbpwyk1wkch5f8vblm1kvwf328s4gibszs"))
+              (file-name (git-file-name name version))))
     (arguments
      `(#:jar-name "plexus-sec-dispatcher.jar"
        #:source-dir "src/main/java"
-       #:jdk ,icedtea-8
        #:phases
        (modify-phases %standard-phases
          (add-before 'build 'generate-models
@@ -3734,9 +4729,12 @@ Compiler component.")))
          (add-before 'check 'fix-paths
            (lambda _
              (copy-recursively "src/test/resources" "target")
-             #t)))))
-    (inputs
-     `(("java-plexus-cipher" ,java-plexus-cipher)))
+             #t))
+         (replace 'install (install-from-pom "pom.xml")))))
+    (propagated-inputs
+     `(("java-plexus-utils" ,java-plexus-utils)
+       ("java-plexus-cipher" ,java-plexus-cipher)
+       ("java-sonatype-spice-parent-pom" ,java-sonatype-spice-parent-pom-12)))
     (native-inputs
      `(("java-modello-core" ,java-modello-core)
        ;; for modello:
@@ -3797,12 +4795,14 @@ Plexus components.")
     (name "java-sisu-build-api")
     (version "0.0.7")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/sonatype/sisu-build-api/"
-                                  "archive/plexus-build-api-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/sonatype/sisu-build-api")
+                     (commit (string-append "plexus-build-api-" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "1c3rrpma3x634xp2rm2p5iskfhzdyc7qfbhjzr70agrl1jwghgy2"))))
+                "1d5w6c58gkx30d51v7qwv1xrhc0ly76848gihmgshj19yf6yhca0"))))
     (build-system ant-build-system)
     (arguments
      `(#:jar-name "sisu-build-api.jar"
@@ -3836,7 +4836,9 @@ which behaves as if all files were just created.</description>\n
     </component>\n
   </components>\n
 </component-set>\n")))
-             #t)))))
+             #t))
+         (replace 'install
+           (install-from-pom "pom.xml")))))
     (inputs
      `(("java-plexus-utils" ,java-plexus-utils)
        ("java-plexus-container-default" ,java-plexus-container-default)))
@@ -3852,12 +4854,14 @@ project and determining what files need to be rebuilt.")
     (name "java-modello-core")
     (version "1.9.1")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/codehaus-plexus/modello"
-                                  "/archive/modello-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/codehaus-plexus/modello")
+                     (commit (string-append "modello-" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "0l2pvns8pmlrmjm3iknp7gpg3654y1m8qhy55b19sdwdchdcyxfh"))))
+                "1di6ni42aqllpdvkpyfcw70352vr2i8wf6hd5nhd9kmqjb5dj5j4"))))
     (build-system ant-build-system)
     (arguments
      `(#:jar-name "modello-core.jar"
@@ -3880,7 +4884,7 @@ project and determining what files need to be rebuilt.")
                               "modello/core/io/ModelReaderTest.java")
                  (("src/test") "modello-core/src/test")))
              #t)))))
-    (inputs
+    (propagated-inputs
      `(("java-plexus-utils" ,java-plexus-utils)
        ("java-plexus-container-default" ,java-plexus-container-default)
        ("java-sisu-build-api" ,java-sisu-build-api)))
@@ -3889,7 +4893,7 @@ project and determining what files need to be rebuilt.")
        ("java-plexus-classworlds" ,java-plexus-classworlds)
        ("java-geronimo-xbean-reflect" ,java-geronimo-xbean-reflect)
        ("java-guava" ,java-guava)))
-    (home-page "http://codehaus-plexus.github.io/modello/")
+    (home-page "https://codehaus-plexus.github.io/modello/")
     (synopsis "Framework for code generation from a simple model")
     (description "Modello is a framework for code generation from a simple model.
 
@@ -3929,8 +4933,7 @@ XSD and documentation.")
                                "build/classes")
              #t)))))
     (inputs
-     `(("java-modello-core" ,java-modello-core)
-       ,@(package-inputs java-modello-core)))
+     `(("java-modello-core" ,java-modello-core)))
     (synopsis "Modello Java Plugin")
     (description "Modello Java Plugin generates Java objects for the model.")))
 
@@ -3959,10 +4962,9 @@ XSD and documentation.")
                  "java/org/codehaus/modello/plugins/xml/XmlModelloPluginTest.java"
                  (("src/test") "modello-plugins/modello-plugin-xml/src/test")))
              #t)))))
-    (inputs
+    (propagated-inputs
      `(("java-modello-core" ,java-modello-core)
-       ("java-modello-plugins-java" ,java-modello-plugins-java)
-       ,@(package-inputs java-modello-core)))
+       ("java-modello-plugins-java" ,java-modello-plugins-java)))
     (synopsis "Modello XML Plugin")
     (description "Modello XML Plugin contains shared code for every plugins
 working on XML representation of the model.")))
@@ -4005,11 +5007,10 @@ every feature for every plugin.")))
              (copy-recursively "modello-plugins/modello-plugin-xpp3/src/main/resources"
                                "build/classes")
              #t)))))
-    (inputs
+    (propagated-inputs
      `(("java-modello-core" ,java-modello-core)
        ("java-modello-plugins-java" ,java-modello-plugins-java)
-       ("java-modello-plugins-xml" ,java-modello-plugins-xml)
-       ,@(package-inputs java-modello-core)))
+       ("java-modello-plugins-xml" ,java-modello-plugins-xml)))
     (native-inputs
      `(("java-xmlunit" ,java-xmlunit)
        ("java-modello-test" ,java-modello-test)
@@ -4024,15 +5025,12 @@ on the XPP3 API (XML Pull Parser).")))
     (version "6.0")
     (source (origin
               (method url-fetch)
-              (uri (string-append "http://download.forge.ow2.org/asm/"
+              (uri (string-append "https://download.forge.ow2.org/asm/"
                                   "asm-" version ".tar.gz"))
               (sha256
                (base32
                 "115l5pqblirdkmzi32dxx7gbcm4jy0s14y5wircr6h8jdr9aix00"))))
     (build-system ant-build-system)
-    (propagated-inputs
-     `(("java-aqute-bndlib" ,java-aqute-bndlib)
-       ("java-aqute-libg" ,java-aqute-libg)))
     (arguments
      `(#:build-target "compile"
        ;; The tests require an old version of Janino, which no longer compiles
@@ -4049,6 +5047,12 @@ on the XPP3 API (XML Pull Parser).")))
         "-Dbiz.aQute.bnd.path=dummy-path")
        #:phases
        (modify-phases %standard-phases
+         (add-before 'build 'remove-bnd-dependency
+           (lambda _
+             ;; This file is the only one to require bnd, and is not needed
+             ;; because we don't build a bundle.
+             (delete-file "src/org/objectweb/asm/tools/ModuleInfoBndPlugin.java")
+             #t))
          (add-before 'install 'build-jars
            (lambda* (#:key make-flags #:allow-other-keys)
              ;; We cannot use the "jar" target because it depends on a couple
@@ -4057,18 +5061,53 @@ on the XPP3 API (XML Pull Parser).")))
              (invoke "jar"
                      "-cf" (string-append "dist/asm-" ,version ".jar")
                      "-C" "output/build/tmp" ".")))
+         (add-before 'install 'fix-pom
+           (lambda _
+             (substitute* (find-files "archive" "\\.pom$")
+               (("@product.artifact@") ,version))
+             #t))
+         (add-before 'install 'install-parent
+           (install-pom-file "archive/asm-parent.pom"))
          (replace 'install
-           (install-jars "dist")))))
+           (install-from-pom "archive/asm.pom")))))
     (native-inputs
      `(("java-junit" ,java-junit)))
-    (home-page "http://asm.ow2.org/")
+    (propagated-inputs
+     `(("java-org-ow2-parent-pom" ,java-org-ow2-parent-pom-1.3)))
+    (home-page "https://asm.ow2.io/")
     (synopsis "Very small and fast Java bytecode manipulation framework")
     (description "ASM is an all purpose Java bytecode manipulation and
 analysis framework.  It can be used to modify existing classes or dynamically
 generate classes, directly in binary form.  The provided common
-transformations and analysis algorithms allow to easily assemble custom
+transformations and analysis algorithms allow easily assembling custom
 complex transformations and code analysis tools.")
     (license license:bsd-3)))
+
+(define java-org-ow2-parent-pom-1.3
+  (package
+    (name "java-org-ow2-parent-pom")
+    (version "1.3")
+    (source (origin
+              (method url-fetch)
+              (uri "https://repo1.maven.org/maven2/org/ow2/ow2/1.3/ow2-1.3.pom")
+              (sha256
+               (base32
+                "1yr8hfx8gffpppa4ii6cvrsq029a6x8hzy7nsavxhs60s9kmq8ai"))))
+    (build-system ant-build-system)
+    (arguments
+     `(#:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (delete 'unpack)
+         (delete 'build)
+         (delete 'configure)
+         (replace 'install
+           (install-pom-file (assoc-ref %build-inputs "source"))))))
+    (home-page "https://ow2.org")
+    (synopsis "Ow2.org parent pom")
+    (description "This package contains the parent pom for projects from ow2.org,
+including java-asm.")
+    (license license:lgpl2.1+)))
 
 (define java-asm-bootstrap
   (package
@@ -4077,13 +5116,7 @@ complex transformations and code analysis tools.")
     (arguments
      (substitute-keyword-arguments (package-arguments java-asm)
        ((#:tests? _) #f)))
-    (native-inputs `())
-    (propagated-inputs
-     `(("java-aqute-bndlib" ,java-aqute-bndlib-bootstrap)
-       ("java-aqute-libg" ,java-aqute-libg-bootstrap)
-       ,@(delete `("java-aqute-bndlib" ,java-aqute-bndlib)
-                 (delete `("java-aqute-libg" ,java-aqute-libg)
-                         (package-inputs java-asm)))))))
+    (native-inputs `())))
 
 (define-public java-cglib
   (package
@@ -4093,7 +5126,7 @@ complex transformations and code analysis tools.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/cglib/cglib.git")
+             (url "https://github.com/cglib/cglib")
              (commit (string-append
                       "RELEASE_"
                       (string-map (lambda (c) (if (char=? c #\.) #\_ c))
@@ -4126,13 +5159,14 @@ to generate and transform Java byte code.")
     (name "java-objenesis")
     (version "2.5.1")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/easymock/objenesis/"
-                                  "archive/" version ".tar.gz"))
-              (file-name (string-append "objenesis-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/easymock/objenesis")
+                     (commit version)))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "1va5qz1i2wawwavhnxfzxnfgrcaflz9p1pg03irrjh4nd3rz8wh6"))))
+                "054yi200wj00x6dp1sxfrwgndwywadsbn8d8ij1j0v45j9g2vdya"))))
     (build-system ant-build-system)
     (arguments
      `(#:jar-name "objenesis.jar"
@@ -4155,12 +5189,14 @@ constructor on object instantiation.")
     (name "java-easymock")
     (version "3.4")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/easymock/easymock/"
-                                  "archive/easymock-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/easymock/easymock/")
+                     (commit (string-append "easymock-" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "1yzg0kv256ndr57gpav46cyv4a1ns5sj722l50zpxk3j6sk9hnmi"))))
+                "02vybm8hc0i0n9sp2f2iiqn54zwqhq835f76wc6b2m7819z5a8dq"))))
     (build-system ant-build-system)
     (arguments
      `(#:jar-name "easymock.jar"
@@ -4205,7 +5241,7 @@ constructor on object instantiation.")
     (native-inputs
      `(("java-junit" ,java-junit)
        ("java-hamcrest-core" ,java-hamcrest-core)))
-    (home-page "http://easymock.org")
+    (home-page "https://easymock.org/")
     (synopsis "Java library providing mock objects for unit tests")
     (description "EasyMock is a Java library that provides an easy way to use
 mock objects in unit testing.")
@@ -4216,13 +5252,14 @@ mock objects in unit testing.")
     (name "java-jmock")
     (version "1.2.0")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/jmock-developers/"
-                                  "jmock-library/archive/" version ".tar.gz"))
-              (file-name (string-append "jmock-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/jmock-developers/jmock-library")
+                     (commit version)))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "0xmrlhq0fszldkbv281k9463mv496143vvmqwpxp62yzjvdkx9w0"))))
+                "0lkga995xd9b9mmzxmcd301hlw83p1h78nibh7djlx7wydscr85z"))))
     (build-system ant-build-system)
     (arguments
      `(#:build-target "jars"
@@ -4230,7 +5267,7 @@ mock objects in unit testing.")
        #:phases
        (modify-phases %standard-phases
          (replace 'install (install-jars "build")))))
-    (home-page "http://www.jmock.org")
+    (home-page "http://jmock.org/")
     (synopsis "Mock object library for test-driven development")
     (description "JMock is a library that supports test-driven development of
 Java code with mock objects.  Mock objects help you design and test the
@@ -4253,13 +5290,14 @@ The jMock library
     (name "java-jmock")
     (version "2.8.2")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/jmock-developers/"
-                                  "jmock-library/archive/" version ".tar.gz"))
-              (file-name (string-append name "-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/jmock-developers/jmock-library")
+                     (commit version)))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "18650a9g8xffcsdb6w91pbswa7f40fp2sh6s3nclkclz5dbzq8f0"))))
+                "12b7l22g3nrjvf2dzcw3z03fpd2chrgp0d8xkvn8w55rwb57pax6"))))
     (inputs
      `(("java-hamcrest-all" ,java-hamcrest-all)
        ("java-asm" ,java-asm)
@@ -4339,8 +5377,29 @@ The jMock library
                               (find-files (assoc-ref inputs "java-easymock") "\\.jar$")))
                        ";"))
                      (("build/hamcrest-core-\\$\\{version\\}\\.jar")
-                      (string-append (assoc-ref inputs "java-hamcrest-core")
-                                     "/share/java/hamcrest-core.jar")))
+                      (car (find-files (assoc-ref inputs "java-hamcrest-core")
+                                       "jar$"))))
+                   #t))
+               (replace 'install
+                 (lambda* (#:key outputs #:allow-other-keys)
+                   (let* ((target (string-append (assoc-ref outputs "out")
+                                                 "/share/java/"))
+                          (version-suffix
+                            ,(string-append
+                               "-" (package-version java-hamcrest-core) ".jar"))
+                          (install-without-version-suffix
+                           (lambda (jar)
+                             (copy-file jar
+                                        (string-append target
+                                                       (basename jar version-suffix)
+                                                       ".jar")))))
+                     (mkdir-p target)
+                     (for-each
+                      install-without-version-suffix
+                      (find-files "build"
+                                  (lambda (name _)
+                                    (and (string-suffix? ".jar" name)
+                                         (not (string-suffix? "-sources.jar" name)))))))
                    #t)))))))
     (inputs
      `(("java-junit" ,java-junit)
@@ -4400,9 +5459,10 @@ overly clever.")
        #:make-flags
        (let ((hamcrest (assoc-ref %build-inputs "java-hamcrest-core"))
              (junit    (assoc-ref %build-inputs "java-junit")))
-         (list (string-append "-Djunit.jar=" junit "/share/java/junit.jar")
-               (string-append "-Dhamcrest.jar=" hamcrest
-                              "/share/java/hamcrest-core.jar")))
+         (list (string-append "-Djunit.jar="
+                              (car (find-files junit "jar$")))
+               (string-append "-Dhamcrest.jar="
+                              (car (find-files hamcrest ".*.jar$")))))
        #:phases
        (modify-phases %standard-phases
          ;; We want to build the jar in the build phase and run the tests
@@ -4419,7 +5479,7 @@ overly clever.")
     (native-inputs
      `(("java-junit" ,java-junit)
        ("java-hamcrest-core" ,java-hamcrest-core)))
-    (home-page "http://commons.apache.org/math/")
+    (home-page "https://commons.apache.org/math/")
     (synopsis "Apache Commons mathematics library")
     (description "Commons Math is a library of lightweight, self-contained
 mathematics and statistics components addressing the most common problems not
@@ -4463,7 +5523,7 @@ available in the Java programming language or Commons Lang.")
     (native-inputs
      `(("java-junit" ,java-junit)
        ("java-hamcrest-core" ,java-hamcrest-core)))
-    (home-page "http://openjdk.java.net/projects/code-tools/jmh/")
+    (home-page "https://openjdk.java.net/projects/code-tools/jmh/")
     (synopsis "Benchmark harness for the JVM")
     (description "JMH is a Java harness for building, running, and analysing
 nano/micro/milli/macro benchmarks written in Java and other languages
@@ -4489,9 +5549,10 @@ targeting the JVM.")
        (let ((hamcrest (assoc-ref %build-inputs "java-hamcrest-core"))
              (junit    (assoc-ref %build-inputs "java-junit"))
              (easymock (assoc-ref %build-inputs "java-easymock")))
-         (list (string-append "-Djunit.jar=" junit "/share/java/junit.jar")
-               (string-append "-Dhamcrest.jar=" hamcrest
-                              "/share/java/hamcrest-core.jar")
+         (list (string-append "-Djunit.jar="
+                              (car (find-files junit "jar$")))
+               (string-append "-Dhamcrest.jar="
+                              (car (find-files hamcrest "jar$")))
                (string-append "-Deasymock.jar=" easymock
                               "/share/java/easymock.jar")))
        #:phases
@@ -4502,7 +5563,7 @@ targeting the JVM.")
      `(("java-junit" ,java-junit)
        ("java-hamcrest-core" ,java-hamcrest-core)
        ("java-easymock" ,java-easymock)))
-    (home-page "http://commons.apache.org/collections/")
+    (home-page "https://commons.apache.org/collections/")
     (synopsis "Collections framework")
     (description "The Java Collections Framework is the recognised standard
 for collection handling in Java.  Commons-Collections seek to build upon the
@@ -4601,7 +5662,7 @@ are many features, including:
     (native-inputs
      `(("junit" ,java-junit)
        ("collections-test" ,java-commons-collections-test-classes)))
-    (home-page "http://commons.apache.org/beanutils/")
+    (home-page "https://commons.apache.org/beanutils/")
     (synopsis "Dynamically set or get properties in Java")
     (description "BeanUtils provides a simplified interface to reflection and
 introspection to set or get dynamically determined properties through their
@@ -4626,17 +5687,19 @@ setter and getter method.")
      `(#:test-target "test"
        #:make-flags
        (list (string-append "-Djunit.jar="
-                            (assoc-ref %build-inputs "java-junit")
-                            "/share/java/junit.jar"))
+                            (car (find-files (assoc-ref %build-inputs "java-junit")
+                                             "jar$"))))
        #:phases
        (modify-phases %standard-phases
          (add-after 'build 'build-javadoc ant-build-javadoc)
-         (replace 'install (install-jars "target"))
+         (replace 'install (install-from-pom "pom.xml"))
          (add-after 'install 'install-doc (install-javadoc "target/apidocs")))))
     (native-inputs
      `(("java-junit" ,java-junit)
        ("java-hamcrest-core" ,java-hamcrest-core)))
-    (home-page "http://commons.apache.org/io/")
+    (propagated-inputs
+     `(("apache-commons-parent-pom" ,apache-commons-parent-pom-39)))
+    (home-page "https://commons.apache.org/io/")
     (synopsis "Common useful IO related classes")
     (description "Commons-IO contains utility classes, stream implementations,
 file filters and endian classes.")
@@ -4659,8 +5722,8 @@ file filters and endian classes.")
      `(#:test-target "test"
        #:make-flags
        (list (string-append "-Dmaven.junit.jar="
-                            (assoc-ref %build-inputs "java-junit")
-                            "/share/java/junit.jar"))
+                            (car (find-files (assoc-ref %build-inputs "java-junit")
+                                             "jar$"))))
        #:phases
        (modify-phases %standard-phases
          (add-before 'build 'delete-network-tests
@@ -4674,7 +5737,7 @@ file filters and endian classes.")
          (replace 'install (install-jars "target")))))
     (native-inputs
      `(("java-junit" ,java-junit)))
-    (home-page "http://commons.apache.org/proper/commons-exec/")
+    (home-page "https://commons.apache.org/proper/commons-exec/")
     (synopsis "Common program execution related classes")
     (description "Commons-Exec simplifies executing external processes.")
     (license license:asl2.0)))
@@ -4695,8 +5758,8 @@ file filters and endian classes.")
      `(#:test-target "test"
        #:make-flags
        (list (string-append "-Dmaven.junit.jar="
-                            (assoc-ref %build-inputs "java-junit")
-                            "/share/java/junit.jar")
+                            (car (find-files (assoc-ref %build-inputs "java-junit")
+                                             "jar$")))
              "-Dmaven.compiler.source=1.7"
              "-Dmaven.compiler.target=1.7")
        #:phases
@@ -4752,7 +5815,7 @@ time/FastDateFormatTest.java"
          (add-after 'install 'install-doc (install-javadoc "target/apidocs")))))
     (native-inputs
      `(("java-junit" ,java-junit)))
-    (home-page "http://commons.apache.org/lang/")
+    (home-page "https://commons.apache.org/lang/")
     (synopsis "Extension of the java.lang package")
     (description "The Commons Lang components contains a set of Java classes
 that provide helper methods for standard Java classes, especially those found
@@ -4780,43 +5843,25 @@ included:
 (define-public java-commons-lang3
   (package
     (name "java-commons-lang3")
-    (version "3.4")
+    (version "3.9")
     (source
      (origin
        (method url-fetch)
        (uri (string-append "mirror://apache/commons/lang/source/"
                            "commons-lang3-" version "-src.tar.gz"))
        (sha256
-        (base32 "0xpshb9spjhplq5a7mr0y1bgfw8190ik4xj8f569xidfcki1d6kg"))))
+        (base32 "0s4ffbvsyl16c90l45ximsg4dwd8hmz7wsza3p308fw43h6mwhb6"))))
     (build-system ant-build-system)
-    (outputs '("out" "doc"))
     (arguments
-     `(#:test-target "test"
-       #:make-flags
-       (let ((hamcrest (assoc-ref %build-inputs "java-hamcrest-all"))
-             (junit    (assoc-ref %build-inputs "java-junit"))
-             (easymock (assoc-ref %build-inputs "java-easymock"))
-             (io       (assoc-ref %build-inputs "java-commons-io")))
-         (list (string-append "-Djunit.jar=" junit "/share/java/junit.jar")
-               (string-append "-Dhamcrest.jar=" hamcrest
-                              "/share/java/hamcrest-all.jar")
-               (string-append "-Dcommons-io.jar=" io
-                              "/share/java/commons-io-"
-                              ,(package-version java-commons-io)
-                              "-SNAPSHOT.jar")
-               (string-append "-Deasymock.jar=" easymock
-                              "/share/java/easymock.jar")))
+     `(#:jar-name "commons-lang3.jar"
+       #:source-dir "src/main/java"
+       #:tests? #f; require junit5
        #:phases
        (modify-phases %standard-phases
-         (add-after 'build 'build-javadoc ant-build-javadoc)
-         (replace 'install (install-jars "target"))
-         (add-after 'install 'install-doc (install-javadoc "target/apidocs")))))
-    (native-inputs
-     `(("java-junit" ,java-junit)
-       ("java-commons-io" ,java-commons-io)
-       ("java-hamcrest-all" ,java-hamcrest-all)
-       ("java-easymock" ,java-easymock)))
-    (home-page "http://commons.apache.org/lang/")
+         (replace 'install (install-from-pom "pom.xml")))))
+    (propagated-inputs
+     `(("apache-commons-parent-pom" ,apache-commons-parent-pom-48)))
+    (home-page "https://commons.apache.org/lang/")
     (synopsis "Extension of the java.lang package")
     (description "The Commons Lang components contains a set of Java classes
 that provide helper methods for standard Java classes, especially those found
@@ -4924,12 +5969,121 @@ these scripting language engines.")
        ("java-commons-beanutils" ,java-commons-beanutils)))
     (native-inputs
      `(("java-junit" ,java-junit)))
-    (home-page "http://commons.apache.org/jxpath/")
+    (home-page "https://commons.apache.org/jxpath/")
     (synopsis "Simple interpreter of an expression language called XPath.")
     (description "The org.apache.commons.jxpath package defines a simple
 interpreter of an expression language called XPath.  JXPath applies XPath
 expressions to graphs of objects of all kinds: JavaBeans, Maps, Servlet
 contexts, DOM etc, including mixtures thereof.")
+    (license license:asl2.0)))
+
+(define-public java-commons-pool
+  (package
+    (name "java-commons-pool")
+    (version "2.6.2")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append "mirror://apache/commons/pool/source/"
+                                  "commons-pool2-" version "-src.tar.gz"))
+              (sha256
+               (base32
+                "1fi1hgqmq01bs6azbj3sfswxzadp2r8sjjfiq6ryilz1m50kvrv6"))))
+    (arguments
+     `(#:jar-name "common-pool.jar"
+       #:source-dir "src/main/java"
+       #:test-exclude
+       (list "**/PerformanceTest.java")))
+    (build-system ant-build-system)
+    (inputs
+     `(("java-cglib" ,java-cglib)))
+    (native-inputs
+     `(("java-junit" ,java-junit)
+       ("java-hamcrest-core" ,java-hamcrest-core)
+       ("java-asm" ,java-asm)
+       ("java-objenesis" ,java-objenesis)))
+    (home-page "https://commons.apache.org/proper/commons-pool/")
+    (synopsis "Object-pooling API in Java")
+    (description "The commons-pool package provides an object-pooling API
+and a number of object pool implementations.  This package defines a
+handful of pooling interfaces and some base classes that may be useful when
+creating new pool implementations.")
+    (license license:asl2.0)))
+
+(define-public java-commons-dbcp
+  (package
+    (name "java-commons-dbcp")
+    (version "2.6.0")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append "mirror://apache/commons/dbcp/source/"
+                                  "commons-dbcp2-" version "-src.tar.gz"))
+              (sha256
+               (base32
+                "0axbvcbnf2l70fc3ybrlp3siw2w4ka9mia2pnx4py8gz54cpw3rc"))))
+    (arguments
+     `(#:source-dir "src/main/java"
+       #:jar-name "java-commons-dbcp.jar"
+       #:tests? #f)); requires apache-geronimo
+    (inputs
+     `(("java-commons-pool" ,java-commons-pool)
+       ("java-commons-logging" ,java-commons-logging-minimal)
+       ("java-jboss-transaction-api-spec" ,java-jboss-transaction-api-spec)))
+    (native-inputs
+     `(("java-junit" ,java-junit)))
+    (build-system ant-build-system)
+    (home-page "https://commons.apache.org/proper/commons-dbcp/")
+    (synopsis "Database Connection Pool for Java")
+    (description "Commons-dbcp allows you to share a pool of database
+connections between users.  Creating a new connection for each user can be
+time consuming and even unfeasible when the number of simultaneous users is
+very large.  This package provides a way to share a poole of connections to
+reduce that load.")
+    (license license:asl2.0)))
+
+(define-public java-commons-jcs
+  (package
+    (name "java-commons-jcs")
+    (version "2.2.1")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append "mirror://apache/commons/jcs/source/"
+                                  "commons-jcs-dist-" version "-src.tar.gz"))
+              (sha256
+               (base32
+                "0syhq2npjbrl0azqfjm0gvash1qd5qjy4qmysxcrqjsk0nf9fa1q"))))
+    (build-system ant-build-system)
+    (arguments
+     `(#:jar-name "commons-jcs.jar"
+       #:source-dir "commons-jcs-core/src/main/java"
+       #:test-dir "commons-jcs-core/src/test"
+       #:tests? #f; requires hsqldb
+       #:phases
+       (modify-phases %standard-phases
+         (add-before 'build 'prepare
+           (lambda _
+             (with-directory-excursion
+               "commons-jcs-core/src/main/java/org/apache/commons/jcs"
+               (substitute*
+                 "auxiliary/disk/jdbc/dsfactory/SharedPoolDataSourceFactory.java"
+                 (("commons.dbcp") "commons.dbcp2")
+                 ((".*\\.setMaxActive.*") ""))
+               ;;; Remove dependency on velocity-tools
+               (delete-file "admin/servlet/JCSAdminServlet.java"))
+             #t)))))
+    (propagated-inputs
+     `(("java-classpathx-servletapi" ,java-classpathx-servletapi)
+       ("java-commons-logging-minimal" ,java-commons-logging-minimal)
+       ("java-commons-httpclient" ,java-commons-httpclient)
+       ("java-commons-dbcp" ,java-commons-dbcp)))
+    (native-inputs
+     `(("java-junit" ,java-junit)))
+    (home-page "https://commons.apache.org/proper/commons-jcs/")
+    (synopsis "Distributed caching system in Java")
+    (description "JCS is a distributed caching system written in Java.  It
+is intended to speed up applications by providing a means to manage cached
+data of various dynamic natures.  Like any caching system, JCS is most useful
+for high read, low put applications.  Latency times drop sharply and
+bottlenecks move away from the database in an effectively cached system.")
     (license license:asl2.0)))
 
 (define-public java-jsr250
@@ -4949,7 +6103,28 @@ contexts, DOM etc, including mixtures thereof.")
     (arguments
      `(#:tests? #f ; no tests included
        #:jdk ,icedtea-8
-       #:jar-name "jsr250.jar"))
+       #:jar-name "jsr250.jar"
+       #:modules ((guix build ant-build-system)
+                  (guix build utils)
+                  (guix build maven pom)
+                  (guix build java-utils)
+                  (sxml simple))
+       #:phases
+       (modify-phases %standard-phases
+         (add-before 'install 'create-pom
+           (lambda _
+             (with-output-to-file "pom.xml"
+               (lambda _
+                 (sxml->xml
+                   `((project
+                       (modelVersion "4.0.0")
+                       (name "jsr250")
+                       (groupId "javax.annotation")
+                       (artifactId "jsr250-api")
+                       (version ,,version))))))
+             #t))
+         (replace 'install
+           (install-from-pom "pom.xml")))))
     (home-page "https://jcp.org/en/jsr/detail?id=250")
     (synopsis "Security-related annotations")
     (description "This package provides annotations for security.  It provides
@@ -4975,7 +6150,28 @@ namespaces.")
     (build-system ant-build-system)
     (arguments
      `(#:tests? #f ; no tests included
-       #:jar-name "jsr305.jar"))
+       #:jar-name "jsr305.jar"
+       #:modules ((guix build ant-build-system)
+                  (guix build java-utils)
+                  (guix build maven pom)
+                  (guix build utils)
+                  (sxml simple))
+       #:phases
+       (modify-phases %standard-phases
+         (add-before 'install 'create-pom
+           (lambda _
+             (with-output-to-file "pom.xml"
+               (lambda _
+                 (sxml->xml
+                   `((project
+                       (modelVersion "4.0.0")
+                       (name "jsr305")
+                       (groupId "com.google.code.findbugs")
+                       (artifactId "jsr305")
+                       (version ,,version))))))
+             #t))
+         (replace 'install
+           (install-from-pom "pom.xml")))))
     (home-page "http://findbugs.sourceforge.net/")
     (synopsis "Annotations for the static analyzer called findbugs")
     (description "This package provides annotations for the findbugs package.
@@ -4988,22 +6184,24 @@ It provides packages in the @code{javax.annotations} namespace.")
     ;; This is the last release of Guava that can be built with Java 7.
     (version "20.0")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/google/guava/"
-                                  "releases/download/v" version
-                                  "/guava-" version "-sources.jar"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/google/guava/")
+                     (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "1gawrs5gi6j5hcfxdgpnfli75vb9pfi4sn09pnc8xacr669yajwr"))))
+                "00h5cawdjic1vind3yivzh1f58flvm1yfmhsyqwyvmbvj1vakysp"))))
     (build-system ant-build-system)
     (arguments
      `(#:tests? #f                      ; no tests included
        #:jar-name "guava.jar"
+       #:source-dir "guava/src"
        #:phases
        (modify-phases %standard-phases
          (add-after 'unpack 'trim-sources
            (lambda _
-             (with-directory-excursion "src/com/google/common"
+             (with-directory-excursion "guava/src/com/google/common"
                ;; Remove annotations to avoid extra dependencies:
                ;; * "j2objc" annotations are used when converting Java to
                ;;   Objective C;
@@ -5022,9 +6220,12 @@ It provides packages in the @code{javax.annotations} namespace.")
                  (("@ForOverride") "")
                  (("@J2ObjCIncompatible") "")
                  (("@IgnoreJRERequirement") "")))
-             #t)))))
+             #t))
+         (replace 'install (install-from-pom "guava/pom.xml")))))
     (inputs
      `(("java-jsr305" ,java-jsr305)))
+    (propagated-inputs
+     `(("java-guava-parent-pom" ,java-guava-parent-pom)))
     (home-page "https://github.com/google/guava")
     (synopsis "Google core libraries for Java")
     (description "Guava is a set of core libraries that includes new
@@ -5033,6 +6234,21 @@ graph library, functional types, an in-memory cache, and APIs/utilities for
 concurrency, I/O, hashing, primitives, reflection, string processing, and much
 more!")
     (license license:asl2.0)))
+
+(define java-guava-parent-pom
+  (package
+    (inherit java-guava)
+    (name "java-guava-parent-pom")
+    (arguments
+     `(#:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (delete 'configure)
+         (delete 'build)
+         (replace 'install
+           (install-pom-file "pom.xml")))))
+    (propagated-inputs
+     `(("java-sonatype-oss-parent-pom" ,java-sonatype-oss-parent-pom-7)))))
 
 ;; The java-commons-logging package provides adapters to many different
 ;; logging frameworks.  To avoid an excessive dependency graph we try to build
@@ -5074,7 +6290,7 @@ more!")
                     "LogKitLogger.java"))
              (delete-file-recursively "src/test")
              #t)))))
-    (home-page "http://commons.apache.org/logging/")
+    (home-page "https://commons.apache.org/logging/")
     (synopsis "Common API for logging implementations")
     (description "The Logging package is a thin bridge between different
 logging implementations.  A library that uses the commons-logging API can be
@@ -5222,7 +6438,7 @@ an Apache AB clone based on HttpCore.")))
 (define-public java-httpcomponents-httpclient
   (package
     (name "java-httpcomponents-httpclient")
-    (version "4.5.3")
+    (version "4.5.12")
     (source (origin
               (method url-fetch)
               (uri (string-append "mirror://apache/httpcomponents/httpclient/"
@@ -5230,7 +6446,7 @@ an Apache AB clone based on HttpCore.")))
                                   version "-src.tar.gz"))
               (sha256
                (base32
-                "1428399s7qy3cim5wc6f3ks4gl9nf9vkjpfmnlap3jflif7g2pj1"))))
+                "1va99m2zc2liv0v9vn72p5ja8yz4s5wq7zpahaai5nr966kvxzkb"))))
     (build-system ant-build-system)
     (arguments
      `(#:jar-name "httpcomponents-httpclient.jar"
@@ -5291,7 +6507,7 @@ standards and recommendations.")
     (native-inputs
      `(("java-junit" ,java-junit)
        ("java-hamcrest-core" ,java-hamcrest-core)))
-    (home-page "http://commons.apache.org/net/")
+    (home-page "https://commons.apache.org/net/")
     (synopsis "Client library for many basic Internet protocols")
     (description "The Apache Commons Net library implements the client side of
 many basic Internet protocols.  The purpose of the library is to provide
@@ -5357,12 +6573,14 @@ programs.")
                ;; package at this point.
                ;; https://github.com/powermock/powermock
                (delete-file "archivers/sevenz/SevenZNativeHeapTest.java"))
-             #t)))))
-    (inputs
+             #t))
+         (replace 'install (install-from-pom "pom.xml")))))
+    (propagated-inputs
+     `(("java-xz" ,java-xz)
+       ("apache-commons-parent-pom" ,apache-commons-parent-pom-41)))
+    (native-inputs
      `(("java-junit" ,java-junit)
-       ("java-hamcrest-core" ,java-hamcrest-core)
-       ("java-mockito" ,java-mockito-1)
-       ("java-xz" ,java-xz)))
+       ("java-mockito" ,java-mockito-1)))
     (home-page "https://commons.apache.org/proper/commons-compress/")
     (synopsis "Java library for working with compressed files")
     (description "The Apache Commons Compress library defines an API for
@@ -6133,7 +7351,7 @@ JavaMail API.")
      `(("java-osgi-core" ,java-osgi-core)
        ("java-hamcrest-core" ,java-hamcrest-core)
        ("java-junit" ,java-junit)))
-    (home-page "http://logging.apache.org/log4j/2.x/")
+    (home-page "https://logging.apache.org/log4j/2.x/")
     (synopsis "API module of the Log4j logging framework for Java")
     (description
      "This package provides the API module of the Log4j logging framework for
@@ -6216,11 +7434,15 @@ logging framework for Java.")))
     (build-system ant-build-system)
     ;; TODO: javadoc
     (arguments
-     `(#:jar-name "commons-cli.jar"))
+     `(#:jar-name "commons-cli.jar"
+       #:phases
+       (modify-phases %standard-phases
+         (replace 'install
+           (install-from-pom "pom.xml")))))
     (native-inputs
      `(("java-junit" ,java-junit)
        ("java-hamcrest-core" ,java-hamcrest-core)))
-    (home-page "http://commons.apache.org/cli/")
+    (home-page "https://commons.apache.org/cli/")
     (synopsis "Command line arguments and options parsing library")
     (description "The Apache Commons CLI library provides an API for parsing
 command line options passed to programs.  It is also able to print help
@@ -6242,35 +7464,39 @@ This is a part of the Apache Commons Project.")
 (define-public java-commons-codec
   (package
     (name "java-commons-codec")
-    (version "1.10")
+    (version "1.14")
     (source (origin
               (method url-fetch)
               (uri (string-append "mirror://apache/commons/codec/source/"
                                   "commons-codec-" version "-src.tar.gz"))
               (sha256
                (base32
-                "1w9qg30y4s0x8gnmr2fgj4lyplfn788jqxbcz27lf5kbr6n8xr65"))))
+                "11xr0agckkhm91pb5akf2mbk84yd54gyr178wj57gsm97fi7nkh9"))))
     (build-system ant-build-system)
-    (outputs '("out" "doc"))
     (arguments
-     `(#:test-target "test"
-       #:make-flags
-       (let ((hamcrest (assoc-ref %build-inputs "java-hamcrest-core"))
-             (junit    (assoc-ref %build-inputs "java-junit")))
-         (list (string-append "-Djunit.jar=" junit "/share/java/junit.jar")
-               (string-append "-Dhamcrest.jar=" hamcrest
-                              "/share/java/hamcrest-core.jar")
-               ;; Do not append version to jar.
-               "-Dfinal.name=commons-codec"))
+     `(#:jar-name "java-commons-codec.jar"
+       #:source-dir "src/main/java"
+       #:test-dir "src/test"
+       #:test-exclude (list "**/*AbstractTest.java")
        #:phases
        (modify-phases %standard-phases
-         (add-after 'build 'build-javadoc ant-build-javadoc)
-         (replace 'install (install-jars "dist"))
-         (add-after 'install 'install-doc (install-javadoc "dist/docs/api")))))
+         (add-before 'build 'copy-resources
+           (lambda _
+             (copy-recursively "src/main/resources"
+                               "build/classes")
+             #t))
+         (add-before 'check 'copy-test-resources
+           (lambda _
+             (copy-recursively "src/test/resources"
+                               "build/test-classes")
+             #t))
+         (replace 'install (install-from-pom "pom.xml")))))
     (native-inputs
-     `(("java-junit" ,java-junit)
-       ("java-hamcrest-core" ,java-hamcrest-core)))
-    (home-page "http://commons.apache.org/codec/")
+     `(("java-commons-lang3" ,java-commons-lang3)
+       ("java-junit" ,java-junit)))
+    (propagated-inputs
+      `(("apache-commons-parent-pom" ,apache-commons-parent-pom-50)))
+    (home-page "https://commons.apache.org/codec/")
     (synopsis "Common encoders and decoders such as Base64, Hex, Phonetic and URLs")
     (description "The codec package contains simple encoder and decoders for
 various formats such as Base64 and Hexadecimal.  In addition to these widely
@@ -6283,14 +7509,14 @@ This is a part of the Apache Commons Project.")
 (define-public java-commons-daemon
   (package
     (name "java-commons-daemon")
-    (version "1.0.15")
+    (version "1.1.0")
     (source (origin
               (method url-fetch)
               (uri (string-append "mirror://apache/commons/daemon/source/"
                                   "commons-daemon-" version "-src.tar.gz"))
               (sha256
                (base32
-                "0ci46kq8jpz084ccwq0mmkahcgsmh20ziclp2jf5i0djqv95gvhi"))))
+                "141gkhfzv5v3pdhic6y4ardq2dhsa3v36j8wmmhy6f8mac48fp7n"))))
     (build-system ant-build-system)
     (arguments
      `(#:test-target "test"
@@ -6301,7 +7527,7 @@ This is a part of the Apache Commons Project.")
          (add-after 'install 'install-doc (install-javadoc "dist/docs/api")))))
     (native-inputs
      `(("java-junit" ,java-junit)))
-    (home-page "http://commons.apache.org/daemon/")
+    (home-page "https://commons.apache.org/daemon/")
     (synopsis "Library to launch Java applications as daemons")
     (description "The Daemon package from Apache Commons can be used to
 implement Java applications which can be launched as daemons.  For example the
@@ -6319,12 +7545,14 @@ This is a part of the Apache Commons Project.")
     (name "java-javaewah")
     (version "1.1.6")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/lemire/javaewah/"
-                                  "archive/JavaEWAH-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/lemire/javaewah/")
+                     (commit (string-append "JavaEWAH-" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "1n7j1r1h24wlhwv9zdcj6yqjrhma2ixwyzm15l5vrv6yqjs6753b"))))
+                "1m8qcb1py76v7avbjjrkvyy6fhr5dk2ywy73gbsxqry04gkm2nhw"))))
     (build-system ant-build-system)
     (arguments `(#:jar-name "javaewah.jar"))
     (inputs
@@ -6337,7 +7565,7 @@ This is a part of the Apache Commons Project.")
 compression scheme.  It can be used to implement bitmap indexes.
 
 The goal of word-aligned compression is not to achieve the best compression,
-but rather to improve query processing time. Hence, JavaEWAH tries to save CPU
+but rather to improve query processing time.  Hence, JavaEWAH tries to save CPU
 cycles, maybe at the expense of storage.  However, the EWAH scheme is always
 more efficient storage-wise than an uncompressed bitmap (as implemented in the
 @code{BitSet} class by Sun).")
@@ -6383,8 +7611,12 @@ more efficient storage-wise than an uncompressed bitmap (as implemented in the
                 (string-append "<include name=\"**/*Test.java\" />"
                                "<exclude name=\"**/MultithreadedInitializationTest"
                                ".java\" />")))
-             #t)))))
-    (inputs
+             #t))
+         (replace 'install
+           (install-from-pom "slf4j-api/pom.xml")))))
+    (propagated-inputs
+     `(("java-slf4j-parent" ,java-slf4j-parent)))
+    (native-inputs
      `(("java-junit" ,java-junit)
        ("java-hamcrest-core" ,java-hamcrest-core)))
     (home-page "https://www.slf4j.org/")
@@ -6396,14 +7628,20 @@ allowing the end user to plug in the desired logging framework at deployment
 time.")
     (license license:expat)))
 
-(define java-slf4j-api-bootstrap
+(define java-slf4j-parent
   (package
     (inherit java-slf4j-api)
-    (name "java-slf4j-api-bootstrap")
-    (inputs `())
+    (name "java-slf4j-parent")
+    (native-inputs `())
+    (propagated-inputs '())
     (arguments
-     (substitute-keyword-arguments (package-arguments java-slf4j-api)
-       ((#:tests? _ #f) #f)))))
+     `(#:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (delete 'build)
+         (delete 'configure)
+         (replace 'install
+           (install-pom-file "pom.xml")))))))
 
 (define-public java-slf4j-simple
   (package
@@ -6426,11 +7664,14 @@ time.")
              ;; ... and build test helper classes here:
              (apply invoke
                     `("javac" "-d" "."
-                      ,@(find-files "slf4j-api/src/test" ".*\\.java"))))))))
-    (inputs
+                      ,@(find-files "slf4j-api/src/test" ".*\\.java")))))
+         (replace 'install
+           (install-from-pom "slf4j-simple/pom.xml")))))
+    (propagated-inputs
+     `(("java-slf4j-api" ,java-slf4j-api)))
+    (native-inputs
      `(("java-junit" ,java-junit)
-       ("java-hamcrest-core" ,java-hamcrest-core)
-       ("java-slf4j-api" ,java-slf4j-api)))
+       ("java-hamcrest-core" ,java-hamcrest-core)))
     (home-page "https://www.slf4j.org/")
     (synopsis "Simple implementation of simple logging facade for Java")
     (description "SLF4J binding for the Simple implementation, which outputs
@@ -6444,7 +7685,7 @@ printed.")
     (version "2.7.7")
     (source (origin
               (method url-fetch)
-              (uri (string-append "http://www.antlr2.org/download/antlr-"
+              (uri (string-append "https://www.antlr2.org/download/antlr-"
                                   version ".tar.gz"))
               (sha256
                (base32
@@ -6491,7 +7732,7 @@ printed.")
        ("java" ,icedtea "jdk")))
     (inputs
      `(("java" ,icedtea)))
-    (home-page "http://www.antlr2.org")
+    (home-page "https://www.antlr2.org")
     (synopsis "Framework for constructing recognizers, compilers, and translators")
     (description "ANTLR, ANother Tool for Language Recognition, (formerly PCCTS)
 is a language tool that provides a framework for constructing recognizers,
@@ -6539,7 +7780,7 @@ tree walking, and translation.")
     (native-inputs
      `(("antlr" ,antlr2)
        ("java-junit" ,java-junit)))
-    (home-page "http://www.stringtemplate.org")
+    (home-page "https://www.stringtemplate.org")
     (synopsis "Template engine to generate formatted text output")
     (description "StringTemplate is a java template engine (with ports for C#,
 Objective-C, JavaScript, Scala) for generating source code, web pages, emails,
@@ -6626,13 +7867,14 @@ StringTemplate also powers ANTLR.")
     (name "antlr3")
     (version "3.5.2")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/antlr/antlr3/archive/"
-                                  version ".tar.gz"))
-              (file-name (string-append name "-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/antlr/antlr3")
+                     (commit version)))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "0218v683081lg54z9hvjxinhxd4dqp870jx6n39gslm0bkyi4vd6"))))
+                "0cafavrjmzqhklghrk8c2jqxkdwxgzskm20pbrfd3r41cn00dpnf"))))
     (build-system ant-build-system)
     (arguments
      `(#:jar-name (string-append ,name "-" ,version ".jar")
@@ -6693,14 +7935,16 @@ import org.antlr.grammar.v3.ANTLRTreePrinter;"))
          (add-before 'build 'fix-build-xml
            (lambda _
              (substitute* "build.xml"
-               (("<exec") "<copy todir=\"${classes.dir}\">
+               (("target name=\"compile\">")
+                "target name=\"compile\">
+<copy todir=\"${classes.dir}\">
 <fileset dir=\"tool/src/main/resources\">
 <include name=\"**/*.stg\"/>
 <include name=\"**/*.st\"/>
 <include name=\"**/*.sti\"/>
 <include name=\"**/STLexer.tokens\"/>
 </fileset>
-</copy><exec"))
+</copy>"))
              #t)))))
     (native-inputs
      `(("antlr" ,antlr2)
@@ -6713,7 +7957,7 @@ import org.antlr.grammar.v3.ANTLRTreePrinter;"))
      `(("stringtemplate" ,java-stringtemplate-3)
        ("antlr" ,antlr2)
        ("stringtemplate4" ,java-stringtemplate-4.0.6)))
-    (home-page "http://www.antlr3.org")
+    (home-page "https://www.antlr3.org")
     (synopsis "Framework for constructing recognizers, compilers, and translators")
     (description "ANTLR, ANother Tool for Language Recognition, (formerly PCCTS)
 is a language tool that provides a framework for constructing recognizers,
@@ -6732,7 +7976,7 @@ tree walking, and translation.")
     (inputs
      `(("junit" ,java-junit)))))
 
-(define antlr3-3.3
+(define-public antlr3-3.3
   (package
     (inherit antlr3)
     (name "antlr3")
@@ -6806,14 +8050,16 @@ import org.antlr.grammar.v2.ANTLRTreePrinter;"))
          (add-before 'build 'fix-build-xml
            (lambda _
              (substitute* "build.xml"
-               (("<exec") "<copy todir=\"${classes.dir}\">
+               (("target name=\"compile\">")
+                "target name=\"compile\">
+<copy todir=\"${classes.dir}\">
 <fileset dir=\"tool/src/main/resources\">
 <include name=\"**/*.stg\"/>
 <include name=\"**/*.st\"/>
 <include name=\"**/*.sti\"/>
 <include name=\"**/STLexer.tokens\"/>
 </fileset>
-</copy><exec"))
+</copy>"))
              #t)))))
     (native-inputs
      `(("antlr" ,antlr2)
@@ -6822,10 +8068,9 @@ import org.antlr.grammar.v2.ANTLRTreePrinter;"))
      `(("junit" ,java-junit)))
     (propagated-inputs
      `(("java-stringtemplate" ,java-stringtemplate-3)
-       ("antlr" ,antlr2)
-       ("antlr3" ,antlr3-3.1)))))
+       ("antlr" ,antlr2)))))
 
-(define antlr3-3.1
+(define-public antlr3-3.1
   (package
     (inherit antlr3)
     (version "3.1")
@@ -6883,14 +8128,16 @@ import org.antlr.grammar.v2.ANTLRTreePrinter;"))
          (add-before 'build 'fix-build-xml
            (lambda _
              (substitute* "build.xml"
-               (("<exec") "<copy todir=\"${classes.dir}\">
+               (("target name=\"compile\">")
+                "target name=\"compile\">
+<copy todir=\"${classes.dir}\">
 <fileset dir=\"src\">
 <include name=\"**/*.stg\"/>
 <include name=\"**/*.st\"/>
 <include name=\"**/*.sti\"/>
 <include name=\"**/STLexer.tokens\"/>
 </fileset>
-</copy><exec"))
+</copy>"))
              #t)))))
     (native-inputs
      `(("antlr" ,antlr2)))
@@ -6947,7 +8194,7 @@ import org.antlr.grammar.v2.ANTLRTreePrinter;"))
     (home-page "https://github.com/barteo/microemu")
     (synopsis "J2ME CLDC emulator")
     (description "Microemulator is a Java 2 Micro Edition (J2ME) CLDC/MIDP
-Emulator.  It allows to demonstrate MIDlet based applications in web browser
+Emulator.  It demonstrates MIDlet based applications in web browser
 applet and can be run as a standalone java application.")
     (license (list license:asl2.0
                    ;; or altenatively:
@@ -6985,7 +8232,7 @@ used to generate this API.")
     (version "6.0.0")
     (source (origin
               (method url-fetch)
-              (uri (string-append "http://central.maven.org/maven2/"
+              (uri (string-append "https://repo1.maven.org/maven2/"
                                   "org/osgi/osgi.cmpn/" version "/osgi.cmpn-"
                                   version "-sources.jar"))
               (sha256
@@ -7016,7 +8263,7 @@ in compiling bundles.")
     (version "1.3.0")
     (source (origin
               (method url-fetch)
-              (uri (string-append "http://central.maven.org/maven2/org/osgi/"
+              (uri (string-append "https://repo1.maven.org/maven2/org/osgi/"
                                   "org.osgi.service.component.annotations/"
                                   version "/org.osgi.service.component.annotations-"
                                   version "-sources.jar"))
@@ -7043,7 +8290,7 @@ the support annotations for osgi-service-component.")
     (version "1.0.0")
     (source (origin
               (method url-fetch)
-              (uri (string-append "http://central.maven.org/maven2/org/osgi/"
+              (uri (string-append "https://repo1.maven.org/maven2/org/osgi/"
                                   "org.osgi.dto/" version "/org.osgi.dto-"
                                   version "-sources.jar"))
               (sha256
@@ -7072,7 +8319,7 @@ objects of the listed types or aggregates.")
     (version "1.0.0")
     (source (origin
               (method url-fetch)
-              (uri (string-append "http://central.maven.org/maven2/org/osgi/"
+              (uri (string-append "https://repo1.maven.org/maven2/org/osgi/"
                                   "org.osgi.resource/"
                                   version "/org.osgi.resource-"
                                   version "-sources.jar"))
@@ -7100,7 +8347,7 @@ the definition of common types in osgi packages.")
     (version "1.0.0")
     (source (origin
               (method url-fetch)
-              (uri (string-append "http://central.maven.org/maven2/org/osgi/"
+              (uri (string-append "https://repo1.maven.org/maven2/org/osgi/"
                                   "org.osgi.namespace.contract/"
                                   version "/org.osgi.namespace.contract-"
                                   version "-sources.jar"))
@@ -7128,7 +8375,7 @@ the names for the attributes and directives for a namespace with contracts.")
     (version "1.0.1")
     (source (origin
               (method url-fetch)
-              (uri (string-append "http://central.maven.org/maven2/org/osgi/"
+              (uri (string-append "https://repo1.maven.org/maven2/org/osgi/"
                                   "org.osgi.namespace.extender/"
                                   version "/org.osgi.namespace.extender-"
                                   version "-sources.jar"))
@@ -7156,7 +8403,7 @@ the names for the attributes and directives for an extender namespace.")
     (version "1.0.0")
     (source (origin
               (method url-fetch)
-              (uri (string-append "http://central.maven.org/maven2/org/osgi/"
+              (uri (string-append "https://repo1.maven.org/maven2/org/osgi/"
                                   "org.osgi.namespace.service/"
                                   version "/org.osgi.namespace.service-"
                                   version "-sources.jar"))
@@ -7184,7 +8431,7 @@ the names for the attributes and directives for a service namespace.")
     (version "1.0.0")
     (source (origin
               (method url-fetch)
-              (uri (string-append "http://central.maven.org/maven2/org/osgi/"
+              (uri (string-append "https://repo1.maven.org/maven2/org/osgi/"
                                   "org.osgi.util.function/"
                                   version "/org.osgi.util.function-"
                                   version "-sources.jar"))
@@ -7211,7 +8458,7 @@ an interface for a function that accepts a single argument and produces a result
     (version "1.0.0")
     (source (origin
               (method url-fetch)
-              (uri (string-append "http://central.maven.org/maven2/org/osgi/"
+              (uri (string-append "https://repo1.maven.org/maven2/org/osgi/"
                                   "org.osgi.util.promise/"
                                   version "/org.osgi.util.promise-"
                                   version "-sources.jar"))
@@ -7240,7 +8487,7 @@ value.  It handles the interactions for asynchronous processing.")
     (version "1.3.0")
     (source (origin
               (method url-fetch)
-              (uri (string-append "http://central.maven.org/maven2/org/osgi/"
+              (uri (string-append "https://repo1.maven.org/maven2/org/osgi/"
                                   "org.osgi.service.metatype.annotations/"
                                   version "/org.osgi.service.metatype.annotations-"
                                   version "-sources.jar"))
@@ -7267,7 +8514,7 @@ the support annotations for metatype.")
     (version "1.1.0")
     (source (origin
               (method url-fetch)
-              (uri (string-append "http://central.maven.org/maven2/org/osgi/"
+              (uri (string-append "https://repo1.maven.org/maven2/org/osgi/"
                                   "org.osgi.service.repository/"
                                   version "/org.osgi.service.repository-"
                                   version "-sources.jar"))
@@ -7296,7 +8543,7 @@ a repository service that contains resources.")
     (version "1.8.0")
     (source (origin
               (method url-fetch)
-              (uri (string-append "http://central.maven.org/maven2/org/osgi/"
+              (uri (string-append "https://repo1.maven.org/maven2/org/osgi/"
                                   "org.osgi.framework/" version "/org.osgi.framework-"
                                   version "-sources.jar"))
               (sha256
@@ -7323,7 +8570,7 @@ and service platform for the Java programming language.")
     (version "1.3.0")
     (source (origin
               (method url-fetch)
-              (uri (string-append "http://central.maven.org/maven2/org/osgi/"
+              (uri (string-append "https://repo1.maven.org/maven2/org/osgi/"
                                   "org.osgi.service.log/"
                                   version "/org.osgi.service.log-"
                                   version "-sources.jar"))
@@ -7350,7 +8597,7 @@ the log service.")
     (version "1.0.0")
     (source (origin
               (method url-fetch)
-              (uri (string-append "http://central.maven.org/maven2/org/osgi/"
+              (uri (string-append "https://repo1.maven.org/maven2/org/osgi/"
                                   "org.osgi.service.jdbc/"
                                   version "/org.osgi.service.jdbc-"
                                   version "-sources.jar"))
@@ -7382,7 +8629,7 @@ factories for getting JDBC connections:
     (version "1.0.1")
     (source (origin
               (method url-fetch)
-              (uri (string-append "http://central.maven.org/maven2/org/osgi/"
+              (uri (string-append "https://repo1.maven.org/maven2/org/osgi/"
                                   "org.osgi.service.resolver/"
                                   version "/org.osgi.service.resolver-"
                                   version "-sources.jar"))
@@ -7411,7 +8658,7 @@ by the caller.")
     (version "1.5.1")
     (source (origin
               (method url-fetch)
-              (uri (string-append "http://central.maven.org/maven2/org/osgi/"
+              (uri (string-append "https://repo1.maven.org/maven2/org/osgi/"
                                   "org.osgi.util.tracker/"
                                   version "/org.osgi.util.tracker-"
                                   version "-sources.jar"))
@@ -7439,7 +8686,7 @@ bundle tracking utility classes.")
     (version "1.5.0")
     (source (origin
               (method url-fetch)
-              (uri (string-append "http://central.maven.org/maven2/org/osgi/"
+              (uri (string-append "https://repo1.maven.org/maven2/org/osgi/"
                                   "org.osgi.service.cm/"
                                   version "/org.osgi.service.cm-"
                                   version "-sources.jar"))
@@ -7467,7 +8714,7 @@ utility classes for the configuration of services.")
     (version "1.2.0")
     (source (origin
               (method url-fetch)
-              (uri (string-append "http://central.maven.org/maven2/org/osgi/"
+              (uri (string-append "https://repo1.maven.org/maven2/org/osgi/"
                                   "org.osgi.service.packageadmin/"
                                   version "/org.osgi.service.packageadmin-"
                                   version "-sources.jar"))
@@ -7635,7 +8882,7 @@ package contains utilities for obtaining services via the Java SE 6
      `(#:jar-name "java-aqute-bnd-annotation.jar"
        #:source-dir "biz.aQute.bnd.annotation/src"
        #:tests? #f)); empty test dir
-    (home-page "http://bnd.bndtools.org/")
+    (home-page "https://bnd.bndtools.org/")
     (synopsis "Tools for OSGi")
     (description "Bnd is a swiss army knife for OSGi, it creates manifest
 headers based on analyzing the class code, it verifies the project settings,
@@ -7682,20 +8929,6 @@ it manages project dependencies, gives diffs jars, and much more.")
      `(("hamcrest" ,java-hamcrest-core)
        ("java-junit" ,java-junit)))))
 
-(define java-aqute-libg-bootstrap
-  (package
-    (inherit java-aqute-libg)
-    (name "java-aqute-libg-bootstrap")
-    (arguments
-     ;; Disable tests, at this stage of bootstrap we have no test frameworks.
-     (substitute-keyword-arguments (package-arguments java-aqute-libg)
-       ((#:tests? _ #f) #f)))
-    (inputs
-     `(("slf4j-bootstrap" ,java-slf4j-api-bootstrap)
-       ,@(delete `("slf4j" ,java-slf4j-api)
-                 (package-inputs java-aqute-libg))))
-    (native-inputs '())))
-
 (define-public java-aqute-bndlib
   (package
     (inherit java-aqute-bnd-annotation)
@@ -7718,17 +8951,6 @@ it manages project dependencies, gives diffs jars, and much more.")
        ("java-osgi-namespace-service" ,java-osgi-namespace-service)
        ("promise" ,java-osgi-util-promise)
        ("osgi" ,java-osgi-core)))))
-
-(define java-aqute-bndlib-bootstrap
-  (package
-    (inherit java-aqute-bndlib)
-    (name "java-aqute-bndlib-bootstrap")
-    (inputs
-     `(("slf4j-bootstrap" ,java-slf4j-api-bootstrap)
-       ("java-aqute-libg-bootstrap" ,java-aqute-libg-bootstrap)
-       ,@(delete `("slf4j" ,java-slf4j-api)
-                 (delete `("java-aqute-libg" ,java-aqute-libg)
-                         (package-inputs java-aqute-bndlib)))))))
 
 (define-public java-ops4j-pax-tinybundles
   (package
@@ -8127,7 +9349,7 @@ of deserialization.")
               (file-name (string-append name "-" version ".tar.gz"))
               (sha256
                (base32
-                "0rf5ha6w0waz50jz2479jsrbgmd0dnx0gs337m126j5z7zlmg7mg"))))
+                "0474cqcv46zgv9bhms2vgawakq1vyj0hp3h3f1bfys46msia90bh"))))
     (build-system ant-build-system)
     (arguments
      `(#:jar-name "java-snakeyaml.jar"
@@ -8342,7 +9564,7 @@ make data-binding work.")
        ("hamcrest" ,java-hamcrest-core)))
     (home-page "https://hdrhistogram.github.io/HdrHistogram")
     (synopsis "High dynamic range histogram")
-    (description "Hdrhistogram allows to create histograms that support
+    (description "Hdrhistogram creates histograms that support
 recording and analyzing sampled data value counts across a configurable integer
 value range with configurable value precision within the range.  Value precision
 is expressed as the number of significant digits in the value recording, and
@@ -8357,7 +9579,7 @@ the subsequent value resolution at any given level.")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/nhatminhle/cofoja.git")
+                    (url "https://github.com/nhatminhle/cofoja")
                     (commit (string-append "v" version))))
               (file-name (string-append "java-cofoja-" version "-checkout"))
               (sha256
@@ -8428,7 +9650,28 @@ this is not a static analysis tool.)")
      `(#:jar-name "java-aopalliance.jar"
        #:jdk ,icedtea-8
        #:tests? #f; no tests
-       #:source-dir "aopalliance/src/main"))
+       #:source-dir "aopalliance/src/main"
+       #:modules ((guix build ant-build-system)
+                  (guix build utils)
+                  (guix build maven pom)
+                  (guix build java-utils)
+                  (sxml simple))
+       #:phases
+       (modify-phases %standard-phases
+         (add-before 'install 'create-pom
+           (lambda _
+             (with-output-to-file "pom.xml"
+               (lambda _
+                 (sxml->xml
+                   `((project
+                       (modelVersion "4.0.0")
+                       (name "aopalliance")
+                       (groupId "aopalliance")
+                       (artifactId "aopalliance")
+                       (version "1.0"))))))
+             #t))
+         (replace 'install
+           (install-from-pom "pom.xml")))))
     (home-page "http://aopalliance.sourceforge.net")
     (synopsis "Aspect-Oriented Programming")
     (description "The AOP Alliance project is a joint project between several
@@ -8439,20 +9682,25 @@ software engineering people who are interested in Aspect-Oriented Programming
 (define-public java-javax-inject
   (package
     (name "java-javax-inject")
-    (version "tck-1")
+    (version "1")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/javax-inject/javax-inject/"
-                                  "archive/javax.inject-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/javax-inject/javax-inject")
+                     (commit version)))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "1ydrlvh2r7vr1g7lhjwy3w2dggpj9h6pix1lakkkgdywb365n6g0"))))
+                "1rspl0nkvk1jif6nccikw93xic6ljj2b6kpy2mffwi2mnvc13j7x"))))
     (build-system ant-build-system)
     (arguments
      `(#:jar-name "java-javax-inject.jar"
-       #:jdk ,icedtea-8
-       #:tests? #f)); no tests
-    (home-page "http://github.com/javax-inject/javax-inject")
+       #:tests? #f; no tests
+       #:phases
+       (modify-phases %standard-phases
+         (replace 'install
+           (install-from-pom "pom.xml")))))
+    (home-page "https://github.com/javax-inject/javax-inject")
     (synopsis "JSR-330: Dependency Injection for Java")
     (description "This package specifies a means for obtaining objects in such
 a way as to maximize reusability, testability and maintainability compared to
@@ -8472,32 +9720,42 @@ the dependency is said to be unsatisfied, and the application is broken.")
     (name "java-guice")
     (version "4.1")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/google/guice/archive/"
-                                  version ".tar.gz"))
-              (file-name (string-append name "-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/google/guice")
+                     (commit version)))
+              (file-name (git-file-name name version))
               (modules '((guix build utils)))
               (snippet
                `(begin
-                  (for-each delete-file (find-files "." ".*.jar"))))
+                  (for-each delete-file (find-files "." ".*.jar")) #t))
               (sha256
                (base32
-                "0dwmqjzlavb144ywqqglj3h68hqszkff8ai0a42hyb5il0qh4rbp"))))
+                "18im5hdfl4q1b9chww2s1ii60sn3ydyyar32a2sf2p2g8zlbdswq"))))
     (build-system ant-build-system)
     (arguments
      `(#:jar-name "java-guice.jar"
        #:jdk ,icedtea-8
        #:tests? #f; FIXME: tests are not in a java sub directory
-       #:source-dir "core/src"))
-    (inputs
-     `(("guava" ,java-guava)
+       #:source-dir "core/src"
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'make-files-writable
+           (lambda _
+             (for-each make-file-writable (find-files "."))
+             #t))
+         (replace 'install
+           (install-from-pom "core/pom.xml")))))
+    (propagated-inputs
+     `(("java-aopalliance" ,java-aopalliance)
+       ("java-asm" ,java-asm)
        ("java-cglib" ,java-cglib)
-       ("java-aopalliance" ,java-aopalliance)
+       ("java-guava" ,java-guava)
        ("java-javax-inject" ,java-javax-inject)
-       ("java-asm" ,java-asm)))
+       ("java-guice-parent-pom" ,java-guice-parent-pom)))
     (home-page "https://github.com/google/guice")
     (synopsis "Lightweight dependency injection framework")
-    (description "Guice is a lightweight dependency injection framework fo
+    (description "Guice is a lightweight dependency injection framework for
 Java 6 and above.")
     (license license:asl2.0)))
 
@@ -8509,24 +9767,76 @@ Java 6 and above.")
      `(#:jar-name "guice-servlet.jar"
        #:source-dir "extensions/servlet/src/"
        #:jdk ,icedtea-8
-       #:tests? #f)); FIXME: not in a java subdir
+       #:tests? #f  ; FIXME: not in a java subdir
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'make-files-writable
+           (lambda _
+             (for-each make-file-writable (find-files "."))
+             #t)))))
     (inputs
      `(("guice" ,java-guice)
        ("servlet"  ,java-classpathx-servletapi)
        ,@(package-inputs java-guice)))))
+
+(define java-guice-parent-pom
+  (package
+    (inherit java-guice)
+    (name "java-guice-parent-pom")
+    (arguments
+     `(#:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (delete 'configure)
+         (delete 'build)
+         (add-after 'install 'install-extensions
+           (install-pom-file "extensions/pom.xml"))
+         (replace 'install
+           (install-pom-file "pom.xml")))))
+    (propagated-inputs
+     `(("java-google-parent-pom" ,java-google-parent-pom-5)))))
+
+(define java-google-parent-pom-5
+  (package
+    (name "java-google-parent-pom")
+    (version "5")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/google/google-maven-parents")
+                     (commit (string-append "google-" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0zb7hx24p8k8rfdvix2vsbfqn73jhrycdndvhf8j5gbii9wbqibv"))))
+    (build-system ant-build-system)
+    (arguments
+     `(#:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (delete 'configure)
+         (delete 'build)
+         (replace 'install
+           (install-pom-file "pom.xml")))))
+    (home-page "https://github.com/google/google-maven-parents")
+    (synopsis "Google parent pom")
+    (description "This package contains the Maven parent POM for other Google
+Java projects.")
+    (license license:asl2.0)))
 
 (define-public java-assertj
   (package
     (name "java-assertj")
     (version "3.8.0")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/joel-costigliola/"
-                                  "assertj-core/archive/"
-                                  "assertj-core-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/joel-costigliola/assertj-core")
+                     (commit (string-append "assertj-core-" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "1kf124fxskf548rklkg86294w2x6ajqrff94rrhyqns31danqkfz"))))
+                "1k35cg2in7pzk4pbdjryr0pll5lgk1r6ngrn0j8cdlgi7w8zh2d1"))))
     (build-system ant-build-system)
     (arguments
      `(#:jar-name "java-assertj.jar"
@@ -8551,14 +9861,22 @@ readability and make maintenance of tests easier.")
     (name "java-jboss-javassist")
     (version "3.21.0")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/jboss-javassist/javassist/"
-                                  "archive/rel_"
-                                  (string-map (lambda (x) (if (eq? x #\.) #\_ x)) version)
-                                  "_ga.tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/jboss-javassist/javassist")
+                     (commit
+                       (string-append "rel_"
+                                      (string-map
+                                        (lambda (x) (if (eq? x #\.) #\_ x)) version)
+                                      "_ga"))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "10lpcr3sbf7y6fq6fc2h2ik7rqrivwcy4747bg0kxhwszil3cfmf"))))
+                "0h3zlcyqiaq01fspm69h7vki67raw305w89p4ha8vlhpzw02qifm"))
+              (modules '((guix build utils)))
+              (snippet
+               '(begin
+                  (delete-file "javassist.jar")))))
     (build-system ant-build-system)
     (arguments
      `(#:jar-name "java-jboss-javassist.jar"
@@ -8567,9 +9885,9 @@ readability and make maintenance of tests easier.")
        #:tests? #f; FIXME: requires junit-awtui and junit-swingui from junit3
        #:phases
        (modify-phases %standard-phases
-         (add-before 'configure 'remove-binary
+         (add-after 'unpack 'make-files-writable
            (lambda _
-             (delete-file "javassist.jar")
+             (for-each make-file-writable (find-files "."))
              #t)))))
     (native-inputs
      `(("junit" ,java-junit)))
@@ -8586,20 +9904,21 @@ file when the JVM loads it.")
     (name "java-jcommander")
     (version "1.71")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/cbeust/jcommander/archive/"
-                                  version ".tar.gz"))
-              (file-name (string-append name "-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/cbeust/jcommander")
+                     (commit version)))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "1f5k2ckay6qjc3d3w3d7bc0p3cx3c7n6p6zxvw1kibqdr0q98wlx"))))
+                "12vcpc19sd7jhvjgp7xz1qjanfix162xb3x2q5zah93rjklj1h57"))))
     (build-system ant-build-system)
     (arguments
      `(#:jar-name "java-jcommander.jar"
        #:jdk ,icedtea-8
        #:tests? #f; requires testng which depends on jcommander
        #:source-dir "src/main/java"))
-    (home-page "http://jcommander.org")
+    (home-page "https://jcommander.org")
     (synopsis "Command line parameters parser")
     (description "JCommander is a very small Java framework that makes it
 trivial to parse command line parameters.  Parameters are declared with
@@ -8611,25 +9930,42 @@ annotations.")
     (name "java-bsh")
     (version "2.0b6")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/beanshell/beanshell/archive/"
-                                  version ".tar.gz"))
-              (file-name (string-append name "-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/beanshell/beanshell")
+                     (commit version)))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "1bawkxk6jyc75hxvzkpz689h73cn3f222m0ar3nvb0dal2b85kfv"))))
+                "0kz3f0xjack6c9syssi4qjw1rbd3q5963sk5pmr143hiibxa9csw"))
+              (modules '((guix build utils)))
+              (snippet
+               '(begin
+                  ;; Delete bundled third-party jar archives.
+                  (for-each delete-file (find-files "." ".*.jar$"))
+                  (for-each (lambda (file) (chmod file #o644))
+                            (find-files "." "."))
+                  #t))))
     (build-system ant-build-system)
     (arguments
      `(#:build-target "jarall"
        #:test-target "junit-tests-all"
+       #:make-flags (list "-DDATE" "(no date for reproducibility)")
        #:phases
        (modify-phases %standard-phases
+         (add-before 'install 'fix-pom
+           (lambda _
+             (substitute* "pom.xml"
+               (("org.apache-extras.beanshell") "org.beanshell"))
+             #t))
          (replace 'install
-           (lambda* (#:key outputs #:allow-other-keys)
-             (let ((share (string-append (assoc-ref outputs "out") "/share/java")))
-               (mkdir-p share)
-               (copy-file "dist/bsh-2.0b6.jar" (string-append share "/bsh-2.0b6.jar"))
-               #t))))))
+           (install-from-pom "pom.xml")))))
+    (inputs
+     `(("java-classpathx-servletapi" ,java-classpathx-servletapi)
+       ("java-commons-bsf" ,java-commons-bsf)))
+    (native-inputs
+     `(("java-junit" ,java-junit)
+       ("javacc" ,javacc-3)))
     (home-page "http://beanshell.org/")
     (synopsis "Lightweight Scripting for Java")
     (description "BeanShell is a small, free, embeddable Java source
@@ -8644,12 +9980,14 @@ those in Perl and JavaScript.")
     (name "java-fest-util")
     (version "1.2.5")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/alexruiz/fest-util/"
-                                  "archive/fest-util-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/alexruiz/fest-util/")
+                     (commit (string-append "fest-util-" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "05g6hljz5mdaakk8d7g32klbhz9bdwp3qlj6rdaggdidxs3x1sb8"))))
+                "02kgal7v85snyyvcsxvn4qphid455f4smh2wri1il8d9asw0djbz"))))
     (build-system ant-build-system)
     (arguments
      `(#:jar-name "java-fest-util.jar"
@@ -8667,12 +10005,14 @@ those in Perl and JavaScript.")
     (name "java-fest-test")
     (version "2.1.0")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/alexruiz/fest-test/"
-                                  "archive/fest-test-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/alexruiz/fest-test/")
+                     (commit (string-append "fest-test-" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "1rxfbw6l9vc65iy1x3fb617qc6y4w2k430pgf1mfbxfdlxbm0f7g"))))
+                "0mg1d2jfh7kbx2c40dchbjr6d8pv59snsyb13mfxsr7xk5n69qbn"))))
     (build-system ant-build-system)
     (arguments
      `(#:jar-name "java-fest-test.jar"
@@ -8690,12 +10030,14 @@ those in Perl and JavaScript.")
     (name "java-fest-assert")
     (version "2.0M10")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/alexruiz/fest-assert-2.x/"
-                                  "archive/fest-assert-core-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/alexruiz/fest-assert-2.x/")
+                     (commit (string-append "fest-assert-core-" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "1bi0iqavikzww6rxvz5jyg7y6bflv95s6ibryxx0xfcxrrw6i5lw"))))
+                "1cp8zzyag3s85fz2w68sda9zzaal1y5f9wl8g72wkm12an40w6by"))))
     (build-system ant-build-system)
     (arguments
      `(#:jar-name "java-fest-assert.jar"
@@ -8729,7 +10071,7 @@ those in Perl and JavaScript.")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/cbeust/testng.git")
+                    (url "https://github.com/cbeust/testng")
                     (commit version)))
               (file-name (string-append name "-" version "-checkout"))
               (sha256
@@ -8791,7 +10133,7 @@ those in Perl and JavaScript.")
        ("cglib" ,java-cglib)
        ("asm" ,java-asm)
        ("aopalliance" ,java-aopalliance)))
-    (home-page "http://testng.org")
+    (home-page "https://testng.org")
     (synopsis "Testing framework")
     (description "TestNG is a testing framework inspired from JUnit and NUnit
 but introducing some new functionalities that make it more powerful and easier
@@ -8807,7 +10149,7 @@ to use.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/neilalexander/jnacl.git")
+                      (url "https://github.com/neilalexander/jnacl")
                       (commit commit)))
                 (file-name (git-file-name name version))
                 (sha256
@@ -8966,13 +10308,14 @@ by technical operatives or consultants working with enterprise platforms.")
     (name "java-lz4")
     (version "1.4.0")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/lz4/lz4-java/archive/"
-                                  version ".tar.gz"))
-              (file-name (string-append name "-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/lz4/lz4-java")
+                     (commit version)))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "096dm57p2lzqk28n0j2p52x2j3cvnsd2dfqn43n7vbwrkjsy7y54"))))
+                "0ydjakhv3cz34mfvv14qrh2ksdxifgjwwagjy7r46qr3f68hnf6y"))))
     (build-system ant-build-system)
     (arguments
      `(#:jar-name "lz4.jar"
@@ -8981,6 +10324,10 @@ by technical operatives or consultants working with enterprise platforms.")
        #:tests? #f; FIXME: requires more dependencies
        #:phases
        (modify-phases %standard-phases
+         (add-after 'unpack 'make-files-writable
+           (lambda _
+             (for-each make-file-writable (find-files "."))
+             #t))
          (add-before 'configure 'generate-source
            (lambda _
              (with-directory-excursion "src/build/source_templates"
@@ -8999,13 +10346,15 @@ algorithms and xxHash hashing algorithm.")
     (name "java-bouncycastle")
     (version "1.60")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/bcgit/bc-java/archive/r"
-                                  (substring version 0 1) "v"
-                                  (substring version 2 4) ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "http://git.bouncycastle.org/repositories/bc-java")
+                     ;(url "https://github.com/bcgit/bc-java")
+                     (commit (string-append "r1rv" (substring version 2 4)))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "0v434513y708qc87k4xz13p2kzydc736lk3ks67df9mg11s7hchv"))
+                "1m921a1ac2dl797ffzg3d4j97ch308f25spb4jgsj3npfmmys5gb"))
               (modules '((guix build utils)))
               (snippet
                '(begin
@@ -9383,7 +10732,7 @@ protocol-independent framework to build mail and messaging applications.")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/zeromq/jeromq.git")
+                    (url "https://github.com/zeromq/jeromq")
                     (commit (string-append "v" version))))
               (file-name (string-append name "-" version "-checkout"))
               (sha256
@@ -9532,13 +10881,16 @@ outputting XML data from Java code.")
                ;; org.apache.xbean.asm6 is actually repackaged java-asm
                (substitute* (string-append dir "XbeanAsmParameterNameLoader.java")
                  (("org.apache.xbean.asm5") "org.objectweb.asm"))
-               #t))))))
+               #t)))
+         (replace 'install (install-from-pom "xbean-reflect/pom.xml")))))
     (inputs
      `(("asm" ,java-asm)
        ("log4j" ,java-log4j-api)
        ("log4j-1.2" ,java-log4j-1.2-api)
        ("log4j-core" ,java-log4j-core)
        ("logging" ,java-commons-logging-minimal)))
+    (propagated-inputs
+     `(("java-geronimo-parent-pom" ,java-geronimo-parent-pom)))
     (native-inputs
      `(("junit" ,java-junit)))
     (home-page "https://geronimo.apache.org/maven/xbean/3.6/xbean-reflect/")
@@ -9546,6 +10898,65 @@ outputting XML data from Java code.")
     (description "Xbean-reflect provides very flexible ways to create objects
 and graphs of objects for dependency injection frameworks")
     (license license:asl2.0)))
+
+(define java-geronimo-genesis-2.1
+  (package
+    (name "java-geronimo-genesis")
+    (version "2.1")
+    (source (origin
+              (method svn-fetch)
+              (uri (svn-reference
+                     (url (string-append "https://svn.apache.org/repos/asf/"
+                                         "geronimo/genesis/tags/genesis-"
+                                         version))
+                     (revision 1807396)))
+              (file-name (string-append name "-" version "-source"))
+              (sha256
+               (base32
+                "119yn795jvnjf52si84q192s8wag1k013iabg78b7wnadssnnh31"))))
+    (build-system ant-build-system)
+    (arguments
+     `(#:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (delete 'configure)
+         (delete 'build)
+         (replace 'install
+           (install-pom-file "pom.xml"))
+         (add-after 'install 'install-enforcer-rules
+           (install-pom-file "genesis-enforcer-rules/pom.xml"))
+         (add-after 'install 'install-flava
+           (install-pom-file "genesis-default-flava/pom.xml"))
+         (add-after 'install 'install-packaging
+           (install-pom-file "genesis-packaging/pom.xml"))
+         (add-after 'install-flava 'install-flava-java4
+           (install-pom-file "genesis-default-flava/genesis-java1.4-flava/pom.xml"))
+         (add-after 'install-flava 'install-flava-java5
+           (install-pom-file "genesis-default-flava/genesis-java5-flava/pom.xml"))
+         (add-after 'install-flava 'install-flava-java6
+           (install-pom-file "genesis-default-flava/genesis-java6-flava/pom.xml")))))
+    (propagated-inputs
+     `(("apache-parent-pom" ,apache-parent-pom-13)))
+    (home-page "https://geronimo.apache.org")
+    (synopsis "Collection of maven POM files for the Geronimo project")
+    (description "Apache Geronimo is a server runtime.  This package contains
+only pom files used by other components in the Geronimo project.")
+    (license license:asl2.0)))
+
+(define java-geronimo-parent-pom
+  (package
+    (inherit java-geronimo-xbean-reflect)
+    (name "java-geronimo-parent-pom")
+    (arguments
+     `(#:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (delete 'configure)
+         (delete 'build)
+         (replace 'install
+           (install-pom-file "pom.xml")))))
+    (propagated-inputs
+     `(("java-geronimo-genesis" ,java-geronimo-genesis-2.1)))))
 
 (define-public java-geronimo-xbean-bundleutils
   (package
@@ -9585,7 +10996,7 @@ public Bundle getBundle()"))
        ("java-osgi-framework" ,java-osgi-framework)
        ("java-eclipse-osgi" ,java-eclipse-osgi)
        ("java-osgi-service-packageadmin" ,java-osgi-service-packageadmin)))))
- 
+
 (define-public java-geronimo-xbean-asm-util
   (package
     (inherit java-geronimo-xbean-reflect)
@@ -9597,7 +11008,7 @@ public Bundle getBundle()"))
     (inputs
      `(("java-asm" ,java-asm)))
     (native-inputs '())))
- 
+
 (define-public java-geronimo-xbean-finder
   (package
     (inherit java-geronimo-xbean-reflect)
@@ -9681,7 +11092,11 @@ including pre-existing objects that you do not have source-code of.")
                (with-directory-excursion "hawtjni-generator/src/main/resources/"
                  (install-file "libhawtjni.so" lib)
                  (install-file "hawtjni.h" inc)))
-             #t)))))
+             #t))
+         (add-before 'install 'install-parent
+           (install-pom-file "pom.xml"))
+         (replace 'install
+           (install-from-pom "hawtjni-runtime/pom.xml")))))
     (inputs
      `(("java-commons-cli" ,java-commons-cli)
        ("java-asm" ,java-asm)
@@ -9732,15 +11147,24 @@ that is part of the SWT Tools project.")
                                            "linux32")
                                           ((or "x86_64-linux" "aarch64-linux"
                                                "mips64el-linux")
-                                           "linux64")))))
+                                           "linux64")
+                                          (_ "unknown-kernel")))))
                (install-file "src/main/native-package/src/libjansi.so" dir))
              #t))
          (add-after 'install 'install-native
            (lambda* (#:key outputs #:allow-other-keys)
              (install-file "src/main/native-package/src/jansi.h"
                            (string-append (assoc-ref outputs "out") "/include"))
-             #t)))))
-    (inputs
+             #t))
+         (add-before 'install 'fix-pom
+           (lambda _
+             ;; pom contains variables to complete name, but we don't support that
+             (substitute* "pom.xml"
+               (("\\$\\{platform\\}") "native"))
+             #t))
+         (replace 'install
+           (install-from-pom "pom.xml")))))
+    (propagated-inputs
      `(("java-hawtjni" ,java-hawtjni)))
     (home-page "https://fusesource.github.io/jansi/")
     (synopsis "Native library for jansi")
@@ -9769,8 +11193,25 @@ console output.")
        (modify-phases %standard-phases
          (add-after 'check 'clear-term
            (lambda _
-             (invoke "echo" "-e" "\\e[0m"))))))
-    (inputs
+             (invoke "echo" "-e" "\\e[0m")))
+         (add-before 'install 'install-parent
+           (install-pom-file "pom.xml"))
+         (add-before 'install 'fix-pom
+           (lambda _
+             ;; pom adds jansi native versions for different platforms, but we
+             ;; only need one, so use native instead
+             (substitute* "jansi/pom.xml"
+               (("windows32") "native")
+               (("windows64") "native")
+               (("osx") "native")
+               (("linux32") "native")
+               (("linux64") "native")
+               (("freebsd32") "native")
+               (("freebsd64") "native"))
+             #t))
+         (replace 'install
+           (install-from-pom "jansi/pom.xml")))))
+    (propagated-inputs
      `(("java-jansi-native" ,java-jansi-native)))
     (native-inputs
      `(("java-junit" ,java-junit)
@@ -9796,7 +11237,31 @@ sequences to format your console output which works on every platform.")
     (build-system ant-build-system)
     (arguments
      `(#:jar-name "java-jboss-el-api_spec.jar"
-       #:jdk ,icedtea-8))
+       #:modules ((guix build ant-build-system)
+                  (guix build utils)
+                  (guix build maven pom)
+                  (guix build java-utils)
+                  (sxml simple))
+       #:phases
+       (modify-phases %standard-phases
+         ;; the origin of javax.el:javax.el-api is unknown, so we use this package
+         ;; instead, which implements the same thing.  We override the pom file
+         ;; to "rename" the package so it can be found by maven.
+         (add-before 'install 'override-pom
+           (lambda _
+             (delete-file "pom.xml")
+             (with-output-to-file "pom.xml"
+               (lambda _
+                 (sxml->xml
+                   `(project
+                      (modelVersion "4.0.0")
+                      (name "el-api")
+                      (groupId "javax.el")
+                      (artifactId "javax.el-api")
+                      (version "3.0")))))
+             #t))
+         (replace 'install
+           (install-from-pom "pom.xml")))))
     (inputs
      `(("java-junit" ,java-junit)))
     (home-page "https://github.com/jboss/jboss-el-api_spec")
@@ -9825,7 +11290,33 @@ JavaServer Pages (JSP).")
      `(#:jar-name "java-jboss-interceptors-api_spec.jar"
        #:jdk ,icedtea-8
        #:source-dir "."
-       #:tests? #f)); no tests
+       #:tests? #f; no tests
+       #:modules ((guix build ant-build-system)
+                  (guix build utils)
+                  (guix build maven pom)
+                  (guix build java-utils)
+                  (sxml simple))
+       #:phases
+       (modify-phases %standard-phases
+         ;; the origin of javax.interceptor:javax.interceptor-api is unknown,
+         ;; so we use this package instead, which implements the same thing.
+         ;; We override the pom file to "rename" the package so it can be found
+         ;; by maven.
+         (add-before 'install 'override-pom
+           (lambda _
+             (delete-file "pom.xml")
+             (with-output-to-file "pom.xml"
+               (lambda _
+                 (sxml->xml
+                   `(project
+                      (modelVersion "4.0.0")
+                      (name "interceptor-api")
+                      (groupId "javax.interceptor")
+                      (artifactId "javax.interceptor-api")
+                      (version "3.0")))))
+             #t))
+         (replace 'install
+           (install-from-pom "pom.xml")))))
     (home-page "https://github.com/jboss/jboss-interceptors-api_spec")
     (synopsis "Interceptors 1.2 API classes from JSR 318")
     (description "Java-jboss-interceptors-api-spec implements the Interceptors
@@ -9852,11 +11343,16 @@ specific events.")
        #:jar-name "java-cdi-api.jar"
        #:test-dir "api/src/test"
        #:jdk ,icedtea-8
-       #:tests? #f)); Tests fail because we don't have a CDI provider yet
-    (inputs
+       #:tests? #f; Tests fail because we don't have a CDI provider yet
+       #:phases
+       (modify-phases %standard-phases
+         (replace 'install
+           (install-from-pom "api/pom.xml")))))
+    (propagated-inputs
      `(("java-javax-inject" ,java-javax-inject)
        ("java-jboss-el-api-spec" ,java-jboss-el-api-spec)
-       ("java-jboss-interceptors-api-spec" ,java-jboss-interceptors-api-spec)))
+       ("java-jboss-interceptors-api-spec" ,java-jboss-interceptors-api-spec)
+       ("java-weld-parent-pom" ,java-weld-parent-pom)))
     (native-inputs
      `(("java-testng" ,java-testng)
        ("java-hamcrest-core" ,java-hamcrest-core)))
@@ -9890,7 +11386,7 @@ Dependency Injection (CDI).")
     (native-inputs
      `(("java-junit" ,java-junit)
        ("java-hamcrest-core" ,java-hamcrest-core)))
-    (home-page "http://www.joda.org/joda-convert/")
+    (home-page "https://www.joda.org/joda-convert/")
     (synopsis "Conversion between Objects and Strings")
     (description "Joda-Convert provides a small set of classes to aid
 conversion between Objects and Strings.  It is not intended to tackle the
@@ -9958,7 +11454,7 @@ wider problem of Object to Object transformation.")
      `(("java-junit" ,java-junit)
        ("java-hamcrest-core" ,java-hamcrest-core)
        ("tzdata" ,tzdata)))
-    (home-page "http://www.joda.org/joda-time/")
+    (home-page "https://www.joda.org/joda-time/")
     (synopsis "Replacement for the Java date and time classes")
     (description "Joda-Time is a replacement for the Java date and time
 classes prior to Java SE 8.")
@@ -9967,14 +11463,14 @@ classes prior to Java SE 8.")
 (define-public java-xerces
   (package
     (name "java-xerces")
-    (version "2.11.0")
+    (version "2.12.1")
     (source
      (origin
        (method url-fetch)
        (uri (string-append "mirror://apache/xerces/j/source/"
                            "Xerces-J-src." version ".tar.gz"))
        (sha256
-        (base32 "1006igwy2lqrmjvdk64v8dg6qbk9c29pm8xxx7r87n0vnpvmx6pm"))
+        (base32 "0494kq36gw3nah19ifb720vwxbpg4ww0k6m3zq6wyanw6a083p6s"))
        (patches (search-patches
                  "java-xerces-xjavac_taskdef.patch"
                  "java-xerces-build_dont_unzip.patch"
@@ -10169,13 +11665,13 @@ features that bring it on par with the Z shell line editor.")
         ,(origin
            (method git-fetch)
            (uri (git-reference
-                  (url "https://github.com/xmlunit/test-resources.git")
+                  (url "https://github.com/xmlunit/test-resources")
                   (commit "a590d2ae865c3e0455691d76ba8eefccc2215aec")))
            (file-name "java-xmlunit-test-resources")
            (sha256
             (base32
              "0r0glj37pg5l868yjz78gckr91cs8fysxxbp9p328dssssi91agr"))))))
-    (home-page "http://www.xmlunit.org/")
+    (home-page "https://www.xmlunit.org/")
     (synopsis "XML output testing")
     (description "XMLUnit provides you with the tools to verify the XML you
 emit is the one you want to create.  It provides helpers to validate against
@@ -10261,7 +11757,7 @@ against expected outcomes.")
      `(("unzip" ,unzip)
        ("java-junit" ,java-junit)
        ("java-hamcrest-core" ,java-hamcrest-core)))
-    (home-page "http://approximatrix.com/products/openchart2/")
+    (home-page "https://approximatrix.com/products/openchart2/")
     (synopsis "Simple plotting for Java")
     (description "Openchart2 provides a simple, yet powerful, interface for
 Java programmers to create two-dimensional charts and plots.  The library
@@ -10275,7 +11771,7 @@ graphs, and pie charts.")
     (version "3.1")
     (source (origin
               (method url-fetch)
-              (uri (string-append "https://archive.apache.org/dist/httpcomponents/"
+              (uri (string-append "mirror://apache/httpcomponents/"
                                   "commons-httpclient/source/commons-httpclient-"
                                   version "-src.tar.gz"))
               (sha256
@@ -10357,7 +11853,7 @@ authentication, HTTP state management, and HTTP connection management.")
        ("java-commons-logging-minimal" ,java-commons-logging-minimal)
        ("java-commons-net" ,java-commons-net)
        ("java-jsch" ,java-jsch)))
-    (home-page "http://commons.apache.org/proper/commons-vfs/")
+    (home-page "https://commons.apache.org/proper/commons-vfs/")
     (synopsis "Java file system library")
     (description "Commons VFS provides a single API for accessing various
 different file systems.  It presents a uniform view of the files from various
@@ -10371,7 +11867,7 @@ inside a Zip archive.")
     (version "2.0.8")
     (source (origin
               (method url-fetch)
-              (uri (string-append "https://archive.apache.org/dist/jakarta/oro/"
+              (uri (string-append "mirror://apache/jakarta/oro/"
                                   "jakarta-oro-" version ".tar.gz"))
               (sha256
                (base32
@@ -10384,6 +11880,7 @@ inside a Zip archive.")
     (build-system ant-build-system)
     (arguments
      `(#:build-target "package"
+       #:make-flags (list "-DDATE" "(no recorded date for reproducibility)")
        #:tests? #f; tests are run as part of the build process
        #:phases
        (modify-phases %standard-phases
@@ -10434,11 +11931,10 @@ from ORO, Inc.")
                ;; so don't fail if we can't find a native library for another architecture.
                (("zipfileset") "zipfileset erroronmissingarchive=\"false\""))
              ;; Copy test dependencies
-             (copy-file (string-append (assoc-ref inputs "java-junit")
-                                       "/share/java/junit.jar")
+             (copy-file (car (find-files (assoc-ref inputs "java-junit") "jar$"))
                         "lib/junit.jar")
-             (copy-file (string-append (assoc-ref inputs "java-hamcrest-core")
-                                       "/share/java/hamcrest-core.jar")
+             (copy-file (car (find-files (assoc-ref inputs "java-hamcrest-core")
+                                         "jar$"))
                         "lib/hamcrest-core.jar")
              ;; FIXME: once reflections.jar is built, copy it to lib/test.
              #t))
@@ -10487,11 +11983,11 @@ Java method invocation.")
                 (string-append (assoc-ref inputs "java-native-access")
                                "/share/java/jna.jar"))
                (("../../lib/hamcrest-core-.*.jar")
-                (string-append (assoc-ref inputs "java-hamcrest-core")
-                               "/share/java/hamcrest-core.jar"))
+                (car (find-files (assoc-ref inputs "java-hamcrest-core")
+                                 "jar$")))
                (("../../lib/junit.jar")
-                (string-append (assoc-ref inputs "java-junit")
-                               "/share/java/junit.jar")))
+                (car (find-files (assoc-ref inputs "java-junit")
+                                 "jar$"))))
              #t))
          (replace 'install
            (install-jars "dist")))))
@@ -10728,25 +12224,30 @@ and reporting) project dependencies.  It is characterized by the following:
 (define-public java-eclipse-sisu-inject
   (package
     (name "java-eclipse-sisu-inject")
-    (version "0.3.3")
+    (version "0.3.4")
     (source (origin
               (method git-fetch)
               (uri (git-reference
                      (url "https://github.com/eclipse/sisu.inject/")
-                     (commit "releases/0.3.3")))
+                     (commit (string-append "releases/" version))))
               (file-name (git-file-name name version))
               (sha256
                (base32
-                "0gibc9x0bw0f4ls086fx73610fcspz9g2as7kcpcfhvl5znysvg7"))))
+                "16044sizdb0rjbhlfbmcnpds5y7by7dyn9b0c11606aikqi8k3x6"))))
     (build-system ant-build-system)
     (arguments
      `(#:jar-name "eclipse-sisu-inject.jar"
        #:source-dir "org.eclipse.sisu.inject/src"
-       #:jdk ,icedtea-8
-       #:tests? #f)); no tests
-    (inputs
+       #:tests? #f; no tests
+       #:phases
+       (modify-phases %standard-phases
+         (replace 'install
+           (install-from-pom "org.eclipse.sisu.inject/pom.xml")))))
+    (propagated-inputs
      `(("java-guice" ,java-guice)
-       ("java-guice-servlet" ,java-guice-servlet)
+       ("java-sisu-inject-parent-pom" ,java-sisu-inject-parent-pom)))
+    (inputs
+     `(("java-guice-servlet" ,java-guice-servlet)
        ("java-javax-inject" ,java-javax-inject)
        ("java-javaee-servletapi" ,java-javaee-servletapi)
        ("java-junit" ,java-junit)
@@ -10767,17 +12268,33 @@ Integration with other containers via the Eclipse Extension Registry and the
 OSGi Service Registry is a goal of this project.")
     (license license:epl1.0)))
 
+(define java-sisu-inject-parent-pom
+  (package
+    (inherit java-eclipse-sisu-inject)
+    (name "java-sisu-inject-parent-pom")
+    (arguments
+     `(#:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (delete 'configure)
+         (delete 'build)
+         (replace 'install
+           (install-pom-file "pom.xml")))))
+    (propagated-inputs '())))
+
 (define-public java-eclipse-sisu-plexus
   (package
     (name "java-eclipse-sisu-plexus")
-    (version "0.3.3")
+    (version "0.3.4")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/eclipse/sisu.plexus/"
-                                  "archive/releases/" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/eclipse/sisu.plexus")
+                     (commit (string-append "releases/" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "0lbj7nxy5j0z71k407zbb82icfqh7midrfk0fb3fa3jzdjz0d9d9"))
+                "17mjlajnsqnk07cc58h1qpxrif85yb2m2y0pyba48yjjgikk8r9f"))
               (modules '((guix build utils)))
               (snippet
                '(begin
@@ -10826,28 +12343,48 @@ OSGi Service Registry is a goal of this project.")
                (substitute* "java/org/eclipse/sisu/plexus/DefaultPlexusContainerTest.java"
                  (("resources/component-jar")
                   "org.eclipse.sisu.plexus.tests/resources/component-jar")))
-             #t)))))
-    (inputs
+             #t))
+         (replace 'install
+           (install-from-pom "org.eclipse.sisu.plexus/pom.xml")))))
+    (propagated-inputs
      `(("java-plexus-classworlds" ,java-plexus-classworlds)
-       ("java-plexus-util" ,java-plexus-utils)
+       ("java-plexus-utils" ,java-plexus-utils)
        ("java-plexus-component-annotations" ,java-plexus-component-annotations)
-       ("java-osgi-framework" ,java-osgi-framework)
+       ("java-cdi-api" ,java-cdi-api)
        ("java-eclipse-sisu-inject" ,java-eclipse-sisu-inject)
-       ("java-guice" ,java-guice)
-       ("java-javax-inject" ,java-javax-inject)
+       ("java-sisu-plexus-parent-pom" ,java-sisu-plexus-parent-pom)))
+    (inputs
+     `(("java-osgi-framework" ,java-osgi-framework)
        ("java-slf4j-api" ,java-slf4j-api)
-       ("java-junit" ,java-junit)))
-    (native-inputs
-     `(("java-guava" ,java-guava)
+       ("java-javax-inject" ,java-javax-inject)
+       ("java-guice" ,java-guice)
+       ("java-guava" ,java-guava)
        ("java-aopalliance" ,java-aopalliance)
-       ("java-cglib" ,java-cglib)
-       ("java-asm" ,java-asm)))
+       ("java-asm" ,java-asm)
+       ("java-cglib" ,java-cglib)))
+    (native-inputs
+     `(("java-junit" ,java-junit)))
     (home-page "https://www.eclipse.org/sisu/")
     (synopsis "Plexus support for the sisu container")
     (description "Sisu is a modular JSR330-based container that supports
 classpath scanning, auto-binding, and dynamic auto-wiring.  This package
 adds Plexus support to the Sisu-Inject container.")
     (license license:epl1.0)))
+
+(define java-sisu-plexus-parent-pom
+  (package
+    (inherit java-eclipse-sisu-plexus)
+    (name "java-sisu-plexus-parent-pom")
+    (arguments
+     `(#:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (delete 'configure)
+         (delete 'build)
+         (replace 'install
+           (install-pom-file "pom.xml")))))
+    (propagated-inputs
+     `(("java-sonatype-oss-parent-pom-9" ,java-sonatype-oss-parent-pom-9)))))
 
 (define-public java-commons-compiler
   (package
@@ -11006,35 +12543,6 @@ Moreover, @code{logback-classic} natively implements the slf4j API so that you
 can readily switch back and forth between logback and other logging frameworks
 such as log4j or @code{java.util.logging} (JUL).")))
 
-(define-public java-qdox
-  (package
-    (name "java-qdox")
-    ; Newer version exists, but this version is required by java-plexus-component-metadata
-    (version "2.0-M2")
-    (source (origin
-              (method url-fetch)
-              ;; 2.0-M4, -M5 at https://github.com/paul-hammant/qdox
-              ;; Older releases at https://github.com/codehaus/qdox/
-              ;; Note: The release at maven is pre-generated. The release at
-              ;; github requires jflex.
-              (uri (string-append "http://central.maven.org/maven2/"
-                                  "com/thoughtworks/qdox/qdox/" version
-                                  "/qdox-" version "-sources.jar"))
-              (sha256
-               (base32
-                "10xxrcaicq6axszcr2jpygisa4ch4sinyx5q7kqqxv4lknrmxp5x"))))
-    (build-system ant-build-system)
-    (arguments
-     `(#:jar-name "qdox.jar"
-       #:tests? #f)); no tests
-    (home-page "http://qdox.codehaus.org/")
-    (synopsis "Parse definitions from Java source files")
-    (description "QDox is a high speed, small footprint parser for extracting
-class/interface/method definitions from source files complete with JavaDoc
-@code{@@tags}.  It is designed to be used by active code generators or
-documentation tools.")
-    (license license:asl2.0)))
-
 (define-public java-jgit
   (package
     (name "java-jgit")
@@ -11109,3 +12617,331 @@ network protocols, and core version control algorithms.")
      `(("java-javaewah" ,java-javaewah)
        ("java-jsch" ,java-jsch)
        ("java-slf4j-api" ,java-slf4j-api)))))
+
+(define-public abcl
+  (package
+    (name "abcl")
+    (version "1.6.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "https://abcl.org/releases/"
+                           version "/abcl-src-" version ".tar.gz"))
+       (sha256
+        (base32
+         "0hvbcsffr8n2xwdixc8wyw1bfl9fxn2gyy0c4nma7j9zbn0wwgw9"))
+       (patches
+        (search-patches
+         "abcl-fix-build-xml.patch"))))
+    (build-system ant-build-system)
+    (native-inputs
+     `(("java-junit" ,java-junit)))
+    (arguments
+     `(#:build-target "abcl.jar"
+       #:test-target "abcl.test"
+       #:phases
+       (modify-phases %standard-phases
+         (replace 'install
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((share (string-append (assoc-ref outputs "out")
+                                         "/share/java/"))
+                   (bin (string-append (assoc-ref outputs "out")
+                                       "/bin/")))
+               (mkdir-p share)
+               (install-file "dist/abcl.jar" share)
+               (install-file "dist/abcl-contrib.jar" share)
+               (mkdir-p bin)
+               (with-output-to-file (string-append bin "abcl")
+                 (lambda _
+                   (let ((classpath (string-append
+                                     share "abcl.jar"
+                                     ":"
+                                     share "abcl-contrib.jar")))
+                     (display (string-append
+                               "#!" (which "sh") "\n"
+                               "if [[ -z $CLASSPATH ]]; then\n"
+                               "  cp=\"" classpath "\"\n"
+                               "else\n"
+                               "  cp=\"" classpath ":$CLASSPATH\"\n"
+                               "fi\n"
+                               "exec " (which "java")
+                               " -cp $cp org.armedbear.lisp.Main $@\n")))))
+               (chmod (string-append bin "abcl") #o755)
+               #t))))))
+    (home-page "https://abcl.org/")
+    (synopsis "Common Lisp Implementation on the JVM")
+    (description
+     "@dfn{Armed Bear Common Lisp} (ABCL) is a full implementation of the Common
+Lisp language featuring both an interpreter and a compiler, running in the
+JVM.  It supports JSR-223 (Java scripting API): it can be a scripting engine
+in any Java application.  Additionally, it can be used to implement (parts of)
+the application using Java to Lisp integration APIs.")
+    (license (list license:gpl2+
+                   ;; named-readtables is released under 3 clause BSD
+                   license:bsd-3
+                   ;; jfli is released under CPL 1.0
+                   license:cpl1.0))))
+
+(define-public java-jsonp-api
+  (package
+    (name "java-jsonp-api")
+    (version "1.1.6")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/eclipse-ee4j/jsonp")
+                     (commit (string-append "1.1-" version "-RELEASE"))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0zrj03hkr3jdmqlb4ipjr37cqpp2q2814qpmxi7srlwpdqs0ibgc"))))
+    (build-system ant-build-system)
+    (arguments
+     `(#:jar-name "jsonp-api.jar"
+       #:tests? #f
+       #:source-dir "api/src/main/java"
+       #:test-dir "api/src/test"))
+    (home-page "https://eclipse-ee4j.github.io/jsonp/")
+    (synopsis "JSON Processing in Java")
+    (description "JSON Processing (JSON-P) is a Java API to process (e.g.
+parse, generate, transform and query) JSON messages.  It produces and
+consumes JSON text in a streaming fashion (similar to StAX API for XML)
+and allows building a Java object model for JSON text using API classes
+(similar to DOM API for XML).")
+    ;; either gpl2 only with classpath exception, or epl2.0.
+    (license (list license:gpl2
+                   license:epl2.0))))
+
+(define-public java-jsonp-impl
+  (package
+    (inherit java-jsonp-api)
+    (name "java-jsonp-impl")
+    (arguments
+     `(#:jar-name "jsonp-impl.jar"
+       #:tests? #f
+       #:source-dir "impl/src/main/java"
+       #:test-dir "impl/src/test"
+       #:phases
+       (modify-phases %standard-phases
+         (add-before 'build 'copy-resources
+           (lambda _
+             (copy-recursively
+               "impl/src/main/resources/"
+               "build/classes")
+             #t)))))
+    (propagated-inputs
+     `(("java-jsonp-api" ,java-jsonp-api)))
+    (description "JSON Processing (JSON-P) is a Java API to process (e.g.
+parse, generate, transform and query) JSON messages.  This package contains
+a reference implementation of that API.")))
+
+(define-public java-xmp
+  (package
+    (name "java-xmp")
+    (version "5.1.3")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append "http://download.macromedia.com/pub/developer"
+                                  "/xmp/sdk/XMPCoreJava-" version ".zip"))
+              (sha256
+               (base32
+                "14nai2mmsg7l5ya2y5mx4w4lr1az3sk2fjz6hiy4zdrsavgvl1g7"))))
+    (build-system ant-build-system)
+    (arguments
+     `(#:build-target "build"
+       #:tests? #f; no tests
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'chdir
+           (lambda _
+             (chdir "XMPCore")
+             #t))
+         (add-before 'build 'fix-timestamp
+           (lambda _
+             (substitute* "build.xml"
+               (("\\$\\{BuildDate\\}") "1970 Jan 01 00:00:00-GMT"))
+             #t))
+         (replace 'install
+           (install-jars "."))
+         (add-after 'install 'install-doc
+           (lambda* (#:key outputs #:allow-other-keys)
+             (copy-recursively
+               "docs"
+               (string-append (assoc-ref outputs "out") "/share/doc/java-xmp"))
+             #t)))))
+    (native-inputs
+     `(("unzip" ,unzip)))
+    (home-page "https://www.adobe.com/devnet/xmp.html")
+    (synopsis "Extensible Metadat Platform (XMP) support in Java")
+    (description "Adobe's Extensible Metadata Platform (XMP) is a labeling
+technology that allows you to embed data about a file, known as metadata,
+into the file itself.  The XMP Toolkit for Java is based on the C++ XMPCore
+library and the API is similar.")
+    (license license:bsd-3)))
+
+(define-public java-metadata-extractor
+  (package
+    (name "java-metadata-extractor")
+    (version "2.11.0")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/drewnoakes/metadata-extractor")
+                     (commit version)))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "06yrq0swrl1r40yjbk5kqzjxr04jlkq9lfi711jvfgjf5kp2qinj"))))
+    (build-system ant-build-system)
+    (arguments
+     `(#:jar-name "metadata-extractor.jar"
+       #:source-dir "Source"
+       #:test-dir "Tests"
+       #:phases
+       (modify-phases %standard-phases
+         (add-before 'check 'fix-test-dir
+           (lambda _
+             (substitute* "build.xml"
+               (("/java\">") "\">"))
+             #t)))))
+    (propagated-inputs
+     `(("java-xmp" ,java-xmp)))
+    (native-inputs
+     `(("java-hamcrest-core" ,java-hamcrest-core)
+       ("java-junit" ,java-junit)))
+    (home-page "https://github.com/drewnoakes/metadata-extractor")
+    (synopsis "Extract metadata from image and video files")
+    (description "Metadata-extractor is a straightforward Java library for
+reading metadata from image files.  It is able to read metadata in Exif,
+IPTC, XMP, ICC and more formats.")
+    (license license:asl2.0)))
+
+(define-public java-svg-salamander
+  (package
+    (name "java-svg-salamander")
+    (version "1.1.2")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/blackears/svgSalamander")
+                     (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "1zv3kjdkf6iqf02x6ln76254y634j2ji448y706a65lsbfjmmicf"))
+              (modules '((guix build utils)))
+              (snippet
+               '(begin
+                  (for-each delete-file (find-files "." ".*.jar"))
+                  #t))
+              (patches
+                (search-patches "java-svg-salamander-Fix-non-det.patch"))))
+    (build-system ant-build-system)
+    (arguments
+     `(#:tests? #f; no tests
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'chdir
+           (lambda _
+             (chdir "svg-core")
+             #t))
+         (add-before 'build 'copy-jars
+           (lambda* (#:key inputs #:allow-other-keys)
+             (copy-file (car (find-files (assoc-ref inputs "javacc") "\\.jar$"))
+                        "../libraries/javacc.jar")
+             (copy-file (car (find-files (assoc-ref inputs "ant") "ant\\.jar$"))
+                        "../libraries/ant.jar")
+             #t))
+         (replace 'install
+           (install-jars "dist")))))
+    (native-inputs
+     `(("javacc" ,javacc)))
+    (home-page "https://github.com/blackears/svgSalamander")
+    (synopsis "SVG engine for Java")
+    (description "SVG Salamander is an SVG engine for Java that's designed
+to be small, fast, and allow programmers to use it with a minimum of fuss.
+It's in particular targeted for making it easy to integrate SVG into Java
+games and making it much easier for artists to design 2D game content - from
+rich interactive menus to charts and graphcs to complex animations.")
+    (license license:bsd-2)))
+
+(define-public java-jboss-transaction-api-spec
+  (package
+    (name "java-jboss-transaction-api-spec")
+    (version "1.2+1.1.1")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/jboss/jboss-transaction-api_spec")
+                     (commit "jboss-transaction-api_1.2_spec-1.1.1.Final")))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "1xbfq5hvb86izflydxrqqv3k26c1ba2m0ap6m97shqrsdi9by4wy"))))
+    (build-system ant-build-system)
+    (arguments
+     `(#:jar-name "java-jboss-transaction-api_spec.jar"
+       #:source-dir "src/main/java"
+       #:tests? #f)); no tests
+    (inputs
+     `(("java-cdi-api" ,java-cdi-api)
+       ("java-jboss-interceptors-api-spec" ,java-jboss-interceptors-api-spec)))
+    (home-page "https://github.com/jboss/jboss-transaction-api_spec")
+    (synopsis "Generic transaction management API in Java")
+    (description "Java-jboss-transaction-api-spec implements the Transactions
+API.  A transaction is a unit of work containing one or more operations
+involving one or more shared resources having ACID (Atomicity, Consistency,
+Isolation and Durability) properties.")
+    ;; either gpl2 only with classpath exception or cddl.
+    (license (list license:gpl2 license:cddl1.0))))
+
+(define-public java-picocli
+  (package
+    (name "java-picocli")
+    (version "4.3.2")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/remkop/picocli")
+                     (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "1sxp6rxjfgjd98ly14b3d15dvxkm5wg4g46w12jyhmr0kmkaca3c"))))
+    (build-system ant-build-system)
+    (arguments
+     `(#:jar-name "picocli.jar"
+       #:source-dir "src/main/java"
+       ;; Tests require missing dependencies (junitparams, system-rules)
+       #:tests? #f))
+    (home-page "https://picocli.info")
+    (synopsis "REPL for the JVM")
+    (description "Picocli is a framework for building command line applications
+for the JVM.  It supports colors, autocompletion, subcommands, and more.  Written
+in Java, usable from Groovy, Kotlin, Scala, etc.")
+    (license license:asl2.0)))
+
+(define-public java-jetbrains-annotations
+  (package
+    (name "java-jetbrains-annotations")
+    (version "19.0.0")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/JetBrains/java-annotations")
+                     (commit version)))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0z6i1xs60cd5ffz23c49sq68wn5mphhs3xpar1n93ppama2ng80v"))))
+    (build-system ant-build-system)
+    (arguments
+     `(#:jar-name "jetbrains-annotations.jar"
+       #:source-dir "common/src/main/java:java8/src/main/java"
+       #:tests? #f)); no tests
+    (home-page "https://github.com/JetBrains/java-annotations")
+    (synopsis "Annotations for Java and other JVM languages")
+    (description "This package contains a set of Java annotations which can be
+used in JVM-based languages.  They serve as an additional documentation and
+can be interpreted by IDEs and static analysis tools to improve code analysis.")
+    (license license:expat)))

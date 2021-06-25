@@ -3,6 +3,7 @@
 ;;; Copyright © 2016 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2017, 2018 Nicolas Goaziou <mail@nicolasgoaziou.fr>
 ;;; Copyright © 2018 Clément Lassieur <clement@lassieur.org>
+;;; Copyright © 2019 Marius Bakke <mbakke@fastmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -53,6 +54,7 @@
        (method url-fetch)
        (uri (string-append "mirror://sourceforge/scribus/scribus-devel/"
                            version "/scribus-" version ".tar.xz"))
+       (patches (search-patches "scribus-1.5.5-poppler-0.86-build-fix.patch"))
        (sha256
         (base32
          "0w9zzsiaq3f7vpxybk01c9z2b4qqg67mzpyfb2gjchz8dhdb423r"))))
@@ -86,7 +88,7 @@
        ("lcms" ,lcms)
        ("libcdr" ,libcdr)
        ("libfreehand" ,libfreehand)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libmspub" ,libmspub)
        ("libpagemaker" ,libpagemaker)
        ("librevenge" ,librevenge)

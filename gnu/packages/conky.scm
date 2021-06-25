@@ -1,7 +1,8 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2015 Siniša Biđin <sinisa@bidin.eu>
-;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2019 Pierre Neidhardt <mail@ambrevar.xyz>
+;;; Copyright © 2019 Vasile Dumitrascu <va511e@yahoo.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -31,13 +32,14 @@
   #:use-module (gnu packages lua)
   #:use-module (gnu packages ncurses)
   #:use-module (gnu packages pkg-config)
+  #:use-module (gnu packages pulseaudio)
   #:use-module (gnu packages xorg))
 
 (define-public conky
   (package
     (name "conky")
     (home-page "https://github.com/brndnmtthws/conky")
-    (version "1.11.5")
+    (version "1.11.6")
     (source
      (origin
        (method git-fetch)
@@ -46,12 +48,13 @@
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "1a75ss48mn9pknrxy33dh5rdgm67a5kpddsyqfhlcn1761kfzzyp"))))
+        (base32 "0y2g66fjqp2hdk0y1h4ijxhnv34j16gizvxpmbigwh4n6zijcm6v"))))
     (build-system cmake-build-system)
     (arguments
      `(#:tests? #f                      ; there are no tests
        #:configure-flags
-       (list "-DRELEASE=true")
+       (list "-DRELEASE=true"
+             "-DBUILD_PULSEAUDIO=ON")
        #:phases
        (modify-phases %standard-phases
          (add-after 'unpack 'add-freetype-to-search-path
@@ -76,6 +79,7 @@
        ("libxext" ,libxext)
        ("libxft" ,libxft)
        ("libxinerama" ,libxinerama)
+       ("pulseaudio", pulseaudio)
        ("lua" ,lua)
        ("ncurses" ,ncurses)
        ("curl" ,curl)))

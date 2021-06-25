@@ -4,6 +4,9 @@
 ;;; Copyright © 2016 Leo Famulari <leo@famulari.name>
 ;;; Copyright © 2017, 2018, 2019 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2019 Mathieu Othacehe <m.othacehe@gmail.com>
+;;; Copyright © 2020 Lars-Dominik Braun <ldb@leibniz-psychology.org>
+;;; Copyright © 2020 Efraim Flashner <efraim@flashner.co.il>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -48,8 +51,9 @@
   #:use-module (gnu packages tls)
   #:use-module (gnu packages web)
   #:use-module (gnu packages)
-  #:use-module ((guix licenses) #:select (openldap2.8 lgpl2.1+ gpl3+ psfl))
+  #:use-module ((guix licenses) #:select (openldap2.8 lgpl2.1+ gpl3+ psfl expat))
   #:use-module (guix packages)
+  #:use-module (guix utils)
   #:use-module (guix download)
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system python))
@@ -57,7 +61,8 @@
 (define-public openldap
   (package
    (name "openldap")
-   (version "2.4.46")
+   (replacement openldap-2.4.50)
+   (version "2.4.49")
    (source (origin
             (method url-fetch)
 
@@ -74,21 +79,34 @@
                         "openldap-release/openldap-" version ".tgz")))
             (sha256
              (base32
-              "0bab1km8f2nan1x0zgwliknbxg0zlf2pafxrr867kblrdfwdr44s"))))
+              "0vp524rsngdcykf6ki7vprsyg7gj8z7hszg8xwxz50219fa1gcg3"))))
    (build-system gnu-build-system)
    (inputs `(("bdb" ,bdb-5.3)
              ("cyrus-sasl" ,cyrus-sasl)
              ("gnutls" ,gnutls)
-             ("groff" ,groff)
-             ("icu4c" ,icu4c)
              ("libgcrypt" ,libgcrypt)
              ("zlib" ,zlib)))
-   (native-inputs `(("libtool" ,libtool)))
+   (native-inputs `(("libtool" ,libtool)
+                    ("groff" ,groff)
+                    ("bdb" ,bdb-5.3)))
    (arguments
     `(#:tests? #f
-      #:configure-flags '("--disable-static")
+      #:configure-flags
+      '("--disable-static"
+        ,@(if (%current-target-system)
+              '("--with-yielding_select=yes"
+                "ac_cv_func_memcmp_working=yes")
+              '()))
+      ;; Disable install stripping as it breaks cross-compiling.
+      #:make-flags '("STRIP=")
       #:phases
       (modify-phases %standard-phases
+        ,@(if (%current-target-system)
+              '((add-before 'configure 'fix-cross-gcc
+                  (lambda* (#:key target #:allow-other-keys)
+                    (setenv "CC" (string-append target "-gcc"))
+                    #t)))
+              '())
         (add-after 'install 'patch-sasl-path
           ;; Give -L arguments for cyrus-sasl to avoid propagation.
           (lambda* (#:key inputs outputs #:allow-other-keys)
@@ -109,17 +127,30 @@
    (license openldap2.8)
    (home-page "https://www.openldap.org/")))
 
+(define openldap-2.4.50
+  (package
+    (inherit openldap)
+    (version "2.4.50")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append "https://www.openldap.org/software/download/"
+                                  "OpenLDAP/openldap-release/openldap-" version
+                                  ".tgz"))
+              (sha256
+               (base32
+                "1f46nlfwmys110j36sifm7ah8m8f3s10c3vaiikmmigmifapvdaw"))))))
+
 (define-public nss-pam-ldapd
   (package
     (name "nss-pam-ldapd")
-    (version "0.9.10")
+    (version "0.9.11")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://arthurdejong.org/nss-pam-ldapd/"
                                   "nss-pam-ldapd-" version ".tar.gz"))
               (sha256
                (base32
-                "1cqamcr6qpgwxijlr6kg7jspjamjra8w0haan0qssn0yxn95d7c0"))))
+                "1dna3r0q6sjhhlkhcp8x2zkslrd4y7701kk6fl5r940sdph1pmyh"))))
     (build-system gnu-build-system)
     (arguments
      `(#:configure-flags
@@ -146,7 +177,7 @@
      `(("linux-pam" ,linux-pam)
        ("openldap" ,openldap)
        ("mit-krb5" ,mit-krb5)
-       ("python" ,python-2)))
+       ("python" ,python)))
     (home-page "https://arthurdejong.org/nss-pam-ldapd")
     (synopsis "NSS and PAM modules for LDAP")
     (description "nss-pam-ldapd provides a @dfn{Name Service Switch} (NSS)
@@ -211,7 +242,11 @@ servers from Python programs.")
     (arguments
      `(#:modules ((srfi srfi-1)
                   (guix build gnu-build-system)
+                  ((guix build python-build-system)
+                   #:select (python-version))
                   (guix build utils))
+       #:imported-modules ((guix build python-build-system)
+                           ,@%gnu-build-system-modules)
        #:configure-flags
        (list (string-append "--with-db="
                             (assoc-ref %build-inputs "bdb"))
@@ -263,16 +298,9 @@ servers from Python programs.")
          (add-after 'unpack 'fix-install-location-of-python-tools
            (lambda* (#:key inputs outputs #:allow-other-keys)
              (let* ((out (assoc-ref outputs "out"))
-                    (get-python-version
-                     ;; FIXME: copied from python-build-system
-                     (lambda (python)
-                       (let* ((version     (last (string-split python #\-)))
-                              (components  (string-split version #\.))
-                              (major+minor (take components 2)))
-                         (string-join major+minor "."))))
                     (pythondir (string-append
                                 out "/lib/python"
-                                (get-python-version (assoc-ref inputs "python"))
+                                (python-version (assoc-ref inputs "python"))
                                 "/site-packages/")))
                ;; Install directory must be on PYTHONPATH.
                (setenv "PYTHONPATH"
@@ -370,3 +398,30 @@ Other features include:
 @end enumerate\n")
     ;; GPLv3+ with OpenSSL linking exception.
     (license gpl3+)))
+
+(define-public python-bonsai
+  (package
+    (name "python-bonsai")
+    (version "1.2.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "bonsai" version))
+       (sha256
+        (base32
+         "013bl6h1m3f7vg1lk89d4vi28wbf31zdcs4f9g8css7ngx63v6px"))))
+    (build-system python-build-system)
+    (inputs
+     `(("mit-krb5" ,mit-krb5)
+       ("cyrus-sasl" ,cyrus-sasl)
+       ("openldap" ,openldap)))
+    ;; disabling tests, since they require docker and extensive setup
+    (arguments `(#:tests? #f))
+    (home-page "https://github.com/noirello/bonsai")
+    (synopsis "Access LDAP directory servers from Python")
+    (description
+     "This is a module for handling LDAP operations in Python.  LDAP entries
+are mapped to a special Python case-insensitive dictionary, tracking the
+changes of the dictionary to modify the entry on the server easily.")
+    (license expat)))
+

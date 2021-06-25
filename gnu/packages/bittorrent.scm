@@ -1,14 +1,15 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2014 Taylan Ulrich Bayirli/Kammer <taylanbayirli@gmail.com>
 ;;; Copyright © 2014, 2015, 2016 Ludovic Courtès <ludo@gnu.org>
-;;; Copyright © 2016, 2017, 2018, 2019 Leo Famulari <leo@famulari.name>
-;;; Copyright © 2016, 2017, 2018 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2016, 2017, 2018, 2019, 2020 Leo Famulari <leo@famulari.name>
+;;; Copyright © 2016, 2017, 2018, 2019 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2016 Tomáš Čech <sleep_walker@gnu.org>
-;;; Copyright © 2016, 2017, 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2016, 2017, 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2017 Jelle Licht <jlicht@fsfe.org>
 ;;; Copyright © 2018 Fis Trivial <ybbs.daans@hotmail.com>
 ;;; Copyright © 2018 Nam Nguyen <namn@berkeley.edu>
 ;;; Copyright © 2018 Ricardo Wurmus <rekado@elephly.net>
+;;; Copyright © 2019, 2020 Brett Gilio <brettg@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -41,7 +42,6 @@
   #:use-module (gnu packages crypto)
   #:use-module (gnu packages curl)
   #:use-module (gnu packages cyrus-sasl)
-  #:use-module (gnu packages file)
   #:use-module (gnu packages freedesktop)
   #:use-module (gnu packages glib)
   #:use-module (gnu packages gnome)
@@ -49,7 +49,6 @@
   #:use-module (gnu packages gstreamer)
   #:use-module (gnu packages gtk)
   #:use-module (gnu packages libevent)
-  #:use-module (gnu packages linux)
   #:use-module (gnu packages multiprecision)
   #:use-module (gnu packages nettle)
   #:use-module (gnu packages ncurses)
@@ -66,15 +65,15 @@
 (define-public transmission
   (package
     (name "transmission")
-    (version "2.94")
+    (version "3.00")
     (source (origin
               (method url-fetch)
-              (uri (string-append
-                    "https://github.com/transmission/transmission-releases/raw/"
-                    "master/transmission-" version ".tar.xz"))
+              (uri (string-append "https://github.com/transmission/transmission"
+                                  "/releases/download/" version "/transmission-"
+                                  version ".tar.xz"))
               (sha256
                (base32
-                "0zbbj7rlm6m7vb64x68a64cwmijhsrwx9l63hbwqs7zr9742qi1m"))))
+                "1wjmn96zrvmk8j1yz2ysmqd7a2x6ilvnwwapcvfzgxs2wwpnai4i"))))
     (build-system glib-or-gtk-build-system)
     (outputs '("out"                      ; library and command-line interface
                "gui"))                    ; graphical user interface
@@ -90,27 +89,26 @@
                    (gui (assoc-ref outputs "gui")))
                (mkdir-p (string-append gui "/bin"))
                (rename-file (string-append out "/bin/transmission-gtk")
-                            (string-append gui
-                                           "/bin/transmission-gtk"))
+                            (string-append gui "/bin/transmission-gtk"))
 
-               ;; Move the '.desktop' file as well.
+               ;; Move the '.desktop' and icon files as well.
                (mkdir (string-append gui "/share"))
-               (rename-file (string-append out "/share/applications")
-                            (string-append gui "/share/applications")))
+               (for-each
+                (lambda (dir)
+                  (rename-file (string-append out "/share/" dir)
+                               (string-append gui "/share/" dir)))
+                '("applications" "icons" "pixmaps")))
              #t)))))
     (inputs
-     `(("inotify-tools" ,inotify-tools)
-       ("libevent" ,libevent)
+     `(("libevent" ,libevent)
        ("curl" ,curl)
-       ("cyrus-sasl" ,cyrus-sasl)
        ("openssl" ,openssl)
-       ("file" ,file)
        ("zlib" ,zlib)
        ("gtk+" ,gtk+)))
     (native-inputs
      `(("intltool" ,intltool)
        ("pkg-config" ,pkg-config)))
-    (home-page "http://www.transmissionbt.com/")
+    (home-page "https://transmissionbt.com/")
     (synopsis "Fast and easy BitTorrent client")
     (description
      "Transmission is a BitTorrent client that comes with graphical,
@@ -126,7 +124,7 @@ DHT, µTP, PEX and Magnet Links.")
     ;; or any future license endorsed by Mnemosyne LLC.
     ;;
     ;; A few files files carry an MIT/X11 license header.
-    (license l:gpl3+)))
+    (license (list l:gpl2 l:gpl3))))
 
 (define-public libtorrent
   (package
@@ -183,38 +181,36 @@ XML-RPC over SCGI.")
     (license l:gpl2+)))
 
 (define-public tremc
-  (let ((commit "4d50dab7376601daca13f7be6eabc0eaa057c1b0")
-        (revision "0"))
-    (package
-      (name "tremc")
-      (version (git-version "0.9.1" revision commit))
-      (source
-       (origin
-         (method git-fetch)
-         (uri (git-reference
-               (url "https://github.com/tremc/tremc.git")
-               (commit commit)))
-         (file-name (git-file-name name version))
-         (sha256
-          (base32
-           "0qpi65n8rv7l9mg8qyqx70z83inkl8v5r5nks65c99lhscdki0w7"))))
-      (build-system gnu-build-system)
-      (arguments
-       `(#:tests? #f                      ; no test suite
-         #:make-flags
-         (list (string-append "PREFIX=" (assoc-ref %outputs "out")))
-         #:phases
-         (modify-phases %standard-phases
-           ;; The software is just a Python script that must be copied into place.
-           (delete 'configure)
-           (delete 'build))))
-      (inputs
-       `(("python" ,python)))
-      (synopsis "Console client for the Transmission BitTorrent daemon")
-      (description "Tremc is a console client, with a curses interface, for the
+  (package
+    (name "tremc")
+    (version "0.9.2")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/tremc/tremc")
+             (commit version)))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32
+         "1fqspp2ckafplahgba54xmx0sjidx1pdzyjaqjhz0ivh98dkx2n5"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:tests? #f                      ; no test suite
+       #:make-flags
+       (list (string-append "PREFIX=" (assoc-ref %outputs "out")))
+       #:phases
+       (modify-phases %standard-phases
+         ;; The software is just a Python script that must be copied into place.
+         (delete 'configure)
+         (delete 'build))))
+    (inputs
+     `(("python" ,python)))
+    (synopsis "Console client for the Transmission BitTorrent daemon")
+    (description "Tremc is a console client, with a curses interface, for the
 Transmission BitTorrent daemon.")
-      (home-page "https://github.com/tremc/tremc")
-      (license l:gpl3+))))
+    (home-page "https://github.com/tremc/tremc")
+    (license l:gpl3+)))
 
 (define-public transmission-remote-cli
   (package
@@ -223,7 +219,7 @@ Transmission BitTorrent daemon.")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/fagga/transmission-remote-cli.git")
+                    (url "https://github.com/fagga/transmission-remote-cli")
                     (commit (string-append "v" version))))
               (file-name (git-file-name name version))
               (sha256
@@ -262,16 +258,15 @@ maintained upstream.")
 (define-public aria2
   (package
     (name "aria2")
-    (version "1.34.0")
+    (version "1.35.0")
     (source (origin
               (method url-fetch)
-              (uri (string-append "https://github.com/tatsuhiro-t/aria2/"
-                                  "releases/download/release-" version "/"
-                                  name "-" version ".tar.xz"))
-              (patches (search-patches "aria2-CVE-2019-3500.patch"))
+              (uri (string-append "https://github.com/aria2/aria2/releases/"
+                                  "download/release-" version
+                                  "/aria2-" version ".tar.xz"))
               (sha256
                (base32
-                "18vpgr430vxlwbcc3598rr1srfmwypls6wp1m4wf21hncc1ahi1s"))))
+                "1zbxc517d97lb96f15xcy4l7b66grxrp3h2ids2jiwkaip87yaqy"))))
     (build-system gnu-build-system)
     (arguments
      `(#:configure-flags (list "--enable-libaria2"
@@ -311,15 +306,15 @@ Aria2 can be manipulated via built-in JSON-RPC and XML-RPC interfaces.")
 (define-public uget
   (package
     (name "uget")
-    (version "2.0.8")
-    (source (origin
-              (method url-fetch)
-              (uri (string-append "mirror://sourceforge/urlget/"
-                                  "uget%20%28stable%29/" version "/uget-"
-                                  version ".tar.gz"))
-              (sha256
-               (base32
-                "0919cf7lfk1djdl003cahqjvafdliv7v2l8r5wg95n4isqggdk75"))))
+    (version "2.2.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "mirror://sourceforge/urlget/"
+                           "uget%20%28stable%29/" version "/uget-"
+                           version ".tar.gz"))
+       (sha256
+        (base32 "0rg2mr2cndxvnjib8zm5dp7y2hgbvnqkz2j2jmg0xlzfh9d34b2m"))))
     (build-system gnu-build-system)
     (inputs
      `(("curl" ,curl)
@@ -333,7 +328,7 @@ Aria2 can be manipulated via built-in JSON-RPC and XML-RPC interfaces.")
     (native-inputs
      `(("intltool" ,intltool)
        ("pkg-config" ,pkg-config)))
-    (home-page "http://ugetdm.com/")
+    (home-page "https://ugetdm.com/")
     (synopsis "Universal download manager with GTK+ interface")
     (description
      "uGet is portable download manager with GTK+ interface supporting
@@ -348,7 +343,7 @@ downloads, download scheduling, download rate limiting.")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/Rudde/mktorrent.git")
+                    (url "https://github.com/Rudde/mktorrent")
                     (commit (string-append "v" version))))
               (file-name (git-file-name name version))
               (sha256
@@ -380,17 +375,17 @@ and will take advantage of multiple processor cores where possible.")
 (define-public libtorrent-rasterbar
   (package
     (name "libtorrent-rasterbar")
-    (version "1.1.13")
+    (version "1.2.7")
     (source (origin
               (method url-fetch)
               (uri
                (string-append
-                "https://github.com/arvidn/libtorrent/releases/download/libtorrent-"
+                "https://github.com/arvidn/libtorrent/releases/download/libtorrent_"
                 (string-join (string-split version #\.) "_")
                 "/libtorrent-rasterbar-" version ".tar.gz"))
               (sha256
                (base32
-                "1mza92ljjqvlz9582pmls3n45srqhxvw3q348xihcg4fhlchf11h"))))
+                "001g35janbxi20c7jzsf3ii9mkagz4kdsp7f3sz5r0n0cng0c05w"))))
     (build-system gnu-build-system)
     (arguments
      `(#:configure-flags
@@ -398,25 +393,13 @@ and will take advantage of multiple processor cores where possible.")
                             (assoc-ref %build-inputs "boost")
                             "/lib")
              "--enable-python-binding"
-             "--enable-tests"
-             "CXXFLAGS=-std=c++11")     ; Use std::chrono instead of boost
+             "--enable-tests")
        #:make-flags (list
                      (string-append "LDFLAGS=-Wl,-rpath="
-                                    (assoc-ref %outputs "out") "/lib"))
-       #:phases (modify-phases %standard-phases
-           (add-after 'unpack 'compile-python-c++11
-             (lambda _
-               ;; Make sure the Python bindings are compiled in C++ mode to
-               ;; avoid undefined references as mentioned in
-               ;; <https://github.com/qbittorrent/qBittorrent/issues/638>.
-               ;; XXX: This can be removed for 1.2+.
-               (substitute* "bindings/python/setup.py"
-                 (("\\+ target_specific\\(\\)\\,")
-                  "+ target_specific() + ['-std=c++11'],"))
-               #t)))))
+                                    (assoc-ref %outputs "out") "/lib"))))
     (inputs `(("boost" ,boost)
               ("openssl" ,openssl)))
-    (native-inputs `(("python" ,python-2)
+    (native-inputs `(("python" ,python-wrapper)
                      ("pkg-config" ,pkg-config)))
     (home-page "https://www.libtorrent.org/")
     (synopsis "Feature complete BitTorrent implementation")
@@ -429,16 +412,16 @@ desktops.")
 (define-public qbittorrent
   (package
     (name "qbittorrent")
-    (version "4.1.6")
+    (version "4.2.5")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/qbittorrent/qBittorrent.git")
+             (url "https://github.com/qbittorrent/qBittorrent")
              (commit (string-append "release-" version))))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "1y9kv84sy5fg64wbl4xpm8qh0hjba7ibk045cazp0m736rjmxk8c"))))
+        (base32 "1n613ylg6i9gisgk0dbr2kpfasyizrkdjff1r8smd4vri2qrdksn"))))
     (build-system gnu-build-system)
     (arguments
      `(#:configure-flags
@@ -446,7 +429,18 @@ desktops.")
                             (assoc-ref %build-inputs "boost")
                             "/lib")
              "--enable-debug"
-             "QMAKE_LRELEASE=lrelease")))
+             "QMAKE_LRELEASE=lrelease")
+       #:modules ((guix build gnu-build-system)
+                  (guix build qt-utils)
+                  (guix build utils))
+       #:imported-modules (,@%gnu-build-system-modules
+                           (guix build qt-utils))
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'install 'wrap-qt
+           (lambda* (#:key outputs #:allow-other-keys)
+             (wrap-qt-program (assoc-ref outputs "out") "qbittorrent")
+             #t)))))
     (native-inputs
      `(("pkg-config" ,pkg-config)
        ("qttools" ,qttools)))

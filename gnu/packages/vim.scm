@@ -1,12 +1,14 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2013 Cyril Roelandt <tipecaml@gmail.com>
-;;; Copyright © 2016, 2017, 2018, 2019 Efraim Flashner <efraim@flashner.co.il>
-;;; Copyright © 2016, 2017 ng0 <ng0@n0.is>
+;;; Copyright © 2016, 2017, 2018, 2019, 2020 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2016, 2017 Nikita <nikita@n0.is>
 ;;; Copyright © 2017 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2017 Marius Bakke <mbakke@fastmail.com>
-;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2019 HiPhish <hiphish@posteo.de>
 ;;; Copyright © 2019 Julien Lepiller <julien@lepiller.eu>
+;;; Copyright © 2019, 2020 Jakub Kądziołka <kuba@kadziolka.net>
+;;; Copyright © 2020 Jack Hill <jackhill@jackhill.us>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -30,6 +32,7 @@
   #:use-module (guix download)
   #:use-module (guix git-download)
   #:use-module (guix build-system cmake)
+  #:use-module (guix build-system copy)
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system python)
   #:use-module (gnu packages)
@@ -67,7 +70,7 @@
 (define-public vim
   (package
     (name "vim")
-    (version "8.1.0644")
+    (version "8.2.1145")
     (source (origin
              (method git-fetch)
              (uri (git-reference
@@ -76,44 +79,77 @@
              (file-name (git-file-name name version))
              (sha256
               (base32
-               "1xksb2v8rw1zgrd5fwqvrh44lf277k85sad2y4ia1z17y7i8j2fl"))))
+               "01z5hgi7m8d63gl1fgfn4p9rsdaqbl5xn4vr247nbxjq5x5hrs7a"))))
     (build-system gnu-build-system)
     (arguments
      `(#:test-target "test"
        #:parallel-tests? #f
        #:phases
        (modify-phases %standard-phases
-         (add-after 'configure 'patch-config-files
+         (add-after 'configure 'patch-absolute-paths
            (lambda _
              (substitute* "runtime/tools/mve.awk"
                (("/usr/bin/nawk") (which "gawk")))
              (substitute* '("src/testdir/Makefile"
                             "src/testdir/test_normal.vim"
-                            "src/testdir/test_terminal.vim")
+                            "src/testdir/test_system.vim"
+                            "src/testdir/test_terminal.vim"
+                            "src/testdir/test_terminal2.vim")
                (("/bin/sh") (which "sh")))
+             (substitute* "src/testdir/test_autocmd.vim"
+               (("/bin/kill") (which "kill")))
              #t))
-         (add-before 'check 'patch-failing-tests
-           (lambda _
-             ;; XXX A single test fails with “Can't create file /dev/stdout” (at
-             ;; Test_writefile_sync_dev_stdout line 5) while /dev/stdout exists.
-             (substitute* "src/testdir/test_writefile.vim"
-               (("/dev/stdout") "a-regular-file"))
+         (add-before 'check 'set-environment-variables
+           (lambda* (#:key inputs #:allow-other-keys)
+             ;; One of the tests tests timezone-dependent functions.
+             (setenv "TZDIR"
+                     (string-append (assoc-ref inputs "tzdata")
+                                    "/share/zoneinfo"))
 
-             ;; XXX: This test fails when run in the build container:
-             ;; <https://github.com/vim/vim/issues/3348>.
-             (substitute* "src/testdir/test_search.vim"
-               ((".*'Test_incsearch_substitute_03'.*" all)
-                (string-append "\"" all "\n")))
+             ;; Make sure the TERM environment variable is set for the tests
+             (setenv "TERM" "xterm")
+             #t))
+         (add-before 'check 'skip-failing-tests
+           (lambda _
+             ;; This test assumes that PID 1 is run as root and that the user
+             ;; running the test suite does not have permission to kill(1, 0)
+             ;; it.  This is not true in the build container, where both PID 1
+             ;; and the test suite are run as the same user.  Skip the test.
+             ;; An alternative fix would be to patch the PID used to a random
+             ;; 32-bit value and hope it never shows up in the test environment.
+             (substitute* "src/testdir/test_swap.vim"
+               (("if !IsRoot\\(\\)") "if 0"))
+
+             ;; These tests fail on upstream's CI on FreeBSD because they are
+             ;; run as root.  They fail for us because PID 1 and the test suite
+             ;; are run by the same user.
+             (substitute* '("src/testdir/test_backup.vim"
+                            "src/testdir/test_writefile.vim")
+               (("CheckNotBSD") "throw 'Skipped: this test fails on Guix'")
+               (("'bsd'") "'unix'"))
+
+             ;; This test checks how the terminal looks after executing some
+             ;; actions.  The path of the bash binary is shown, which results in
+             ;; a difference being detected.  Patching the expected result is
+             ;; non-trivial due to the special format used, so skip the test.
+             (substitute* "src/testdir/test_terminal.vim"
+               ((".*Test_terminal_postponed_scrollback.*" line)
+                (string-append line "return\n")))
              #t)))))
     (inputs
      `(("gawk" ,gawk)
        ("ncurses" ,ncurses)
        ("perl" ,perl)
-       ("tcsh" ,tcsh))) ; For runtime/tools/vim32
+       ("tcsh" ,tcsh)))                 ; For runtime/tools/vim32
     (native-inputs
-     `(("libtool" ,libtool)))
+     `(("libtool" ,libtool)
+
+       ;; For tests.
+       ("tzdata" ,tzdata-for-tests)))
     (home-page "https://www.vim.org/")
     (synopsis "Text editor based on vi")
+    ;; The description shares language with the vim-full package. When making
+    ;; changes, check if the other description also needs to be updated.
     (description
      "Vim is a highly configurable text editor built to enable efficient text
 editing.  It is an improved version of the vi editor distributed with most UNIX
@@ -172,22 +208,13 @@ with the editor vim.")))
              "--enable-xim"
              "--disable-selinux"
              "--enable-gui")
+       ;; This flag fixes the following error:
+       ;; .../libpython3.7m.a(pyexpat.o): undefined reference to symbol 'XML_FreeContentModel'
+       ;; .../libexpat.so.1: error adding symbols: DSO missing from command line
+       #:make-flags '("LDFLAGS=-lexpat")
        ,@(substitute-keyword-arguments (package-arguments vim)
            ((#:phases phases)
             `(modify-phases ,phases
-               (add-before 'check 'skip-test87
-                 ;; This test fails for unknown reasons after switching
-                 ;; to a git checkout.
-                 (lambda _
-                   (delete-file "src/testdir/test87.ok")
-                   (delete-file "src/testdir/test87.in")
-                   (substitute* '("src/Makefile"
-                                  "src/testdir/Make_vms.mms")
-                     (("test87") ""))
-                   (substitute* "src/testdir/Make_all.mak"
-                     (("test86.out \\\\") "test86")
-                     (("test87.out") ""))
-                   #t))
                (add-before 'check 'start-xserver
                  (lambda* (#:key inputs #:allow-other-keys)
                    ;; Some tests require an X server, but does not start one.
@@ -198,7 +225,7 @@ with the editor vim.")))
                                                     display " &")))))))))))
     (native-inputs
      `(("pkg-config" ,pkg-config)
-       ("xorg-server" ,xorg-server)
+       ("xorg-server" ,xorg-server-for-tests)
        ,@(package-native-inputs vim)))
     (inputs
      `(("acl" ,acl)
@@ -226,7 +253,21 @@ with the editor vim.")))
        ("python-3" ,python)
        ("ruby" ,ruby)
        ("tcl" ,tcl)
-       ,@(package-inputs vim)))))
+       ,@(package-inputs vim)))
+    ;; The description shares language with the vim package. When making
+    ;; changes, check if the other description also needs to be updated.
+    (description "Vim is a highly configurable text editor built to enable efficient text
+editing.  It is an improved version of the vi editor distributed with most UNIX
+systems.
+
+Vim is often called a \"programmer's editor,\" and so useful for programming
+that many consider it an entire IDE.  It's not just for programmers, though.
+Vim is perfect for all kinds of text editing, from composing email to editing
+configuration files.
+
+This package provides a version of Vim with many optional features enabled.
+It includes a graphical interface, @command{gvim}, and support for plugins
+written in the Python 3, Perl, Ruby, Tcl, and Lua programming languages.")))
 
 (define-public vim-neocomplete
   (package
@@ -234,31 +275,20 @@ with the editor vim.")))
     (version "2.1")
     (source
      (origin
-       (method url-fetch)
-       (uri (string-append "https://github.com/Shougo/neocomplete.vim/"
-                           "archive/ver." version ".tar.gz"))
-       (file-name (string-append name "-" version ".tar.gz"))
+       (method git-fetch)
+       (uri (git-reference
+              (url "https://github.com/Shougo/neocomplete.vim")
+              (commit (string-append "ver." version))))
+       (file-name (git-file-name name version))
        (sha256
         (base32
-         "1307gbrdwam2akq9w2lpijc41740i4layk2qkd9sjkqxfch5lni2"))))
-    (build-system gnu-build-system)
+         "1h6sci5mhdfg6sjsjpi8l5li02hg858zcayiwl60y9j2gqnd18lv"))))
+    (build-system copy-build-system)
     (arguments
-     `(#:tests? #f
-       #:phases
-       (modify-phases %standard-phases
-         (delete 'configure)
-         (delete 'build)
-         (replace 'install
-           (lambda* (#:key outputs #:allow-other-keys)
-             (let* ((out (assoc-ref outputs "out"))
-                    (vimfiles (string-append out "/share/vim/vimfiles"))
-                    (autoload (string-append vimfiles "/autoload"))
-                    (doc (string-append vimfiles "/doc"))
-                    (plugin (string-append vimfiles "/plugin")))
-               (copy-recursively "autoload" autoload)
-               (copy-recursively "doc" doc)
-               (copy-recursively "plugin" plugin)
-               #t))))))
+     '(#:install-plan
+       '(("autoload" "share/vim/vimfiles/")
+         ("doc" "share/vim/vimfiles/")
+         ("plugin" "share/vim/vimfiles/"))))
     (synopsis "Next generation completion framework for Vim")
     (description
      "@code{neocomplete}, an abbreviation of 'neo-completion with cache',
@@ -286,20 +316,10 @@ features than Vim's built-in completion.")
          (sha256
           (base32
            "151wpvbj6jb9jdkbhj3b77f5sq7y328spvwfbqyj1y32rg4ifmc6"))))
-      (build-system gnu-build-system)
+      (build-system copy-build-system)
       (arguments
-       `(#:tests? #f
-         #:phases
-         (modify-phases %standard-phases
-           (delete 'configure)
-           (delete 'build)
-           (replace 'install
-             (lambda* (#:key outputs #:allow-other-keys)
-               (let* ((out (assoc-ref outputs "out"))
-                      (vimfiles (string-append out "/share/vim/vimfiles")))
-                 (copy-recursively "neosnippets"
-                                   (string-append vimfiles "/neosnippets"))
-               #t))))))
+       '(#:install-plan
+         '(("neosnippets" "share/vim/vimfiles/"))))
     (synopsis "Snippets for neosnippet")
     (description
      "@code{neosnippet-snippets} provides standard snippets for the Vim plugin
@@ -325,34 +345,17 @@ you can fill in on the fly.")
        (sha256
         (base32
          "0k80syscmpnj38ks1fq02ds59g0r4jlg9ll7z4qc048mgi35alw5"))))
-    (build-system gnu-build-system)
+    (build-system copy-build-system)
     (arguments
-     `(#:tests? #f
-       #:phases
-       (modify-phases %standard-phases
-         (delete 'configure)
-         (delete 'build)
-         (replace 'install
-           (lambda* (#:key outputs #:allow-other-keys)
-             (let* ((out (assoc-ref outputs "out"))
-                    (vimfiles (string-append out "/share/vim/vimfiles"))
-                    (autoload (string-append vimfiles "/autoload"))
-                    (doc (string-append vimfiles "/doc"))
-                    (ftdetect (string-append vimfiles "/ftdetect"))
-                    (ftplugin (string-append vimfiles "/ftplugin"))
-                    (indent (string-append vimfiles "/indent"))
-                    (plugin (string-append vimfiles "/plugin"))
-                    (rplugin (string-append vimfiles "/rplugin"))
-                    (syntax (string-append vimfiles "/syntax")))
-               (copy-recursively "autoload" autoload)
-               (copy-recursively "doc" doc)
-               (copy-recursively "ftdetect" ftdetect)
-               (copy-recursively "ftplugin" ftplugin)
-               (copy-recursively "indent" indent)
-               (copy-recursively "plugin" plugin)
-               (copy-recursively "rplugin" rplugin)
-               (copy-recursively "syntax" syntax)
-               #t))))))
+     '(#:install-plan
+       '(("autoload" "share/vim/vimfiles/")
+         ("doc" "share/vim/vimfiles/")
+         ("ftdetect" "share/vim/vimfiles/")
+         ("ftplugin" "share/vim/vimfiles/")
+         ("indent" "share/vim/vimfiles/")
+         ("plugin" "share/vim/vimfiles/")
+         ("rplugin" "share/vim/vimfiles/")
+         ("syntax" "share/vim/vimfiles/"))))
     (synopsis "Snippet support for Vim")
     (description
      "@code{neosnippet}, is a plugin for Vim which adds snippet support to Vim.
@@ -381,28 +384,16 @@ trouble using them, because you do not have to remember each snippet name.")
          (sha256
           (base32
            "1ynjr1109dxgj0lz261gmzz3wf5ap1m6j6hnvl3lcyv66a4y8pjv"))))
-      (build-system gnu-build-system)
+      (build-system copy-build-system)
       (arguments
-       `(#:tests? #f
-         #:phases
-         (modify-phases %standard-phases
-           (delete 'configure)
-           (delete 'build)
-           (replace 'install
-             (lambda* (#:key outputs #:allow-other-keys)
-               (let* ((out (assoc-ref outputs "out"))
-                      (vimfiles (string-append out "/share/vim/vimfiles"))
-                      (after (string-append vimfiles "/after"))
-                      (syntax (string-append vimfiles "/syntax"))
-                      (ftplugin (string-append vimfiles "/ftplugin")))
-                 (copy-recursively "after" after)
-                 (copy-recursively "ftplugin" ftplugin)
-                 (copy-recursively "syntax" syntax)
-                 #t))))))
+       '(#:install-plan
+         '(("after" "share/vim/vimfiles/")
+           ("ftplugin" "share/vim/vimfiles/")
+           ("syntax" "share/vim/vimfiles/"))))
       (synopsis "Scheme syntax for Vim")
       (description
        "@code{vim-scheme} provides Scheme support for Vim (R7RS and CHICKEN).")
-      (home-page "http://foldling.org/git/vim-scheme.git/")
+      (home-page "https://foldling.org/git/vim-scheme.git/")
       (license license:public-domain))))
 
 (define-public vim-luna
@@ -421,20 +412,10 @@ trouble using them, because you do not have to remember each snippet name.")
          (sha256
           (base32
            "0ka3qbhsh8lix1vyj4678j7dnchkd8khhirrnn3aylxxf8fpqyg8"))))
-      (build-system gnu-build-system)
+      (build-system copy-build-system)
       (arguments
-       `(#:tests? #f
-         #:phases
-         (modify-phases %standard-phases
-           (delete 'configure)
-           (delete 'build)
-           (replace 'install
-             (lambda* (#:key outputs #:allow-other-keys)
-               (let* ((out (assoc-ref outputs "out"))
-                      (vimfiles (string-append out "/share/vim/vimfiles"))
-                      (colors (string-append vimfiles "/colors")))
-                 (copy-recursively "colors" colors)
-                 #t))))))
+       '(#:install-plan
+         '(("colors" "share/vim/vimfiles/"))))
       (synopsis "Dark color theme for Vim")
       (description
        "@code{vim-luna} is a dark color theme for Vim.")
@@ -458,22 +439,11 @@ trouble using them, because you do not have to remember each snippet name.")
          (sha256
           (base32
            "0alvrfhmd91zkd9h83s8wvgyq4iakcf6rybsyjd369qbgpcqky89"))))
-      (build-system gnu-build-system)
+      (build-system copy-build-system)
       (arguments
-       `(#:tests? #f
-         #:phases
-         (modify-phases %standard-phases
-           (delete 'configure)
-           (delete 'build)
-           (replace 'install
-             (lambda* (#:key outputs #:allow-other-keys)
-               (let* ((out (assoc-ref outputs "out"))
-                      (vimfiles (string-append out "/share/vim/vimfiles"))
-                      (doc (string-append vimfiles "/doc"))
-                      (autoload (string-append vimfiles "/autoload")))
-                 (copy-recursively "doc" doc)
-                 (copy-recursively "autoload" autoload)
-                 #t))))))
+       '(#:install-plan
+         '(("doc" "share/vim/vimfiles/")
+           ("autoload" "share/vim/vimfiles/"))))
       (synopsis "Context filetype library for Vim")
       (description
        "@code{vim-context-filetype} is context filetype library for Vim script.")
@@ -483,39 +453,25 @@ trouble using them, because you do not have to remember each snippet name.")
 (define-public vim-fugitive
   (package
     (name "vim-fugitive")
-    (version "3.0")
+    (version "3.2")
     (source
       (origin
         (method git-fetch)
         (uri (git-reference
-               (url "https://github.com/tpope/vim-fugitive.git")
+               (url "https://github.com/tpope/vim-fugitive")
                (commit (string-append "v" version))))
         (file-name (git-file-name name version))
         (sha256
          (base32
-          "0ghh8a9xysc3njqql1khhl2dkhymz93snpwqp2apm7pka6l893bc"))))
-    (build-system gnu-build-system)
+          "1jbn5jxadccmcz01j94d0i1bp74cixr0fpxxf1h0aqdf1ljk3d7n"))))
+    (build-system copy-build-system)
     (arguments
-     '(#:tests? #f
-       #:phases
-       (modify-phases %standard-phases
-         (delete 'configure)
-         (delete 'build)
-         (replace 'install
-           (lambda* (#:key outputs #:allow-other-keys)
-             (let* ((out (assoc-ref outputs "out"))
-                    (vimfiles (string-append out "/share/vim/vimfiles"))
-                    (autoload (string-append vimfiles "/autoload"))
-                    (doc      (string-append vimfiles "/doc"))
-                    (ftdetect (string-append vimfiles "/ftdetect"))
-                    (plugin   (string-append vimfiles "/plugin"))
-                    (syntax   (string-append vimfiles "/syntax")))
-               (copy-recursively "autoload" autoload)
-               (copy-recursively "doc" doc)
-               (copy-recursively "ftdetect" ftdetect)
-               (copy-recursively "plugin" plugin)
-               (copy-recursively "syntax" syntax)
-               #t))))))
+     '(#:install-plan
+       '(("autoload" "share/vim/vimfiles/")
+         ("doc" "share/vim/vimfiles/")
+         ("ftdetect" "share/vim/vimfiles/")
+         ("plugin" "share/vim/vimfiles/")
+         ("syntax" "share/vim/vimfiles/"))))
     (home-page "https://github.com/tpope/vim-fugitive")
     (synopsis "Vim plugin to work with Git")
     (description "Vim-fugitive is a wrapper for Vim that complements the
@@ -526,7 +482,7 @@ commit or run any Git arbitrary command.")
 (define-public vim-airline
   (package
     (name "vim-airline")
-    (version "0.10")
+    (version "0.11")
     (source
      (origin
        (method git-fetch)
@@ -536,27 +492,14 @@ commit or run any Git arbitrary command.")
        (file-name (git-file-name name version))
        (sha256
         (base32
-         "0k3c6p3xy6514n1n347ci4q9xjm9wwqirpdysam6f7r39crgmfhd"))))
-    (build-system gnu-build-system)
+         "1aksmr73648pvyc75pfdz28k2d4ky52rn7xiwcv7lz87q3vqld7k"))))
+    (build-system copy-build-system)
     (arguments
-     `(#:tests? #f
-       #:phases
-       (modify-phases %standard-phases
-         (delete 'configure)
-         (delete 'build)
-         (replace 'install
-           (lambda* (#:key outputs #:allow-other-keys)
-             (let* ((out (assoc-ref outputs "out"))
-                    (vimfiles (string-append out "/share/vim/vimfiles"))
-                    (autoload (string-append vimfiles "/autoload"))
-                    (doc (string-append vimfiles "/doc"))
-                    (t (string-append vimfiles "/t"))
-                    (plugin (string-append vimfiles "/plugin")))
-               (copy-recursively "autoload" autoload)
-               (copy-recursively "doc" doc)
-               (copy-recursively "plugin" plugin)
-               (copy-recursively "t" t)
-               #t))))))
+     '(#:install-plan
+       '(("autoload" "share/vim/vimfiles/")
+         ("doc" "share/vim/vimfiles/")
+         ("plugin" "share/vim/vimfiles/")
+         ("t" "share/vim/vimfiles/"))))
     (synopsis "Statusline for Vim")
     (description
      "@code{vim-airline} is an extensible statusline for Vim.
@@ -582,24 +525,12 @@ and powerline symbols, etc.")
          (sha256
           (base32
            "1sb7nb7j7bz0pv1c9bgdy0smhr0jk2b1vbdv9yzghg5lrknpsbr6"))))
-      (build-system gnu-build-system)
+      (build-system copy-build-system)
       (arguments
-       `(#:tests? #f
-         #:phases
-         (modify-phases %standard-phases
-           (delete 'configure)
-           (delete 'build)
-           (replace 'install
-             (lambda* (#:key outputs #:allow-other-keys)
-               (let* ((out (assoc-ref outputs "out"))
-                      (vimfiles (string-append out "/share/vim/vimfiles"))
-                      (doc (string-append vimfiles "/doc"))
-                      (plugin (string-append vimfiles "/plugin"))
-                      (autoload (string-append vimfiles "/autoload")))
-                 (copy-recursively "doc" doc)
-                 (copy-recursively "autoload" autoload)
-                 (copy-recursively "plugin" plugin)
-                 #t))))))
+       '(#:install-plan
+         '(("autoload" "share/vim/vimfiles/")
+           ("doc" "share/vim/vimfiles/")
+           ("plugin" "share/vim/vimfiles/"))))
       (synopsis "Collection of themes for Vim-airline")
       (description
        "@code{vim-airline-themes} is a collection of themes for @code{vim-airline}.")
@@ -609,7 +540,7 @@ and powerline symbols, etc.")
 (define-public vim-syntastic
   (package
     (name "vim-syntastic")
-    (version "3.9.0")
+    (version "3.10.0")
     (source
      (origin
        (method git-fetch)
@@ -618,28 +549,14 @@ and powerline symbols, etc.")
              (commit version)))
        (file-name (git-file-name name version))
        (sha256
-        (base32
-         "121a1mxgfng2y5zmivyyk02mca8pyw72crivf4f1q9nhn0barf57"))))
-    (build-system gnu-build-system)
+        (base32 "0j91f72jaz1s6aw1hpjiz30vk2ds2aqd9gisk91grsldy6nz6hhz"))))
+    (build-system copy-build-system)
     (arguments
-     `(#:tests? #f
-       #:phases
-       (modify-phases %standard-phases
-         (delete 'configure)
-         (delete 'build)
-         (replace 'install
-           (lambda* (#:key outputs #:allow-other-keys)
-             (let* ((out (assoc-ref outputs "out"))
-                    (vimfiles (string-append out "/share/vim/vimfiles"))
-                    (doc (string-append vimfiles "/doc"))
-                    (plugin (string-append vimfiles "/plugin"))
-                    (autoload (string-append vimfiles "/autoload"))
-                    (syntax-checkers (string-append vimfiles "/syntax_checkers")))
-               (copy-recursively "doc" doc)
-               (copy-recursively "autoload" autoload)
-               (copy-recursively "plugin" plugin)
-               (copy-recursively "syntax_checkers" syntax-checkers)
-               #t))))))
+     '(#:install-plan
+       '(("autoload" "share/vim/vimfiles/")
+         ("doc" "share/vim/vimfiles/")
+         ("plugin" "share/vim/vimfiles/")
+         ("syntax_checkers" "share/vim/vimfiles/"))))
     (synopsis "Syntax checking plugin for Vim")
     (description
      "Vim-syntastic is a syntax checking plugin for Vim.  It runs files through
@@ -657,7 +574,7 @@ are detected, the user is notified.")
       (origin
         (method git-fetch)
         (uri (git-reference
-               (url "https://github.com/editorconfig/editorconfig-vim.git")
+               (url "https://github.com/editorconfig/editorconfig-vim")
                (commit (string-append "v" version))))
         (file-name (git-file-name name version))
         (sha256
@@ -667,30 +584,20 @@ are detected, the user is notified.")
         (snippet
          '(begin
             (delete-file-recursively "plugin/editorconfig-core-py") #t))))
-    (build-system gnu-build-system)
+    (build-system copy-build-system)
     (arguments
-     '(#:tests? #f ; tests require ruby and plugin-test repository
-       #:phases
+     '(#:phases
        (modify-phases %standard-phases
-         (delete 'configure)
-         (delete 'build)
          (add-after 'unpack 'patch-editorconfig-path
            (lambda* (#:key inputs #:allow-other-keys)
              (let ((editorconfig (assoc-ref inputs "editorconfig-core")))
                (substitute* "plugin/editorconfig.vim"
                  (("/opt") editorconfig))
-               #t)))
-         (replace 'install
-           (lambda* (#:key outputs #:allow-other-keys)
-             (let* ((out (assoc-ref outputs "out"))
-                    (vimfiles (string-append out "/share/vim/vimfiles"))
-                    (doc (string-append vimfiles "/doc"))
-                    (plugin (string-append vimfiles "/plugin"))
-                    (autoload (string-append vimfiles "/autoload")))
-               (copy-recursively "doc" doc)
-               (copy-recursively "autoload" autoload)
-               (copy-recursively "plugin" plugin)
-               #t))))))
+               #t))))
+       #:install-plan
+       '(("autoload" "share/vim/vimfiles/")
+         ("doc" "share/vim/vimfiles/")
+         ("plugin" "share/vim/vimfiles/"))))
     (inputs
      `(("editorconfig-core" ,editorconfig-core-c)))
     (home-page "https://editorconfig.org/")
@@ -707,24 +614,11 @@ editors.")
     (inherit vim-syntastic)
     (name "neovim-syntastic")
     (arguments
-     `(#:tests? #f
-       #:phases
-       (modify-phases %standard-phases
-         (delete 'configure)
-         (delete 'build)
-         (replace 'install
-           (lambda* (#:key outputs #:allow-other-keys)
-             (let* ((out (assoc-ref outputs "out"))
-                    (vimfiles (string-append out "/share/nvim/site"))
-                    (doc (string-append vimfiles "/doc"))
-                    (plugin (string-append vimfiles "/plugin"))
-                    (autoload (string-append vimfiles "/autoload"))
-                    (syntax-checkers (string-append vimfiles "/syntax_checkers")))
-               (copy-recursively "doc" doc)
-               (copy-recursively "autoload" autoload)
-               (copy-recursively "plugin" plugin)
-               (copy-recursively "syntax_checkers" syntax-checkers)
-               #t))))))
+     '(#:install-plan
+       '(("autoload" "share/nvim/site/")
+         ("doc" "share/nvim/site/")
+         ("plugin" "share/nvim/site/")
+         ("syntax_checkers" "share/nvim/site/"))))
     (synopsis "Syntax checking plugin for Neovim")
     (description
      "Vim-syntastic is a syntax checking plugin for Neovim.  It runs files through
@@ -735,7 +629,7 @@ are detected, the user is notified.")))
 (define-public neovim
   (package
     (name "neovim")
-    (version "0.3.7")
+    (version "0.4.3")
     (source
      (origin
        (method git-fetch)
@@ -744,8 +638,7 @@ are detected, the user is notified.")))
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
-        (base32
-         "1j6w5jvq5v7kf7diad91qs1acr427nidnk9s24yyrz0hwdd1c2lh"))))
+        (base32 "03p7pic7hw9yxxv7fbgls1f42apx3lik2k6mpaz1a109ngyc5kaj"))))
     (build-system cmake-build-system)
     (arguments
      `(#:modules ((srfi srfi-26)
@@ -754,13 +647,6 @@ are detected, the user is notified.")))
        #:configure-flags '("-DPREFER_LUA:BOOL=YES")
        #:phases
        (modify-phases %standard-phases
-         ;; TODO: remove 'patch-tic on update
-         ;; see: https://github.com/neovim/neovim/issues/9687
-         (add-after 'unpack 'patch-tic
-           (lambda _
-             (substitute* "src/nvim/tui/tui.c"
-               (("value != NULL") "value != NULL && value != (char *)-1"))
-             #t))
          (add-after 'unpack 'set-lua-paths
            (lambda* (#:key inputs #:allow-other-keys)
              (let* ((lua-version "5.1")
@@ -774,6 +660,7 @@ are detected, the user is notified.")))
                          (string-append path "/?.lua;" path "/?/?.lua"))))
                     (lua-inputs (map (cute assoc-ref %build-inputs <>)
                                      '("lua"
+                                       "lua-luv"
                                        "lua-lpeg"
                                        "lua-bitop"
                                        "lua-libmpack"))))
@@ -781,7 +668,15 @@ are detected, the user is notified.")))
                        (string-join (map lua-path-spec lua-inputs) ";"))
                (setenv "LUA_CPATH"
                        (string-join (map lua-cpath-spec lua-inputs) ";"))
-               #t))))))
+               #t)))
+         (add-after 'unpack 'prevent-embedding-gcc-store-path
+           (lambda _
+             ;; nvim remembers its build options, including the compiler with
+             ;; its complete path.  This adds gcc to the closure of nvim, which
+             ;; doubles its size.  We remove the refirence here.
+             (substitute* "cmake/GetCompileFlags.cmake"
+               (("\\$\\{CMAKE_C_COMPILER\\}") "/gnu/store/.../bin/gcc"))
+             #t)))))
     (inputs
      `(("libuv" ,libuv)
        ("msgpack" ,msgpack)
@@ -791,6 +686,7 @@ are detected, the user is notified.")))
        ("jemalloc" ,jemalloc)
        ("libiconv" ,libiconv)
        ("lua" ,lua-5.1)
+       ("lua-luv" ,lua5.1-luv)
        ("lua-lpeg" ,lua5.1-lpeg)
        ("lua-bitop" ,lua5.1-bitop)
        ("lua-libmpack" ,lua5.1-libmpack)))
@@ -897,13 +793,13 @@ With the package comes a plugin to use vifm as a vim file selector.")
 (define-public python-pynvim
   (package
     (name "python-pynvim")
-    (version "0.3.2")
+    (version "0.4.1")
     (source (origin
               (method url-fetch)
               (uri (pypi-uri "pynvim" version))
               (sha256
                (base32
-                "01dybk4vs452pljn1q3il5z2sd313ki0lgiglc0xmjc6wp290r6g"))))
+                "0n2cx22lrmbq7xk7356lyn6k77ryqvkxplw9k0fglk35ckb1isam"))))
     (build-system python-build-system)
     (propagated-inputs
      `(("python-greenlet" ,python-greenlet)
@@ -919,3 +815,111 @@ through its msgpack-rpc API.")
 
 (define-public python2-pynvim
   (package-with-python2 python-pynvim))
+
+(define-public vim-guix-vim
+  (package
+    (name "vim-guix-vim")
+    (version "0.1")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://gitlab.com/Efraim/guix.vim")
+                     (commit version)))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "1f8h8m96fqh3f9hy87spgh9kdqzyxl11n9s3rywvyq5xhn489bnk"))))
+    (build-system copy-build-system)
+    (arguments
+     '(#:install-plan
+       '(("compiler" "share/vim/vimfiles/")
+         ("doc" "share/vim/vimfiles/")
+         ("indent" "share/vim/vimfiles/")
+         ("ftdetect" "share/vim/vimfiles/")
+         ("ftplugin" "share/vim/vimfiles/")
+         ("syntax" "share/vim/vimfiles/"))))
+    (home-page "https://gitlab.com/Efraim/guix.vim")
+    (synopsis "Guix integration in Vim")
+    (description "This package provides support for GNU Guix in Vim.")
+    (license license:vim)))
+
+(define-public vim-asyncrun
+  (package
+    (name "vim-asyncrun")
+    (version "2.7.5")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/skywind3000/asyncrun.vim")
+                     (commit version)))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "02fiqf4rcrxbcgvj02mpd78wkxsrnbi54aciwh9fv5mnz5ka249m"))))
+    (build-system copy-build-system)
+    (arguments
+     '(#:install-plan
+       '(("plugin" "share/vim/vimfiles/")
+         ("doc/" "share/vim/vimfiles/doc" #:include ("asyncrun.txt")))))
+    (home-page "https://github.com/skywind3000/asyncrun.vim")
+    (synopsis "Run Async Shell Commands in Vim")
+    (description "This plugin takes the advantage of new APIs in Vim 8 (and
+NeoVim) to enable you to run shell commands in background and read output in the
+quickfix window in realtime.")
+    (license license:expat)))
+
+(define-public vim-dispatch
+  (package
+    (name "vim-dispatch")
+    (version "1.8")
+    (source
+      (origin
+        (method git-fetch)
+        (uri (git-reference
+               (url "https://github.com/tpope/vim-dispatch")
+               (commit (string-append "v" version))))
+        (file-name (git-file-name name version))
+        (sha256
+         (base32
+          "1m8b5mn2zqlphzs6xfwykwmghf6p0wabrhpjmh7vav35jgcxc4wl"))))
+    (build-system copy-build-system)
+    (arguments
+     '(#:install-plan
+       '(("autoload" "share/vim/vimfiles/")
+         ("doc" "share/vim/vimfiles/")
+         ("plugin" "share/vim/vimfiles/"))))
+    (home-page "https://github.com/tpope/vim-dispatch")
+    (synopsis "Asynchronous build and test dispatcher")
+    (description "Leverage the power of Vim's compiler plugins without being
+bound by synchronicity.  Kick off builds and test suites using one of several
+asynchronous adapters (including tmux, screen, and a headless mode), and when
+the job completes, errors will be loaded and parsed automatically.")
+    (license license:vim)))
+
+(define-public vim-eunuch
+  (let ((commit "33e875b31c8b811a0a47908884a5e2339106bbe8")
+        (revision "1"))
+    (package
+      (name "vim-eunuch")
+      (version (git-version "1.2" revision commit))
+      (source
+        (origin
+          (method git-fetch)
+          (uri (git-reference
+                 (url "https://github.com/tpope/vim-eunuch")
+                 (commit commit)))
+          (file-name (git-file-name name version))
+          (sha256
+           (base32
+            "1xadb22kd40swmww0qxmmkcpcq6viy8l167pjck5q32hfngll5d3"))))
+      (build-system copy-build-system)
+      (arguments
+       '(#:install-plan
+         '(("doc" "share/vim/vimfiles/")
+           ("plugin" "share/vim/vimfiles/"))))
+      (home-page "https://github.com/tpope/vim-eunuch")
+      (synopsis "Vim sugar for the UNIX shell commands")
+      (description "Vim sugar for the UNIX shell commands that need it the most.
+This package includes commands such as @code{SudoWrite} and @code{SudoEdit} and
+help working on Vim buffers and the files they reference with one command.")
+      (license license:vim))))

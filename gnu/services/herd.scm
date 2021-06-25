@@ -1,6 +1,6 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
-;;; Copyright © 2017 Mathieu Othacehe <m.othacehe@gmail.com>
+;;; Copyright © 2017, 2020 Mathieu Othacehe <m.othacehe@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -25,6 +25,7 @@
   #:use-module (srfi srfi-35)
   #:use-module (ice-9 match)
   #:export (%shepherd-socket-file
+            shepherd-message-port
 
             shepherd-error?
             service-not-found-error?
@@ -54,7 +55,8 @@
             load-services
             load-services/safe
             start-service
-            stop-service))
+            stop-service
+            restart-service))
 
 ;;; Commentary:
 ;;;
@@ -140,8 +142,12 @@ does not denote an error."
     (#f                                           ;not an error
      #t)))
 
+(define shepherd-message-port
+  ;; Port where messages coming from shepherd are printed.
+  (make-parameter (current-error-port)))
+
 (define (display-message message)
-  (format (current-error-port) "shepherd: ~a~%" message))
+  (format (shepherd-message-port) "shepherd: ~a~%" message))
 
 (define* (invoke-action service action arguments cont)
   "Invoke ACTION on SERVICE with ARGUMENTS.  On success, call CONT with the
@@ -265,6 +271,10 @@ when passed a service with an already-registered name."
 
 (define (stop-service name)
   (with-shepherd-action name ('stop) result
+    result))
+
+(define (restart-service name)
+  (with-shepherd-action name ('restart) result
     result))
 
 ;; Local Variables:

@@ -2,8 +2,8 @@
 ;;; Copyright © 2012, 2013 Nikita Karetnikov <nikita@karetnikov.org>
 ;;; Copyright © 2015 Mathieu Lirzin <mthl@gnu.org>
 ;;; Copyright © 2015 Mark H Weaver <mhw@netris.org>
-;;; Copyright © 2016, 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
-;;; Copyright © 2016 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2016, 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2016, 2019, 2020 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2016 Jan Nieuwenhuizen <janneke@gnu.org>
 ;;; Copyright © 2016 Roel Janssen <roel@gnu.org>
 ;;; Copyright © 2016, 2017 Marius Bakke <mbakke@fastmail.com>
@@ -15,6 +15,9 @@
 ;;; Copyright © 2018, 2019 Pierre Neidhardt <mail@ambrevar.xyz>
 ;;; Copyright © 2019 Leo Famulari <leo@famulari.name>
 ;;; Copyright © 2019 Pierre Langlois <pierre.langlois@gmx.com>
+;;; Copyright © 2020 Pkill -9 <pkill9@runbox.com>
+;;; Copyright © 2020 Vincent Legoll <vincent.legoll@gmail.com>
+;;; Copyright © 2020 Raghav Gururajan <raghavgururajan@disroot.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -44,10 +47,14 @@
   #:use-module (gnu packages docbook)
   #:use-module (gnu packages documentation)
   #:use-module (gnu packages elf)
+  #:use-module (gnu packages file-systems)
+  #:use-module (gnu packages file)
+  #:use-module (gnu packages fontutils)
   #:use-module (gnu packages gettext)
   #:use-module (gnu packages glib)
   #:use-module (gnu packages gnome)
   #:use-module (gnu packages gnupg)
+  #:use-module (gnu packages graphics)
   #:use-module (gnu packages gtk)
   #:use-module (gnu packages guile)
   #:use-module (gnu packages linux)
@@ -59,14 +66,20 @@
   #:use-module (gnu packages python)
   #:use-module (gnu packages python-xyz)
   #:use-module (gnu packages readline)
+  #:use-module (gnu packages samba)
   #:use-module (gnu packages sphinx)
   #:use-module (gnu packages sqlite)
   #:use-module (gnu packages swig)
+  #:use-module (gnu packages terminals)
+  #:use-module (gnu packages textutils)
   #:use-module (gnu packages vim)
   #:use-module (gnu packages w3m)
   #:use-module (gnu packages web)
   #:use-module (gnu packages xml)
+  #:use-module (gnu packages xorg)
   #:use-module (guix build-system gnu)
+  #:use-module (guix build-system glib-or-gtk)
+  #:use-module (guix build-system go)
   #:use-module (guix build-system python)
   #:use-module (guix build-system trivial)
   #:use-module (guix build-system scons)
@@ -75,38 +88,104 @@
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (guix packages))
 
+(define-public udevil
+  (package
+    (name "udevil")
+    (version "0.4.4")
+    (source
+     (origin
+       (method git-fetch)
+       (uri
+        (git-reference
+         (url "https://github.com/IgnorantGuru/udevil")
+         (commit version)))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "0x9mjr9abvbxzfa9mrip5264iz1qxvsl01k3ybz95q4a7xl4jcb3"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:configure-flags
+       (list
+        "--disable-systemd"
+        (string-append "--sysconfdir="
+                       (assoc-ref %outputs "out")
+                       "/etc")
+        ;; udevil expects these programs to be run with uid set as root.
+        ;; user has to manually add these programs to setuid-programs.
+        ;; mount and umount are default setuid-programs in guix system.
+        "--with-mount-prog=/run/setuid-programs/mount"
+        "--with-umount-prog=/run/setuid-programs/umount"
+        "--with-losetup-prog=/run/setuid-programs/losetup"
+        "--with-setfacl-prog=/run/setuid-programs/setfacl")
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'remove-root-reference
+           (lambda _
+             (substitute* "src/Makefile.in"
+               (("-o root -g root") ""))
+             #t))
+         (add-after 'unpack 'patch-udevil-reference
+           ;; udevil expects itself to be run with uid set as root.
+           ;; devmon also expects udevil to be run with uid set as root.
+           ;; user has to manually add udevil to setuid-programs.
+           (lambda _
+             (substitute* "src/udevil.c"
+               (("/usr/bin/udevil") "/run/setuid-programs/udevil"))
+             (substitute* "src/devmon"
+               (("`which udevil 2>/dev/null`") "/run/setuid-programs/udevil"))
+             #t)))))
+    (native-inputs
+     `(("intltool" ,intltool)
+       ("pkg-config" ,pkg-config)))
+    (inputs
+     `(("cifs-utils" ,cifs-utils)
+       ("curlftpfs" ,curlftpfs)
+       ("eudev" ,eudev)
+       ("fakeroot" ,fakeroot)
+       ("glib" ,glib)
+       ("sshfs" ,sshfs)))
+    (synopsis "Device and file system manager")
+    (description "udevil is a command line program that mounts and unmounts
+removable devices without a password, shows device info, and monitors device
+changes.  It can also mount ISO files, NFS, SMB, FTP, SSH and WebDAV URLs, and
+tmpfs/ramfs filesystems.")
+    (home-page "https://ignorantguru.github.io/udevil/")
+    (license license:gpl3+)))
+
 (define-public parted
   (package
     (name "parted")
-    (version "3.2")
+    (version "3.3")
     (source (origin
               (method url-fetch)
               (uri (string-append "mirror://gnu/parted/parted-"
                                   version ".tar.xz"))
-              (patches (search-patches "parted-glibc-compat.patch"))
               (sha256
                (base32
-                "1r3qpg3bhz37mgvp9chsaa3k0csby3vayfvz8ggsqz194af5i2w5"))))
+                "0i1xp367wpqw75b20c3jnism3dg3yqj4a7a22p2jb1h1hyyv9qjp"))))
     (build-system gnu-build-system)
     (arguments
      `(#:phases
        (modify-phases %standard-phases
-         (add-after
-          'unpack 'fix-locales-and-python
-          (lambda* (#:key inputs #:allow-other-keys)
-            (substitute* "tests/t0251-gpt-unicode.sh"
-              (("C.UTF-8") "en_US.utf8")) ;not in Glibc locales
-            (substitute* "tests/msdos-overlap"
-              (("/usr/bin/python") (which "python"))))))))
+         (add-after 'unpack 'fix-locales-and-python
+           (lambda* (#:key inputs #:allow-other-keys)
+             (substitute* "tests/t0251-gpt-unicode.sh"
+               (("C.UTF-8") "en_US.utf8")) ;not in Glibc locales
+             (substitute* "tests/msdos-overlap"
+               (("/usr/bin/python") (which "python")))
+             #t)))))
     (inputs
      `(("lvm2" ,lvm2)
        ("readline" ,readline)
-       ("util-linux" ,util-linux)))
+       ("util-linux" ,util-linux "lib")))
     (native-inputs
      `(("gettext" ,gettext-minimal)
+
        ;; For the tests.
+       ("e2fsprogs" ,e2fsprogs)
        ("perl" ,perl)
-       ("python" ,python-2)))
+       ("python" ,python-2)
+       ("util-linux" ,util-linux)))
     (home-page "https://www.gnu.org/software/parted/")
     (synopsis "Disk partition editor")
     (description
@@ -130,7 +209,7 @@ tables.  It includes a library and command-line utility.")
     (inputs
      `(("gettext" ,gettext-minimal)
        ("guile" ,guile-1.8)
-       ("util-linux" ,util-linux)
+       ("util-linux" ,util-linux "lib")
        ("parted" ,parted)))
     ;; The build neglects to look for its own headers in its own tree.  A next
     ;; release should fix this, but may never come: GNU fdisk looks abandoned.
@@ -157,29 +236,32 @@ tables, and it understands a variety of different formats.")
 (define-public gptfdisk
   (package
     (name "gptfdisk")
-    (version "1.0.4")
+    (version "1.0.5")
     (source
      (origin
       (method url-fetch)
       (uri (string-append "mirror://sourceforge/gptfdisk/gptfdisk/"
-                          version "/" name "-" version ".tar.gz"))
+                          version "/gptfdisk-" version ".tar.gz"))
       (sha256
-       (base32
-        "13d7gff4prl1nsdknjigmb7bbqhn79165n01v4y9mwbnd0d3jqxn"))))
+       (base32 "0bybgp30pqxb6x5krxazkq4drca0gz4inxj89fpyr204rn3kjz8f"))))
     (build-system gnu-build-system)
     (inputs
      `(("gettext" ,gettext-minimal)
        ("ncurses" ,ncurses)
        ("popt" ,popt)
-       ("util-linux" ,util-linux))) ; libuuid
+       ("util-linux" ,util-linux "lib"))) ;libuuid
     (arguments
      `(#:test-target "test"
        #:phases
        (modify-phases %standard-phases
-         ;; no configure script
-         (delete 'configure)
-         ;; no install target
+         (add-after 'unpack 'fix-include-directory
+           (lambda _
+             (substitute* "gptcurses.cc"
+               (("ncursesw/ncurses.h") "ncurses.h"))
+             #t))
+         (delete 'configure)            ; no configure script
          (replace 'install
+           ;; There's no ‘make install’ target.
            (lambda* (#:key outputs #:allow-other-keys)
              (let* ((out (assoc-ref outputs "out"))
                     (bin (string-append out "/bin"))
@@ -192,7 +274,7 @@ tables, and it understands a variety of different formats.")
                (install-file "fixparts.8" man)
                (install-file "gdisk.8" man)
                (install-file "sgdisk.8" man)))))))
-    (home-page "http://www.rodsbooks.com/gdisk/")
+    (home-page "https://www.rodsbooks.com/gdisk/")
     (synopsis "Low-level GPT disk partitioning and formatting")
     (description "GPT fdisk (aka gdisk) is a text-mode partitioning tool that
 works on Globally Unique Identifier (@dfn{GUID}) Partition Table (@dfn{GPT})
@@ -203,14 +285,14 @@ scheme.")
 (define-public ddrescue
   (package
     (name "ddrescue")
-    (version "1.24")
+    (version "1.25")
     (source
      (origin
       (method url-fetch)
       (uri (string-append "mirror://gnu/ddrescue/ddrescue-"
                           version ".tar.lz"))
       (sha256
-       (base32 "11qh0bbzf00mfb4yq35gnv5m260k4d7q9ixklry6bqvhvvp3ypab"))))
+       (base32 "0qqh38izl5ppap9a5izf3hijh94k65s3zbfkczd4b7x04syqwlyf"))))
     (build-system gnu-build-system)
     (home-page "https://www.gnu.org/software/ddrescue/ddrescue.html")
     (synopsis "Data recovery utility")
@@ -286,15 +368,14 @@ and a @command{fsck.vfat} compatibility symlink for use in an initrd.")
 (define-public sdparm
   (package
     (name "sdparm")
-    (version "1.10")
+    (version "1.11")
     (source
      (origin
        (method url-fetch)
        (uri (string-append "http://sg.danny.cz/sg/p/"
-                           name "-" version ".tar.xz"))
+                           "sdparm-" version ".tar.xz"))
        (sha256
-        (base32
-         "1jjq3lzgfy4r76rc26q02lv4wm5cb4dx5nh913h489zjrr4f3jbx"))))
+        (base32 "1nqjc4w2w47zavcbf5xmm53x1zbwgljaw1lpajcdi537cgy32fa8"))))
     (build-system gnu-build-system)
     (home-page "http://sg.danny.cz/sg/sdparm.html")
     (synopsis "Provide access to SCSI device parameters")
@@ -344,31 +425,30 @@ and can dramatically shorten the lifespan of the drive if left unchecked.")
 (define-public gparted
   (package
     (name "gparted")
-    (version "1.0.0")
+    (version "1.1.0")
     (source
      (origin
        (method url-fetch)
        (uri (string-append "mirror://sourceforge/gparted/gparted/gparted-"
                            version "/gparted-" version ".tar.gz"))
        (sha256
-        (base32
-         "0mdvn85jvy72ff7nds3dakx9kzknh8gx1z8i0w2sf970q03qp2z4"))))
-    (build-system gnu-build-system)
+        (base32 "092rgwjh1825fal6v3yafq2wr0i61hh0a2n0j4296zn0zdx7pzp2"))))
+    (build-system glib-or-gtk-build-system)
     (arguments
       ;; Tests require access to paths outside the build container, such
       ;; as '/dev/disk/by-id'
      `(#:tests? #f))
     (inputs
-     `(("util-linux" ,util-linux)
+     `(("util-linux" ,util-linux "lib")
        ("parted" ,parted)
        ("glib" ,glib)
        ("gtkmm" ,gtkmm)
-       ("libxml2" ,libxml2)
-       ("yelp-tools" ,yelp-tools)
-       ("itstool" ,itstool)))
+       ("libxml2" ,libxml2)))
     (native-inputs
      `(("intltool" ,intltool)
+       ("itstool" ,itstool)
        ("lvm2" ,lvm2) ; for tests
+       ("yelp-tools" ,yelp-tools)
        ("pkg-config" ,pkg-config)))
     (home-page "https://gparted.org/")
     (synopsis "Partition editor to graphically manage disk partitions")
@@ -402,17 +482,16 @@ systems.  Output format is completely customizable.")
 (define-public f3
   (package
     (name "f3")
-    (version "7.1")
+    (version "7.2")
     (source
      (origin
       (method git-fetch)
       (uri (git-reference
-            (url "https://github.com/AltraMayor/f3.git")
+            (url "https://github.com/AltraMayor/f3")
             (commit (string-append "v" version))))
       (file-name (git-file-name name version))
       (sha256
-       (base32
-        "0zglsmz683jg7f9wc6vmgljyg9w87pbnjw5x4w6x02w8233zvjqf"))))
+       (base32 "1iwdg0r4wkgc8rynmw1qcqz62l0ldgc8lrazq33msxnk5a818jgy"))))
     (build-system gnu-build-system)
     (arguments
      '(#:tests? #f                      ; no check target
@@ -446,7 +525,7 @@ a card with a smaller capacity than stated.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/dcantrell/pyparted.git")
+             (url "https://github.com/dcantrell/pyparted")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
@@ -487,7 +566,7 @@ a card with a smaller capacity than stated.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/markfasheh/duperemove.git")
+             (url "https://github.com/markfasheh/duperemove")
              (commit (string-append "v" version))))
        (sha256
         (base32 "1scz76pvpljvrpfn176125xwaqwyy4pirlm11sc9spb2hyzknw2z"))
@@ -525,14 +604,14 @@ Duperemove can also take input from the @command{fdupes} program.")
 (define-public ranger
   (package
     (name "ranger")
-    (version "1.9.2")
+    (version "1.9.3")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://ranger.github.io/"
                                   "ranger-" version ".tar.gz"))
               (sha256
                (base32
-                "12kbsqakbxs09y0x8hy66mmaf72rk0p850x7ryk2ghkq7wfin78f"))))
+                "0lfjrpv3z4h0knd3v94fijrw2zjba51mrp3mjqx2c98wr428l26f"))))
     (build-system python-build-system)
     (inputs
      `(("w3m" ,w3m)))
@@ -583,12 +662,12 @@ automatically finding out which program to use for what file type.")
     (build-system gnu-build-system)
     (native-inputs
      `(("pkg-config" ,pkg-config)
-       ("util-linux" ,util-linux)
        ("swig" ,swig)
        ("python" ,python-3)))           ; used to generate the Python bindings
     (inputs
      `(("cryptsetup" ,cryptsetup)
        ("nss" ,nss)
+       ("libblkid" ,util-linux "lib")
        ("lvm2" ,lvm2)                   ; for "-ldevmapper"
        ("glib" ,glib)
        ("gpgme" ,gpgme)))
@@ -613,16 +692,16 @@ passphrases.")
 (define-public ndctl
   (package
     (name "ndctl")
-    (version "65")
+    (version "68")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/pmem/ndctl.git")
+                    (url "https://github.com/pmem/ndctl")
                     (commit (string-append "v" version))))
               (file-name (git-file-name name version))
               (sha256
                (base32
-                "0d8hzfvyxs2q8kgkwgdizlml41kin4mhx3vpdsjk34pfi7mqy69y"))))
+                "0xmim7z4qp6x2ggndnbwd940c73pa1qlf3hxyn3qh5pyr69nh9y8"))))
     (build-system gnu-build-system)
     (native-inputs
      `(("asciidoc" ,asciidoc)
@@ -641,7 +720,7 @@ passphrases.")
        ("json-c" ,json-c)
        ("keyutils" ,keyutils)
        ("kmod" ,kmod)
-       ("util-linux" ,util-linux)))
+       ("util-linux" ,util-linux "lib")))
     (arguments
      `(#:configure-flags
        (list "--disable-asciidoctor"    ; use docbook-xsl instead
@@ -714,7 +793,7 @@ to create devices with respective mappings for the ATARAID sets discovered.")
 (define-public libblockdev
   (package
     (name "libblockdev")
-    (version "2.21")
+    (version "2.24")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://github.com/storaged-project/"
@@ -722,10 +801,19 @@ to create devices with respective mappings for the ATARAID sets discovered.")
                                   version "-1/libblockdev-" version ".tar.gz"))
               (sha256
                (base32
-                "02p13l4194j0vyd2zs7bb9dmyclcpqq8l3qv9289vjfbsvq2awii"))))
+                "0wq7624pnprvfzrf39bq1cybd9lqwawbdg5bm0cchlpgvdq7q86w"))))
     (build-system gnu-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'patch-configuration-directory
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out")))
+              (substitute* "src/lib/blockdev.c"
+               (("/etc/libblockdev/conf.d/" path) (string-append out path)))))))))
     (native-inputs
-     `(("pkg-config" ,pkg-config)
+     `(("gobject-introspection" ,gobject-introspection)
+       ("pkg-config" ,pkg-config)
        ("python" ,python-wrapper)
        ("util-linux" ,util-linux)))
     (inputs
@@ -735,7 +823,6 @@ to create devices with respective mappings for the ATARAID sets discovered.")
        ("dmraid" ,dmraid)
        ("eudev" ,eudev)
        ("glib" ,glib)
-       ("gobject-introspection" ,gobject-introspection)
        ("kmod" ,kmod)
        ("libbytesize" ,libbytesize)
        ("libyaml" ,libyaml)
@@ -760,7 +847,7 @@ LVM D-Bus API).")
 (define-public rmlint
   (package
     (name "rmlint")
-    (version "2.9.0")
+    (version "2.10.1")
     (source (origin
               (method git-fetch)
               (uri (git-reference
@@ -769,7 +856,7 @@ LVM D-Bus API).")
               (file-name (git-file-name name version))
               (sha256
                (base32
-                "1b5cziam14h80xrfb285fmfrzz2rligxcpsq1xsig14xf4l2875i"))))
+                "15xfkcw1bkfyf3z8kl23k3rlv702m0h7ghqxvhniynvlwbgh6j2x"))))
     (build-system scons-build-system)
     (arguments
      `(#:scons ,scons-python2
@@ -810,7 +897,7 @@ LVM D-Bus API).")
        ("libelf" ,libelf)
        ("elfutils" ,elfutils)
        ("json-glib" ,json-glib)
-       ("libblkid" ,util-linux)))
+       ("libblkid" ,util-linux "lib")))
     (home-page "https://rmlint.rtfd.org")
     (synopsis "Remove duplicates and other lint from the file system")
     (description "@command{rmlint} finds space waste and other broken things
@@ -824,3 +911,97 @@ on your file system and offers to remove it.  @command{rmlint} can find:
 @item files with broken user and/or group ID.
 @end itemize\n")
     (license license:gpl3+)))
+
+(define-public lf
+  (package
+    (name "lf")
+    (version "13")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/gokcehan/lf")
+                    (commit (string-append "r" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "1ld3q75v8rvp169w5p85z1vznqs9bhck6bm2f6fykxx16hmpb6ga"))))
+    (build-system go-build-system)
+    (native-inputs
+     `(("go-github.com-mattn-go-runewidth" ,go-github.com-mattn-go-runewidth)
+       ("go-github.com-nsf-termbox-go" ,go-github.com-nsf-termbox-go)))
+    (arguments
+     `(#:import-path "github.com/gokcehan/lf"))
+    (home-page "https://github.com/gokcehan/lf")
+    (synopsis "Console file browser similar to Ranger")
+    (description "lf (as in \"list files\") is a terminal file manager
+written in Go.  It is heavily inspired by ranger with some missing and
+extra features.  Some of the missing features are deliberately omitted
+since they are better handled by external tools.")
+    (license license:expat)))
+
+(define-public xfe
+  (package
+    (name "xfe")
+    (version "1.43.2")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+        (string-append "mirror://sourceforge/xfe/xfe/" version "/"
+                       "xfe-" version ".tar.gz"))
+       (sha256
+        (base32 "1fl51k5jm2vrfc2g66agbikzirmp0yb0lqhmsssixfb4mky3hpzs"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'patch-bin-dirs
+           (lambda* (#:key inputs #:allow-other-keys)
+             (let* ((bash (assoc-ref inputs "bash"))
+                    (coreutils (assoc-ref inputs "coreutils"))
+                    (findutils (assoc-ref inputs "findutils"))
+                    (file-prog (assoc-ref inputs "file")))
+               (with-directory-excursion "src"
+                 (substitute* '("FilePanel.cpp" "help.h" "SearchPanel.cpp"
+                                "startupnotification.cpp" "xfeutils.cpp"
+                                "../st/config.h")
+                   (("/bin/sh" file) (string-append bash file))
+                   (("/bin/ls" file) (string-append coreutils file))
+                   (("/usr(/bin/du)" _ file) (string-append coreutils file))
+                   (("/usr(/bin/sort)" _ file) (string-append coreutils file))
+                   (("/usr(/bin/cut)" _ file) (string-append coreutils file))
+                   (("/usr(/bin/xargs)" _ file) (string-append findutils file))
+                   (("/usr(/bin/file)" _ file) (string-append file-prog file))))
+               #t)))
+         (add-after 'unpack 'patch-share-dirs
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (share (string-append out "/share"))
+                    (xfe (string-append share "/xfe")))
+               (with-directory-excursion "src"
+                 (substitute* '("foxhacks.cpp" "help.h" "xfedefs.h"
+                                "XFileExplorer.cpp")
+                   (("/(usr|opt)(/local)?/share") share)
+                   (("~/.config/xfe") xfe)))
+               #t))))))
+    (native-inputs
+     `(("intltool" ,intltool)
+       ("pkg-config" ,pkg-config)))
+    (inputs
+     `(("bash" ,bash)
+       ("coreutils" ,coreutils)
+       ("file" ,file)
+       ("findutils" ,findutils)
+       ("fox" ,fox)
+       ("freetype" ,freetype)
+       ("x11" ,libx11)
+       ("xcb" ,libxcb)
+       ("xcb-util" ,xcb-util)
+       ("xft" ,libxft)
+       ("xrandr" ,libxrandr)))
+    (synopsis "File Manager for X-Based Graphical Systems")
+    (description "XFE (X File Explorer) is a file manager for X.  It is based on
+the popular but discontinued, X Win Commander.  It aims to be the file manager
+of choice for all light thinking Unix addicts!")
+    (home-page "http://roland65.free.fr/xfe/")
+    (license license:gpl2+)))

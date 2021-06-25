@@ -3,7 +3,7 @@
 # Copyright © 2017 sharlatan <sharlatanus@gmail.com>
 # Copyright © 2018 Ricardo Wurmus <rekado@elephly.net>
 # Copyright © 2018 Efraim Flashner <efraim@flashner.co.il>
-# Copyright © 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+# Copyright © 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 #
 # This file is part of GNU Guix.
 #
@@ -48,6 +48,7 @@ REQUIRE=(
     "groupadd"
     "tail"
     "tr"
+    "xz"
 )
 
 PAS=$'[ \033[32;1mPASS\033[0m ] '
@@ -110,7 +111,7 @@ chk_gpg_keyring()
     # systems where gpg has never been used, causing errors and confusion.
     gpg --dry-run --list-keys ${OPENPGP_SIGNING_KEY_ID} >/dev/null 2>&1 || (
         _err "${ERR}Missing OpenPGP public key.  Fetch it with this command:"
-        echo "  wget https://sv.gnu.org/people/viewgpg.php?user_id=15145 -qO - | gpg --import -"
+        echo "  wget https://sv.gnu.org/people/viewgpg.php?user_id=15145 -qO - | sudo -i gpg --import -"
         exit 1
     )
 }
@@ -141,7 +142,7 @@ chk_init_sys()
         _msg "${INF}init system is: upstart"
         INIT_SYS="upstart"
         return 0
-    elif [[ $(systemctl) =~ -\.mount ]]; then
+    elif [[ $(systemctl 2>/dev/null) =~ -\.mount ]]; then
         _msg "${INF}init system is: systemd"
         INIT_SYS="systemd"
         return 0
@@ -342,7 +343,18 @@ sys_enable_guix_daemon()
                 _msg "${PAS}enabled Guix daemon via upstart"
             ;;
         systemd)
-            { cp "${ROOT_HOME}/.config/guix/current/lib/systemd/system/guix-daemon.service" \
+            { # systemd .mount units must be named after the target directory.
+              # Here we assume a hard-coded name of /gnu/store.
+              # XXX Work around <https://issues.guix.gnu.org/41356> until next release.
+              if [ -f "${ROOT_HOME}/.config/guix/current/lib/systemd/system/gnu-store.mount" ]; then
+                  cp "${ROOT_HOME}/.config/guix/current/lib/systemd/system/gnu-store.mount" \
+                     /etc/systemd/system/;
+                  chmod 664 /etc/systemd/system/gnu-store.mount;
+                  systemctl daemon-reload &&
+                      systemctl enable gnu-store.mount;
+              fi
+
+              cp "${ROOT_HOME}/.config/guix/current/lib/systemd/system/guix-daemon.service" \
                  /etc/systemd/system/;
               chmod 664 /etc/systemd/system/guix-daemon.service;
 
@@ -357,9 +369,20 @@ sys_enable_guix_daemon()
 	      fi;
 
               systemctl daemon-reload &&
-                  systemctl start guix-daemon &&
-                  systemctl enable guix-daemon; } &&
+                  systemctl enable guix-daemon &&
+                  systemctl start  guix-daemon; } &&
                 _msg "${PAS}enabled Guix daemon via systemd"
+            ;;
+        sysv-init)
+            { mkdir -p /etc/init.d;
+              cp "${ROOT_HOME}/.config/guix/current/etc/init.d/guix-daemon" \
+                 /etc/init.d/guix-daemon;
+              chmod 775 /etc/init.d/guix-daemon;
+
+              update-rc.d guix-daemon defaults &&
+                  update-rc.d guix-daemon enable &&
+                  service guix-daemon start; } &&
+                _msg "${PAS}enabled Guix daemon via sysv"
             ;;
         NA|*)
             _msg "${ERR}unsupported init system; run the daemon manually:"
@@ -391,6 +414,35 @@ sys_authorize_build_farms()
             *) _msg "Please answer yes or no.";
         esac
     done
+}
+
+sys_create_init_profile()
+{ # Create /etc/profile.d/guix.sh for better desktop integration
+  # This will not take effect until the next shell or desktop session!
+    [ -d "/etc/profile.d" ] || mkdir /etc/profile.d # Just in case
+    cat <<"EOF" > /etc/profile.d/guix.sh
+# _GUIX_PROFILE: `guix pull` profile
+_GUIX_PROFILE="$HOME/.config/guix/current"
+if [ -L $_GUIX_PROFILE ]; then
+  export PATH="$_GUIX_PROFILE/bin${PATH:+:}$PATH"
+  # Export INFOPATH so that the updated info pages can be found
+  # and read by both /usr/bin/info and/or $GUIX_PROFILE/bin/info
+  # When INFOPATH is unset, add a trailing colon so that Emacs
+  # searches 'Info-default-directory-list'.
+  export INFOPATH="$_GUIX_PROFILE/share/info:$INFOPATH"
+fi
+
+# GUIX_PROFILE: User's default profile
+GUIX_PROFILE="$HOME/.guix-profile"
+[ -L $GUIX_PROFILE ] || return
+GUIX_LOCPATH="$GUIX_PROFILE/lib/locale"
+export GUIX_PROFILE GUIX_LOCPATH
+
+[ -f "$GUIX_PROFILE/etc/profile" ] && . "$GUIX_PROFILE/etc/profile"
+
+# set XDG_DATA_DIRS to include Guix installations
+export XDG_DATA_DIRS="$GUIX_PROFILE/share:${XDG_DATA_DIRS:-/usr/local/share/:/usr/share/}"
+EOF
 }
 
 welcome()
@@ -439,6 +491,7 @@ main()
 
     _msg "${INF}system is ${ARCH_OS}"
 
+    umask 0022
     tmp_path="$(mktemp -t -d guix.XXX)"
 
     guix_get_bin_list "${GNU_URL}"
@@ -448,12 +501,16 @@ main()
     sys_create_build_user
     sys_enable_guix_daemon
     sys_authorize_build_farms
+    sys_create_init_profile
 
     _msg "${INF}cleaning up ${tmp_path}"
     rm -r "${tmp_path}"
 
     _msg "${PAS}Guix has successfully been installed!"
     _msg "${INF}Run 'info guix' to read the manual."
+
+    # Required to source /etc/profile in desktop environments.
+    _msg "${INF}Please log out and back in to complete the installation."
  }
 
 main "$@"

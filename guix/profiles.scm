@@ -1,5 +1,5 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2013, 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2013 Nikita Karetnikov <nikita@karetnikov.org>
 ;;; Copyright © 2014, 2016 Alex Kost <alezost@gmail.com>
 ;;; Copyright © 2015 Mark H Weaver <mhw@netris.org>
@@ -9,6 +9,8 @@
 ;;; Copyright © 2017 Huang Ying <huang.ying.caritas@gmail.com>
 ;;; Copyright © 2017 Maxim Cournoyer <maxim.cournoyer@gmail.com>
 ;;; Copyright © 2019 Kyle Meyer <kyle@kyleam.com>
+;;; Copyright © 2019 Mathieu Othacehe <m.othacehe@gmail.com>
+;;; Copyright © 2020 Danny Milosavljevic <dannym@scratchpost.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -30,6 +32,7 @@
   #:use-module ((guix utils) #:hide (package-name->name+version))
   #:use-module ((guix build utils)
                 #:select (package-name->name+version mkdir-p))
+  #:use-module ((guix diagnostics) #:select (&fix-hint))
   #:use-module (guix i18n)
   #:use-module (guix records)
   #:use-module (guix packages)
@@ -39,7 +42,6 @@
   #:use-module (guix modules)
   #:use-module (guix monads)
   #:use-module (guix store)
-  #:use-module (guix sets)
   #:use-module (ice-9 vlist)
   #:use-module (ice-9 match)
   #:use-module (ice-9 regex)
@@ -85,6 +87,9 @@
             manifest-entry-search-paths
             manifest-entry-parent
             manifest-entry-properties
+            lower-manifest-entry
+
+            manifest-entry=?
 
             manifest-pattern
             manifest-pattern?
@@ -92,12 +97,15 @@
             manifest-pattern-version
             manifest-pattern-output
 
+            concatenate-manifests
+            map-manifest-entries
             manifest-remove
             manifest-add
             manifest-lookup
             manifest-installed?
             manifest-matching-entries
             manifest-search-paths
+            check-for-collisions
 
             manifest-transaction
             manifest-transaction?
@@ -118,6 +126,15 @@
             profile-derivation
             profile-search-paths
 
+            profile
+            profile?
+            profile-name
+            profile-content
+            profile-hooks
+            profile-locales?
+            profile-allow-collisions?
+            profile-relative-symlinks?
+
             generation-number
             generation-profile
             generation-numbers
@@ -136,7 +153,9 @@
             %current-profile
             ensure-profile-directory
             canonicalize-profile
-            user-friendly-profile))
+            user-friendly-profile
+
+            linux-module-database))
 
 ;;; Commentary:
 ;;;
@@ -210,22 +229,49 @@
   (output       manifest-pattern-output           ; string | #f
                 (default "out")))
 
+(define (list=? = lst1 lst2)
+  "Return true if LST1 and LST2 have the same length and their elements are
+pairwise equal per =."
+  (match lst1
+    (()
+     (null? lst2))
+    ((head1 . tail1)
+     (match lst2
+       ((head2 . tail2)
+        (and (= head1 head2) (list=? = tail1 tail2)))
+       (()
+        #f)))))
+
+(define (manifest-entry=? entry1 entry2)
+  "Return true if ENTRY1 is equivalent to ENTRY2, ignoring their 'properties'
+field."
+  (match entry1
+    (($ <manifest-entry> name1 version1 output1 item1 dependencies1 paths1)
+     (match entry2
+       (($ <manifest-entry> name2 version2 output2 item2 dependencies2 paths2)
+        (and (string=? name1 name2)
+             (string=? version1 version2)
+             (string=? output1 output2)
+             (equal? item1 item2)      ;XXX: could be <package> vs. store item
+             (equal? paths1 paths2)
+             (list=? manifest-entry=? dependencies1 dependencies2)))))))
+
 (define (manifest-transitive-entries manifest)
   "Return the entries of MANIFEST along with their propagated inputs,
 recursively."
   (let loop ((entries (manifest-entries manifest))
              (result  '())
-             (visited (set)))                     ;compare with 'equal?'
+             (visited vlist-null))            ;compare with 'manifest-entry=?'
     (match entries
       (()
        (reverse result))
       ((head . tail)
-       (if (set-contains? visited head)
+       (if (vhash-assoc head visited manifest-entry=?)
            (loop tail result visited)
            (loop (append (manifest-entry-dependencies head)
                          tail)
                  (cons head result)
-                 (set-insert head visited)))))))
+                 (vhash-cons head #t visited)))))))
 
 (define (profile-manifest profile)
   "Return the PROFILE's manifest."
@@ -257,16 +303,24 @@ procedure takes two arguments: the entry name and output."
 (define* (lower-manifest-entry entry system #:key target)
   "Lower ENTRY for SYSTEM and TARGET such that its 'item' field is a store
 file name."
+  (define (recurse entry)
+    (mapm/accumulate-builds (lambda (entry)
+                              (lower-manifest-entry entry system
+                                                    #:target target))
+                            (manifest-entry-dependencies entry)))
+
   (let ((item (manifest-entry-item entry)))
     (if (string? item)
         (with-monad %store-monad
           (return entry))
         (mlet %store-monad ((drv (lower-object item system
                                                #:target target))
+                            (dependencies (recurse entry))
                             (output -> (manifest-entry-output entry)))
           (return (manifest-entry
                     (inherit entry)
-                    (item (derivation->output-path drv output))))))))
+                    (item (derivation->output-path drv output))
+                    (dependencies dependencies)))))))
 
 (define* (check-for-collisions manifest system #:key target)
   "Check whether the entries of MANIFEST conflict with one another; raise a
@@ -274,29 +328,37 @@ file name."
   (define lookup
     (manifest-entry-lookup manifest))
 
-  (with-monad %store-monad
+  (define candidates
+    (filter-map (lambda (entry)
+                  (let ((other (lookup (manifest-entry-name entry)
+                                       (manifest-entry-output entry))))
+                    (and other (list entry other))))
+                (manifest-transitive-entries manifest)))
+
+  (define lower-pair
+    (match-lambda
+      ((first second)
+       (mlet %store-monad ((first  (lower-manifest-entry first system
+                                                         #:target target))
+                           (second (lower-manifest-entry second system
+                                                         #:target target)))
+         (return (list first second))))))
+
+  ;; Start by lowering CANDIDATES "in parallel".
+  (mlet %store-monad ((lst (mapm/accumulate-builds lower-pair candidates)))
     (foldm %store-monad
-           (lambda (entry result)
-             (match (lookup (manifest-entry-name entry)
-                            (manifest-entry-output entry))
-               ((? manifest-entry? second)        ;potential conflict
-                (mlet %store-monad ((first (lower-manifest-entry entry system
-                                                                 #:target
-                                                                 target))
-                                    (second (lower-manifest-entry second system
-                                                                  #:target
-                                                                  target)))
-                  (if (string=? (manifest-entry-item first)
-                                (manifest-entry-item second))
-                      (return result)
-                      (raise (condition
-                              (&profile-collision-error
-                               (entry first)
-                               (conflict second)))))))
-               (#f                                ;no conflict
-                (return result))))
+           (lambda (entries result)
+             (match entries
+               ((first second)
+                (if (string=? (manifest-entry-item first)
+                              (manifest-entry-item second))
+                    (return result)
+                    (raise (condition
+                            (&profile-collision-error
+                             (entry first)
+                             (conflict second))))))))
            #t
-           (manifest-transitive-entries manifest))))
+           lst)))
 
 (define* (package->manifest-entry package #:optional (output "out")
                                   #:key (parent (delay #f))
@@ -514,6 +576,15 @@ procedure is here for backward-compatibility and will eventually vanish."
 (define (read-manifest port)
   "Return the packages listed in MANIFEST."
   (sexp->manifest (read port)))
+
+(define (concatenate-manifests lst)
+  "Concatenate the manifests listed in LST and return the resulting manifest."
+  (manifest (append-map manifest-entries lst)))
+
+(define (map-manifest-entries proc manifest)
+  "Apply PROC to all the entries of MANIFEST and return a new manifest."
+  (make-manifest
+   (map proc (manifest-entries manifest))))
 
 (define (entry-predicate pattern)
   "Return a procedure that returns #t when passed a manifest entry that
@@ -1101,6 +1172,8 @@ for both major versions of GTK+."
     ;; Don't run the hook when there's nothing to do.
     (let* ((pkg-gtk+ (module-ref        ; lazy reference
                       (resolve-interface '(gnu packages gtk)) 'gtk+))
+           (pkg-gtk+2 (module-ref        ; lazy reference
+                       (resolve-interface '(gnu packages gtk)) 'gtk+-2))
            (gexp #~(begin
                      #$(if gtk+
                            (build
@@ -1114,7 +1187,7 @@ for both major versions of GTK+."
                            (build
                             gtk+-2 "2.10.0"
                             #~(string-append
-                               #$gtk+-2 "/bin/gtk-query-immodules-2.0"))
+                               #$pkg-gtk+2:bin "/bin/gtk-query-immodules-2.0"))
                            #t))))
       (if (or gtk+ gtk+-2)
           (gexp->derivation "gtk-im-modules" gexp
@@ -1124,6 +1197,57 @@ for both major versions of GTK+."
                             `((type . profile-hook)
                               (hook . gtk-im-modules)))
           (return #f)))))
+
+(define (linux-module-database manifest)
+  "Return a derivation that unites all the kernel modules of the manifest
+and creates the dependency graph of all these kernel modules.
+
+This is meant to be used as a profile hook."
+  (define kmod                                    ; lazy reference
+    (module-ref (resolve-interface '(gnu packages linux)) 'kmod))
+  (define build
+    (with-imported-modules (source-module-closure
+                            '((guix build utils)
+                              (gnu build linux-modules)))
+      #~(begin
+          (use-modules (ice-9 ftw)
+                       (ice-9 match)
+                       (srfi srfi-1)              ; append-map
+                       (gnu build linux-modules))
+
+          (let* ((inputs '#$(manifest-inputs manifest))
+                 (module-directories
+                  (map (lambda (directory)
+                         (string-append directory "/lib/modules"))
+                       inputs))
+                 (directory-entries
+                  (lambda (directory)
+                    (or (scandir directory
+                                 (lambda (basename)
+                                   (not (string-prefix? "." basename))))
+                        '())))
+                 ;; Note: Should usually result in one entry.
+                 (versions (delete-duplicates
+                            (append-map directory-entries
+                                        module-directories))))
+            (match versions
+              ((version)
+               (let ((old-path (getenv "PATH")))
+                 (setenv "PATH" #+(file-append kmod "/bin"))
+                 (make-linux-module-directory inputs version #$output)
+                 (setenv "PATH" old-path)))
+              (()
+               ;; Nothing here, maybe because this is a kernel with
+               ;; CONFIG_MODULES=n.
+               (mkdir #$output))
+              (_ (error "Specified Linux kernel and Linux kernel modules
+are not all of the same version")))))))
+  (gexp->derivation "linux-module-database" build
+                    #:local-build? #t
+                    #:substitutable? #f
+                    #:properties
+                    `((type . profile-hook)
+                      (hook . linux-module-database))))
 
 (define (xdg-desktop-database manifest)
   "Return a derivation that builds the @file{mimeinfo.cache} database from
@@ -1312,26 +1436,38 @@ the entries in MANIFEST."
         #~(begin
             (use-modules (guix man-db)
                          (guix build utils)
+                         (ice-9 threads)
                          (srfi srfi-1)
                          (srfi srfi-19))
+
+            (define (print-string msg)
+              (display msg)
+              (force-output))
+
+            (define-syntax-rule (print fmt args ...)
+              ;; Build up the string and display it at once.
+              (print-string (format #f fmt args ...)))
+
+            (define (compute-entry directory count total)
+              (print "\r[~3d/~3d] building list of man-db entries..."
+                     count total)
+              (let ((man (string-append directory "/share/man")))
+                (if (directory-exists? man)
+                    (mandb-entries man)
+                    '())))
 
             (define (compute-entries)
               ;; This is the most expensive part (I/O and CPU, due to
               ;; decompression), so report progress as we traverse INPUTS.
-              (let* ((inputs '#$(manifest-inputs manifest))
-                     (total  (length inputs)))
-                (append-map (lambda (directory count)
-                              (format #t "\r[~3d/~3d] building list of \
-man-db entries..."
-                                      count total)
-                              (force-output)
-                              (let ((man (string-append directory
-                                                        "/share/man")))
-                                (if (directory-exists? man)
-                                    (mandb-entries man)
-                                    '())))
-                            inputs
-                            (iota total 1))))
+              ;; Cap at 4 threads because we don't see any speedup beyond that
+              ;; on an SSD laptop.
+              (let* ((inputs  '#$(manifest-inputs manifest))
+                     (total   (length inputs))
+                     (threads (min (parallel-job-count) 4)))
+                (concatenate
+                 (n-par-map threads compute-entry inputs
+                            (iota total 1)
+                            (make-list total total)))))
 
             (define man-directory
               (string-append #$output "/share/man"))
@@ -1360,6 +1496,7 @@ man-db entries..."
                     ;; <https://debbugs.gnu.org/cgi/bugreport.cgi?bug=29654#23>.
                     #:env-vars `(("MALLOC_PERTURB_" . "1"))
 
+                    #:substitutable? #f
                     #:local-build? #t
                     #:properties
                     `((type . profile-hook)
@@ -1429,6 +1566,7 @@ MANIFEST."
 
 (define* (profile-derivation manifest
                              #:key
+                             (name "profile")
                              (hooks %default-profile-hooks)
                              (locales? #t)
                              (allow-collisions? #f)
@@ -1452,16 +1590,18 @@ are cross-built for TARGET."
   (mlet* %store-monad ((system (if system
                                    (return system)
                                    (current-system)))
+                       (target (if target
+                                   (return target)
+                                   (current-target-system)))
                        (ok?    (if allow-collisions?
                                    (return #t)
                                    (check-for-collisions manifest system
                                                          #:target target)))
                        (extras (if (null? (manifest-entries manifest))
                                    (return '())
-                                   (mapm %store-monad
-                                         (lambda (hook)
-                                           (hook manifest))
-                                         hooks))))
+                                   (mapm/accumulate-builds (lambda (hook)
+                                                             (hook manifest))
+                                                           hooks))))
     (define inputs
       (append (filter-map (lambda (drv)
                             (and (derivation? drv)
@@ -1494,8 +1634,10 @@ are cross-built for TARGET."
                          (guix search-paths)
                          (srfi srfi-1))
 
-            (setvbuf (current-output-port) _IOLBF)
-            (setvbuf (current-error-port) _IOLBF)
+            (let ((line (cond-expand (guile-2.2 'line)
+                                     (else _IOLBF)))) ;Guile 2.0
+              (setvbuf (current-output-port) line)
+              (setvbuf (current-error-port) line))
 
             #+(if locales? set-utf8-locale #t)
 
@@ -1514,7 +1656,7 @@ are cross-built for TARGET."
                            #:manifest '#$(manifest->gexp manifest)
                            #:search-paths search-paths))))
 
-    (gexp->derivation "profile" builder
+    (gexp->derivation name builder
                       #:system system
                       #:target target
 
@@ -1527,7 +1669,40 @@ are cross-built for TARGET."
                       ;; Disable substitution because it would trigger a
                       ;; connection to the substitute server, which is likely
                       ;; to have no substitute to offer.
-                      #:substitutable? #f)))
+                      #:substitutable? #f
+
+                      #:properties `((type . profile)
+                                     (profile
+                                      (count
+                                       . ,(length
+                                           (manifest-entries manifest))))))))
+
+;; Declarative profile.
+(define-record-type* <profile> profile make-profile
+  profile?
+  (name               profile-name (default "profile")) ;string
+  (content            profile-content)                  ;<manifest>
+  (hooks              profile-hooks                     ;list of procedures
+                      (default %default-profile-hooks))
+  (locales?           profile-locales?            ;Boolean
+                      (default #t))
+  (allow-collisions?  profile-allow-collisions?   ;Boolean
+                      (default #f))
+  (relative-symlinks? profile-relative-symlinks?  ;Boolean
+                      (default #f)))
+
+(define-gexp-compiler (profile-compiler (profile <profile>) system target)
+  "Compile PROFILE to a derivation."
+  (match profile
+    (($ <profile> name manifest hooks
+                  locales? allow-collisions? relative-symlinks?)
+     (profile-derivation manifest
+                         #:name name
+                         #:hooks hooks
+                         #:locales? locales?
+                         #:allow-collisions? allow-collisions?
+                         #:relative-symlinks? relative-symlinks?
+                         #:system system #:target target))))
 
 (define* (profile-search-paths profile
                                #:optional (manifest (profile-manifest profile))
@@ -1722,7 +1897,9 @@ because the NUMBER is zero.)"
 (define %profile-directory
   (string-append %state-directory "/profiles/"
                  (or (and=> (or (getenv "USER")
-                                (getenv "LOGNAME"))
+                                (getenv "LOGNAME")
+                                (false-if-exception
+                                 (passwd:name (getpwuid (getuid)))))
                             (cut string-append "per-user/" <>))
                      "default")))
 
@@ -1732,7 +1909,8 @@ because the NUMBER is zero.)"
   (string-append %profile-directory "/guix-profile"))
 
 (define (ensure-profile-directory)
-  "Attempt to create /…/profiles/per-user/$USER if needed."
+  "Attempt to create /…/profiles/per-user/$USER if needed.  Nowadays this is
+taken care of by the daemon."
   (let ((s (stat %profile-directory #f)))
     (unless (and s (eq? 'directory (stat:type s)))
       (catch 'system-error

@@ -2,7 +2,7 @@
 ;;; Copyright © 2013 John Darrington <jmd@gnu.org>
 ;;; Copyright © 2013 Nikita Karetnikov <nikita@karetnikov.org>
 ;;; Copyright © 2014, 2016 David Thompson <dthompson2@worcester.edu>
-;;; Copyright © 2014, 2015, 2016, 2017, 2018 Eric Bavier <bavier@member.fsf.org>
+;;; Copyright © 2014, 2015, 2016, 2017, 2018, 2019, 2020 Eric Bavier <bavier@posteo.net>
 ;;; Copyright © 2014 Cyrill Schenkel <cyrill.schenkel@gmail.com>
 ;;; Copyright © 2014 Sylvain Beucler <beuc@beuc.net>
 ;;; Copyright © 2014, 2015, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
@@ -15,34 +15,44 @@
 ;;; Copyright © 2015, 2016, 2017 Alex Kost <alezost@gmail.com>
 ;;; Copyright © 2015 Paul van der Walt <paul@denknerd.org>
 ;;; Copyright © 2016, 2017 Rodger Fox <thylakoid@openmailbox.org>
-;;; Copyright © 2016, 2017, 2018 ng0 <ng0@n0.is>
+;;; Copyright © 2016, 2017, 2018 Nikita <nikita@n0.is>
 ;;; Copyright © 2016 Albin Söderqvist <albin@fripost.org>
 ;;; Copyright © 2016, 2017, 2018, 2019 Kei Kebreau <kkebreau@posteo.net>
 ;;; Copyright © 2016 Alex Griffin <a@ajgrf.com>
-;;; Copyright © 2016, 2017, 2018, 2019 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2016, 2017, 2018, 2019, 2020 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2016 Jan Nieuwenhuizen <janneke@gnu.org>
 ;;; Copyright © 2016 Steve Webber <webber.sl@gmail.com>
 ;;; Copyright © 2017 Adonay "adfeno" Felipe Nogueira <https://libreplanet.org/wiki/User:Adfeno> <adfeno@hyperbola.info>
-;;; Copyright © 2017, 2018 Arun Isaac <arunisaac@systemreboot.net>
-;;; Copyright © 2017, 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2017, 2018, 2020 Arun Isaac <arunisaac@systemreboot.net>
+;;; Copyright © 2017, 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2017, 2019 nee <nee-git@hidamari.blue>
 ;;; Copyright © 2017 Clément Lassieur <clement@lassieur.org>
-;;; Copyright © 2017 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2017, 2019, 2020 Marius Bakke <mbakke@fastmail.com>
 ;;; Copyright © 2017, 2018 Rutger Helling <rhelling@mykolab.com>
 ;;; Copyright © 2017 Roel Janssen <roel@gnu.org>
-;;; Copyright © 2017, 2018, 2019 Nicolas Goaziou <mail@nicolasgoaziou.fr>
+;;; Copyright © 2017, 2018, 2019, 2020 Nicolas Goaziou <mail@nicolasgoaziou.fr>
 ;;; Copyright © 2018 okapi <okapi@firemail.cc>
 ;;; Copyright © 2018 Tim Gesthuizen <tim.gesthuizen@yahoo.de>
 ;;; Copyright © 2018 Madalin Ionel-Patrascu <madalinionel.patrascu@mdc-berlin.de>
 ;;; Copyright © 2018 Benjamin Slade <slade@jnanam.net>
 ;;; Copyright © 2018 Alex Vong <alexvong1995@gmail.com>
-;;; Copyright © 2019 Pierre Neidhardt <mail@ambrevar.xyz>
-;;; Copyright © 2019 Oleg Pykhalov <go.wigust@gmail.com>
+;;; Copyright © 2019, 2020 Pierre Neidhardt <mail@ambrevar.xyz>
+;;; Copyright © 2019, 2020 Oleg Pykhalov <go.wigust@gmail.com>
 ;;; Copyright © 2019 Pierre Langlois <pierre.langlois@gmx.com>
 ;;; Copyright © 2019 Julien Lepiller <julien@lepiller.eu>
-;;; Copyright © 2019 Jesse Gibbons <jgibbons2357+guix@gmail.com>
+;;; Copyright © 2019, 2020 Jesse Gibbons <jgibbons2357+guix@gmail.com>
 ;;; Copyright © 2019 Dan Frumin <dfrumin@cs.ru.nl>
-;;; Copyright © 2019 Guillaume Le Vaillant <glv@posteo.net>
+;;; Copyright © 2019, 2020 Guillaume Le Vaillant <glv@posteo.net>
+;;; Copyright © 2019, 2020 Timotej Lazar <timotej.lazar@araneo.si>
+;;; Copyright © 2019 Josh Holland <josh@inv.alid.pw>
+;;; Copyright © 2017, 2019 Hartmut Goebel <h.goebel@crazy-compilers.com>
+;;; Copyright © 2020 Alberto Eleuterio Flores Guerrero <barbanegra+guix@posteo.mx>
+;;; Copyright © 2020 Naga Malleswari <nagamalli@riseup.net>
+;;; Copyright © 2020 Vitaliy Shatrov <D0dyBo0D0dyBo0@protonmail.com>
+;;; Copyright © 2020 Jack Hill <jackhill@jackhill.us>
+;;; Copyright © 2020 Vincent Legoll <vincent.legoll@gmail.com>
+;;; Copyright © 2020 Michael Rohleder <mike@rohleder.de>
+;;; Copyright © 2020 Trevor Hass <thass@okstate.edu>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -69,6 +79,7 @@
   #:use-module (guix svn-download)
   #:use-module (guix gexp)
   #:use-module (gnu packages)
+  #:use-module (gnu packages adns)
   #:use-module (gnu packages algebra)
   #:use-module (gnu packages autotools)
   #:use-module (gnu packages backup)
@@ -104,9 +115,11 @@
   #:use-module (gnu packages gl)
   #:use-module (gnu packages glib)
   #:use-module (gnu packages gnome)
+  #:use-module (gnu packages gnupg)
   #:use-module (gnu packages gnuzilla)
   #:use-module (gnu packages gperf)
   #:use-module (gnu packages graphics)
+  #:use-module (gnu packages gsasl)
   #:use-module (gnu packages gstreamer)
   #:use-module (gnu packages gtk)
   #:use-module (gnu packages guile)
@@ -116,6 +129,8 @@
   #:use-module (gnu packages icu4c)
   #:use-module (gnu packages image)
   #:use-module (gnu packages imagemagick)
+  #:use-module (gnu packages kde)
+  #:use-module (gnu packages kde-frameworks)
   #:use-module (gnu packages less)
   #:use-module (gnu packages libcanberra)
   #:use-module (gnu packages libedit)
@@ -125,6 +140,7 @@
   #:use-module (gnu packages lua)
   #:use-module (gnu packages man)
   #:use-module (gnu packages maths)
+  #:use-module (gnu packages messaging)
   #:use-module (gnu packages mp3)
   #:use-module (gnu packages music)
   #:use-module (gnu packages multiprecision)
@@ -136,12 +152,15 @@
   #:use-module (gnu packages pcre)
   #:use-module (gnu packages perl)
   #:use-module (gnu packages perl-check)
+  #:use-module (gnu packages perl-compression)
   #:use-module (gnu packages pkg-config)
+  #:use-module (gnu packages protobuf)
   #:use-module (gnu packages pulseaudio)
   #:use-module (gnu packages python)
   #:use-module (gnu packages python-xyz)
   #:use-module (gnu packages qt)
   #:use-module (gnu packages readline)
+  #:use-module (gnu packages ruby)
   #:use-module (gnu packages shells)
   #:use-module (gnu packages sdl)
   #:use-module (gnu packages serialization)
@@ -163,18 +182,88 @@
   #:use-module (gnu packages xorg)
   #:use-module (gnu packages xiph)
   #:use-module (gnu packages xml)
-  #:use-module (gnu packages messaging)
-  #:use-module (gnu packages networking)
+  #:use-module (guix build-system copy)
+  #:use-module (guix build-system cmake)
   #:use-module (guix build-system glib-or-gtk)
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system go)
   #:use-module (guix build-system meson)
-  #:use-module (guix build-system scons)
+  #:use-module (guix build-system perl)
   #:use-module (guix build-system python)
-  #:use-module (guix build-system cmake)
+  #:use-module (guix build-system qt)
+  #:use-module (guix build-system scons)
   #:use-module (guix build-system trivial)
   #:use-module ((srfi srfi-1) #:hide (zip))
   #:use-module (srfi srfi-26))
+
+(define-public abe
+  (package
+    (name "abe")
+    (version "1.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "mirror://sourceforge/abe/abe/abe-" version
+                           "/abe-" version ".tar.gz"))
+       (sha256
+        (base32 "1xvpnq1y6y48fn3pvn2lk0h1ilmalv7nb7awpid1g4jcq1sfmi6z"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:configure-flags
+       (list (string-append "--with-data-dir="
+                            (assoc-ref %outputs "out")
+                            "/share/abe"))
+       #:phases
+       (modify-phases %standard-phases
+         (replace 'bootstrap
+           (lambda _ (invoke "sh" "autogen.sh")))
+         (add-before 'build 'set-SDL
+           ;; Set correct environment for SDL.
+           (lambda* (#:key inputs #:allow-other-keys)
+             (setenv "CPATH"
+                     (string-append
+                      (assoc-ref inputs "sdl") "/include/SDL:"
+                      (or (getenv "CPATH") "")))
+             #t))
+         (add-after 'install 'finalize-install
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((share (string-append (assoc-ref outputs "out") "/share")))
+               ;; Installation script does not copy game data files.
+               (let ((data (string-append share "/abe")))
+                 (for-each (lambda (dir)
+                             (let ((target (string-append data "/" dir)))
+                               (mkdir-p target)
+                               (copy-recursively dir target)))
+                           '("images" "maps" "sounds")))
+               ;; Create desktop file.
+               (let ((apps (string-append share "/applications")))
+                 (mkdir-p apps)
+                 (make-desktop-entry-file
+                  (string-append apps "/abe.desktop")
+                  #:name "Abe's Amazing Adventure"
+                  #:exec ,name
+                  #:categories '("AdventureGame" "Game")
+                  #:keywords
+                  '("side-scrolling" "adventure" "pyramid" "singleplayer")
+                  #:comment
+                  '(("de" "Ein sich seitwärts bewegendes Abenteuerspiel")
+                    (#f "Side-scrolling game")))))
+             #t)))))
+    (native-inputs
+     `(("autoconf" ,autoconf)
+       ("automake" ,automake)))
+    (inputs
+     `(("libxi" ,libxi)
+       ("libxmu" ,libxmu)
+       ("libxt" ,libxt)
+       ("sdl" ,(sdl-union (list sdl sdl-mixer)))))
+    (home-page "http://abe.sourceforge.net")
+    (synopsis "Scrolling, platform-jumping, ancient pyramid exploring game")
+    (description
+     "Abe's Amazing Adventure is a scrolling,
+platform-jumping, key-collecting, ancient pyramid exploring game, vaguely in
+the style of similar games for the Commodore+4.")
+    (license license:gpl2+)))
 
 ;; Data package for adanaxisgpl.
 (define adanaxis-mush
@@ -229,7 +318,7 @@
      `(("expat" ,expat)
        ("freeglut" ,freeglut)
        ("glu" ,glu)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libogg" ,libogg)
        ("libtiff" ,libtiff)
        ("libvorbis" ,libvorbis)
@@ -253,34 +342,26 @@ mouse and joystick control, and original music.")
 (define-public alex4
   (package
     (name "alex4")
-    (version "1.2-alpha")
+    (version "1.2.1")
     (source
      (origin
-       (method url-fetch)
-       (uri (string-append "https://github.com/carstene1ns/alex4/archive/"
-                           version ".tar.gz"))
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/carstene1ns/alex4")
+             (commit version)))
+       (file-name (git-file-name name version))
        (sha256
-        (base32 "0jj1g3v1a6lyfwp5g2ly0n9z65ryqck8jxvzr01kaqjj3lsfkrhg"))))
+        (base32 "098wy72mh4lsvq3gm0rhamjssf9l1hp6hhkpzrv7klpb97cwwc3h"))))
     (build-system gnu-build-system)
     (arguments
-     `(#:tests? #f ; no check target
+     `(#:tests? #f                      ; no check target
        #:make-flags
-       (list "-Csrc"
-             "CC=gcc"
+       (list "CC=gcc"
              "CFLAGS=-D_FILE_OFFSET_BITS=64"
-             (string-append "DATADIR=" (assoc-ref %outputs "out")
-                            "/share/" ,name)
              (string-append "PREFIX=" (assoc-ref %outputs "out")))
        #:phases
        (modify-phases %standard-phases
-         (replace 'configure
-           (lambda _
-             (substitute* '("src/main.c"
-                            "src/shooter.c")
-               (("fcos") "fixcos")
-               (("fmul") "fixmul")
-               (("fsin") "fixsin"))
-             #t))
+         (delete 'configure)            ; no configure script
          (add-after 'install 'install-data
            (lambda* (#:key outputs #:allow-other-keys)
              (let ((share (string-append (assoc-ref outputs "out")
@@ -303,14 +384,14 @@ The game includes a built-in editor so you can design and share your own maps.")
 (define-public armagetronad
   (package
     (name "armagetronad")
-    (version "0.2.8.3.4")
+    (version "0.2.8.3.5")
     (source (origin
               (method url-fetch)
               (uri (string-append "mirror://sourceforge/armagetronad/stable/"
                                   version "/armagetronad-" version ".src.tar.gz"))
               (sha256
                (base32
-                "1pgy0r80z702qdv94aw3ywdn4ynnr4cdi86ml558pljfc5ygasj4"))))
+                "1z266haq22n5b0733h7qsg1rpzhz8lvm82f7wd06r008iiar7jdl"))))
     (build-system gnu-build-system)
     (inputs
      `(("libxml2" ,libxml2)
@@ -329,8 +410,65 @@ the more advanced player there are new game modes and a wide variety of
 physics settings to tweak as well.")
     (license license:gpl2+)))
 
-(define-public armagetron-advanced
-  (deprecated-package "armagetron-advanced" armagetronad))
+(define-public astromenace
+  (package
+    (name "astromenace")
+    (version "1.4.1")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/viewizard/astromenace")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "1ad6l887jxqv8xspwc2rvy8ym9sdlmkqdqhsh0pi076kjarxsyws"))))
+    (build-system cmake-build-system)
+    (arguments
+     `(#:tests? #f                      ;no test
+       #:configure-flags '("-DDATADIR=share/astromenace")
+       #:phases
+       (modify-phases %standard-phases
+         (replace 'install
+           ;; Upstream provides no install phase.
+           (lambda* (#:key inputs outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (bin (string-append out "/bin"))
+                    (share (string-append out "/share"))
+                    (apps (string-append share "/applications"))
+                    (data (string-append share "/astromenace"))
+                    (icons (string-append share "/icons/hicolor/64x64/apps")))
+               (install-file "astromenace" bin)
+               (install-file "gamedata.vfs" data)
+               (let ((source (assoc-ref inputs "source")))
+                 (with-directory-excursion (string-append source "/share")
+                   (install-file "astromenace.desktop" apps)
+                   (mkdir-p icons)
+                   (copy-file "astromenace_64.png"
+                              (string-append icons "/astromenace.png")))))
+             #t)))))
+    (inputs
+     `(("freealut" ,freealut)
+       ("freetype" ,freetype)
+       ("glu" ,glu)
+       ("libogg" ,libogg)
+       ("libvorbis" ,libvorbis)
+       ("openal" ,openal)
+       ("sdl2" ,sdl2)))
+    (home-page "https://www.viewizard.com/")
+    (synopsis "3D space shooter with spaceship upgrade possibilities")
+    (description
+     "Space is a vast area, an unbounded territory where it seems there is
+a room for everybody, but reversal of fortune put things differently.  The
+hordes of hostile creatures crawled out from the dark corners of the universe,
+craving to conquer your homeland.  Their force is compelling, their legions
+are interminable.  However, humans didn't give up without a final showdown and
+put their best pilot to fight back.  These malicious invaders chose the wrong
+galaxy to conquer and you are to prove it!  Go ahead and make alien aggressors
+regret their insolence.")
+    ;; Game is released under GPL3+ terms.  Artwork is subject to CC
+    ;; BY-SA 4.0, and fonts to OFL1.1.
+    (license (list license:gpl3+ license:cc-by-sa4.0 license:silofl1.1))))
 
 (define-public bastet
   (package
@@ -340,7 +478,7 @@ physics settings to tweak as well.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/fph/bastet.git")
+             (url "https://github.com/fph/bastet")
              (commit version)))
        (file-name (git-file-name name version))
        (sha256
@@ -385,7 +523,7 @@ physics settings to tweak as well.")
     (inputs
      `(("boost" ,boost)
        ("ncurses" ,ncurses)))
-    (home-page "http://fph.altervista.org/prog/bastet.html")
+    (home-page "https://fph.altervista.org/prog/bastet.html")
     (synopsis "Antagonistic Tetris-style falling brick game for text terminals")
     (description
      "Bastet (short for Bastard Tetris) is a simple ncurses-based falling brick
@@ -396,62 +534,177 @@ Playing bastet can be a painful experience, especially if you usually make
 canyons and wait for the long I-shaped block to clear four rows at a time.")
     (license license:gpl3+)))
 
+(define-public blobwars
+  (package
+    (name "blobwars")
+    (version "2.00")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "mirror://sourceforge/blobwars/"
+                           "blobwars-" version ".tar.gz"))
+       (sha256
+        (base32 "16aagvkx6azf75gm5kaa94bh5npydvhqp3fvdqyfsanzdjgjf1n4"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:tests? #f                      ;no test
+       #:make-flags
+       (let ((out (assoc-ref %outputs "out")))
+         (list (string-append "PREFIX=" out)
+               (string-append "BINDIR=" out "/bin/")
+               "USEPAK=1"
+               "RELEASE=1"))
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'werror-begone
+           (lambda _
+             (substitute* "Makefile" (("-Werror") ""))
+             #t))
+         (delete 'configure))))         ;no configure script
+    (native-inputs
+     `(("gettext" ,gettext-minimal)
+       ("pkg-config" ,pkg-config)))
+    (inputs
+     `(("hicolor-icon-theme" ,hicolor-icon-theme)
+       ("sdl" ,(sdl-union (list sdl2
+                                sdl2-image
+                                sdl2-mixer
+                                sdl2-ttf
+                                sdl2-net)))))
+    (home-page "https://sourceforge.net/projects/blobwars/")
+    (synopsis "Platform action game featuring a blob with a lot of weapons")
+    (description "Blobwars: Metal Blob Solid is a 2D platform game, the first
+in the Blobwars series.  You take on the role of a fearless Blob agent.  Your
+mission is to infiltrate various enemy bases and rescue as many MIAs as
+possible, while battling many vicious aliens.")
+    (license (list license:gpl2      ; For code and graphics
+                   license:cc0       ; Music and sounds have specific licenses
+                   license:cc-by3.0  ; see /doc/readme
+                   license:cc-by-sa3.0
+                   license:lgpl2.1+
+                   license:bsd-2))))
+
+(define-public bzflag
+  (package
+    (name "bzflag")
+    (version "2.4.20")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "https://download.bzflag.org/bzflag/source/"
+                           version "/bzflag-" version ".tar.bz2"))
+       (sha256
+        (base32 "16brxqmfiyz4j4lb8ihzjcbwqmpsms6vm3ijbp34lnw0blbwdjb2"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-after 'install 'install-desktop-file-and-icons
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let* ((share (string-append (assoc-ref outputs "out") "/share"))
+                    (data (string-append share "/bzflag"))
+                    (hicolor (string-append share "/icons/hicolor"))
+                    (applications (string-append share "/applications")))
+               ;; Move desktop file.
+               (install-file (string-append data "/bzflag.desktop")
+                             applications)
+               ;; Install icons.
+               (for-each (lambda (size)
+                           (let* ((dim (string-append size "x" size))
+                                  (dir (string-append hicolor "/" dim "/apps")))
+                             (mkdir-p dir)
+                             (copy-file
+                              (string-append data "/bzflag-" dim ".png")
+                              (string-append dir "/bzflag.png"))))
+                         '("48" "256")))
+             #t)))))
+    (native-inputs
+     `(("pkg-config" ,pkg-config)))
+    (inputs
+     `(("c-ares" ,c-ares)
+       ("curl" ,curl)
+       ("glew" ,glew)
+       ("glu" ,glu)
+       ("sdl2" ,sdl2)
+       ("zlib" ,zlib)))
+    (home-page "https://www.bzflag.org/")
+    (synopsis "3D first person tank battle game")
+    (description
+     "BZFlag is a 3D multi-player multiplatform tank battle game that
+allows users to play against each other in a network environment.
+There are five teams: red, green, blue, purple and rogue (rogue tanks
+are black).  Destroying a player on another team scores a win, while
+being destroyed or destroying a teammate scores a loss.  Rogues have
+no teammates (not even other rogues), so they cannot shoot teammates
+and they do not have a team score.
+
+There are two main styles of play: capture-the-flag and free-for-all.
+In capture-the-flag, each team (except rogues) has a team base and
+each team with at least one player has a team flag.  The object is to
+capture an enemy team's flag by bringing it to your team's base.  This
+destroys every player on the captured team, subtracts one from that
+team's score, and adds one to your team's score.  In free-for-all,
+there are no team flags or team bases.  The object is simply to get as
+high a score as possible.")
+    ;; The game is dual-licensed.
+    (license (list license:lgpl2.1 license:mpl2.0))))
+
 (define-public cataclysm-dda
-  (let ((commit "9c732a5de48928691ab863d3ab275ca7b0e522fc"))
-    (package
-      (name "cataclysm-dda")
-      (version "0.D")
-      (source (origin
-                (method git-fetch)
-                (uri (git-reference
-                      (url "https://github.com/CleverRaven/Cataclysm-DDA.git")
-                      (commit commit)))
-                (sha256
-                 (base32
-                  "00zzhx1mh1qjq668cga5nbrxp2qk6b82j5ak65skhgnlr6ii4ysc"))
-                (file-name (git-file-name name version))))
-      (build-system gnu-build-system)
-      (arguments
-       '(#:make-flags (list (string-append "PREFIX=" (assoc-ref %outputs "out"))
-                            "USE_HOME_DIR=1" "DYNAMIC_LINKING=1" "RELEASE=1"
-                            "LOCALIZE=1" "LANGUAGES=all")
-         #:phases
-         (modify-phases %standard-phases
-           (delete 'configure)
-           (add-after 'build 'build-tiles
-             (lambda* (#:key make-flags outputs #:allow-other-keys)
-               ;; Change prefix directory and enable tile graphics and sound.
-               (apply invoke "make" "TILES=1" "SOUND=1"
-                      (string-append "PREFIX="
-                                     (assoc-ref outputs "tiles"))
-                      (cdr make-flags))))
-           (add-after 'install 'install-tiles
-             (lambda* (#:key make-flags outputs #:allow-other-keys)
-               (apply invoke "make" "install" "TILES=1" "SOUND=1"
-                      (string-append "PREFIX="
-                                     (assoc-ref outputs "tiles"))
-                      (cdr make-flags)))))
-         ;; TODO: Add libtap++ from https://github.com/cbab/libtappp as a native
-         ;;       input in order to support tests.
-         #:tests? #f))
-      (outputs '("out"
-                 "tiles")) ; For tile graphics and sound support.
-      (native-inputs
-       `(("gettext" ,gettext-minimal)
-         ("pkg-config" ,pkg-config)))
-      (inputs
-       `(("freetype" ,freetype)
-         ("libogg" ,libogg)
-         ("libvorbis" ,libvorbis)
-         ("ncurses" ,ncurses)
-         ("sdl2" ,sdl2)
-         ("sdl2-image" ,sdl2-image)
-         ("sdl2-ttf" ,sdl2-ttf)
-         ("sdl2-mixer" ,sdl2-mixer)))
-      (home-page "http://en.cataclysmdda.com/")
-      (synopsis "Survival horror roguelike video game")
-      (description
-       "Cataclysm: Dark Days Ahead (or \"DDA\" for short) is a roguelike set
+  (package
+    (name "cataclysm-dda")
+    (version "0.E-2")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/CleverRaven/Cataclysm-DDA")
+             (commit version)))
+       (sha256
+        (base32 "15l6w6lxays7qmsv0ci2ry53asb9an9dh7l7fc13256k085qcg68"))
+       (file-name (git-file-name name version))))
+    (build-system gnu-build-system)
+    (arguments
+     '(#:make-flags
+       (list (string-append "PREFIX=" (assoc-ref %outputs "out"))
+             "USE_HOME_DIR=1" "DYNAMIC_LINKING=1" "RELEASE=1"
+             "LOCALIZE=1" "LANGUAGES=all")
+       #:phases
+       (modify-phases %standard-phases
+         (delete 'configure)
+         (add-after 'build 'build-tiles
+           (lambda* (#:key make-flags outputs #:allow-other-keys)
+             ;; Change prefix directory and enable tile graphics and sound.
+             (apply invoke "make" "TILES=1" "SOUND=1"
+                    (string-append "PREFIX="
+                                   (assoc-ref outputs "tiles"))
+                    (cdr make-flags))))
+         (add-after 'install 'install-tiles
+           (lambda* (#:key make-flags outputs #:allow-other-keys)
+             (apply invoke "make" "install" "TILES=1" "SOUND=1"
+                    (string-append "PREFIX="
+                                   (assoc-ref outputs "tiles"))
+                    (cdr make-flags)))))
+       ;; TODO: Add libtap++ from https://github.com/cbab/libtappp as a native
+       ;;       input in order to support tests.
+       #:tests? #f))
+    (outputs '("out"
+               "tiles"))                ;for tile graphics and sound support
+    (native-inputs
+     `(("gettext" ,gettext-minimal)
+       ("pkg-config" ,pkg-config)))
+    (inputs
+     `(("freetype" ,freetype)
+       ("libogg" ,libogg)
+       ("libvorbis" ,libvorbis)
+       ("ncurses" ,ncurses)
+       ("sdl2" ,sdl2)
+       ("sdl2-image" ,sdl2-image)
+       ("sdl2-ttf" ,sdl2-ttf)
+       ("sdl2-mixer" ,sdl2-mixer)))
+    (home-page "https://cataclysmdda.org/")
+    (synopsis "Survival horror roguelike video game")
+    (description
+     "Cataclysm: Dark Days Ahead (or \"DDA\" for short) is a roguelike set
 in a post-apocalyptic world.  Struggle to survive in a harsh, persistent,
 procedurally generated world.  Scavenge the remnants of a dead civilization
 for food, equipment, or, if you are lucky, a vehicle with a full tank of gas
@@ -459,23 +712,77 @@ to get you out of Dodge.  Fight to defeat or escape from a wide variety of
 powerful monstrosities, from zombies to giant insects to killer robots and
 things far stranger and deadlier, and against the others like yourself, that
 want what you have.")
-      (license license:cc-by-sa3.0))))
+    (license license:cc-by-sa3.0)))
 
-(define-public cataclysm-dark-days-ahead
-  (deprecated-package "cataclysm-dark-days-ahead" cataclysm-dda))
+(define-public corsix-th
+  (package
+    (name "corsix-th")
+    (version "0.64")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/CorsixTH/CorsixTH")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "0chh9cv2kdc39sr0x8hclcyzd8dz2y6grgagqzkvr7j570wa5cqh"))))
+    (build-system cmake-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-after 'install 'wrap-binary
+           (lambda _
+             ;; Set Lua module paths and default MIDI soundfont on startup.
+             (let* ((out (assoc-ref %outputs "out"))
+                    (fluid (assoc-ref %build-inputs "fluid-3"))
+                    (lua-version ,(version-major+minor (package-version lua)))
+                    (lua-cpath
+                     (map (lambda (lib)
+                            (string-append
+                             (assoc-ref %build-inputs (string-append "lua-" lib))
+                             "/lib/lua/" lua-version "/?.so"))
+                          '("filesystem" "lpeg"))))
+               (wrap-program (string-append out "/bin/corsix-th")
+                 `("LUA_CPATH" ";" = ,lua-cpath)
+                 `("SDL_SOUNDFONTS" ":" suffix
+                   (,(string-append fluid "/share/soundfonts/FluidR3Mono_GM.sf3")))))
+             #t)))
+       #:tests? #f)) ; TODO need busted package to run tests
+    ;; Omit Lua-Socket dependency to disable automatic updates.
+    (inputs
+     `(("ffmpeg" ,ffmpeg)
+       ("fluid-3" ,fluid-3)
+       ("freetype" ,freetype)
+       ("lua" ,lua)
+       ("lua-filesystem" ,lua-filesystem)
+       ("lua-lpeg" ,lua-lpeg)
+       ("sdl2" ,sdl2)
+       ("sdl2-mixer" ,sdl2-mixer)))
+    (home-page "https://corsixth.com")
+    (synopsis "Implementation of the @i{Theme Hospital} game engine")
+    (description
+     "This package provides a reimplementation of the 1997 Bullfrog business
+simulation game @i{Theme Hospital}.  As well as faithfully recreating the
+original engine, CorsixTH adds support for high resolutions, custom levels and
+more.  This package does @emph{not} provide the game assets.")
+    (license (list
+              license:expat ; main license
+              license:bsd-3)))) ; CorsixTH/Src/random.c
 
 (define-public cowsay
   (package
     (name "cowsay")
     (version "3.04")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/tnalpgge/"
-                                  "rank-amateur-cowsay/archive/"
-                                  "cowsay-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/tnalpgge/rank-amateur-cowsay")
+                     (commit (string-append name "-" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "12w7apbf6a9qffk92r32b16w22na2fjcqbl32rn0n7zw5hrp3f6q"))))
+                "06455kq37hvq1xb7adyiwrx0djs50arsxvjgixyxks16lm1rlc7n"))))
     (build-system gnu-build-system)
     (arguments
      `(#:phases
@@ -503,50 +810,201 @@ cows can think too: all you have to do is run @command{cowthink}.  If you're
 tired of cows, a variety of other ASCII-art messengers are available.")
     (license license:gpl3+)))
 
+(define-public lolcat
+  (let ((commit "35dca3d0a381496d7195cd78f5b24aa7b62f2154")
+        (revision "0"))
+    (package
+      (name "lolcat")
+      (version (git-version "1.0" revision commit))
+      (source
+       (origin
+         (method git-fetch)
+         (uri (git-reference
+               (url "https://github.com/jaseg/lolcat")
+               (commit commit)))
+         (sha256
+          (base32
+           "0jjbkqcc2ikjxd1xgdyv4rb0vsw218181h89f2ywg29ffs3ypd8g"))
+         (file-name (git-file-name name version))))
+      (build-system gnu-build-system)
+      (arguments
+       `(#:tests? #f                    ; no check target
+         #:make-flags
+         (list ,(string-append "CC=" (cc-for-target)))
+         #:phases
+         (modify-phases %standard-phases
+           (delete 'bootstrap)
+           (delete 'configure)
+           (replace 'install
+             (lambda* (#:key outputs #:allow-other-keys)
+               (let* ((out  (assoc-ref outputs "out"))
+                      (dest (string-append out "/bin")))
+                 (mkdir-p dest)
+                 (install-file "lolcat" dest)
+                 (install-file "censor" dest)
+                 #t))))))
+      (home-page "https://github.com/jaseg/lolcat")
+      (synopsis "Rainbow coloring effect for text console display")
+      (description "@command{lolcat} concatenates files and streams like
+regular @command{cat}, but it also adds terminal escape codes between
+characters and lines resulting in a rainbow effect.")
+      (license license:wtfpl2))))
+
+(define-public foobillard++
+  ;; Even though this latest revision is old already, stable release is
+  ;; lagging way behind it, and has issues with textures rendering.
+  (let ((svn-revision 170))
+    (package
+      (name "foobillard++")
+      (version (string-append "3.43-r" (number->string svn-revision)))
+      (source
+       (origin
+         (method svn-fetch)
+         (uri (svn-reference
+               (url "svn://svn.code.sf.net/p/foobillardplus/code/")
+               (revision svn-revision)))
+         (file-name (git-file-name name version))
+         (sha256
+          (base32 "00b693ys5zvzjbjzzj3dqfzm5xw64gwjf9m8qv6bkmf0klbhmayk"))
+         (patches
+          (search-patches "foobillard++-pkg-config.patch"))
+         (modules '((guix build utils)))
+         (snippet
+          '(begin
+             ;; Unfortunately, the game includes background music with
+             ;; a non-commercial clause.  Delete it.
+             (for-each delete-file (find-files "data/music" "\\.ogg$"))
+             #t))))
+      (build-system gnu-build-system)
+      (arguments
+       `(#:configure-flags
+         (list
+          ;; Install data in a less exotic location.
+          (string-append "--prefix=" (assoc-ref %outputs "out") "/share")
+          ;; Prevent a build error about undefined trigonometric functions.
+          "--enable-fastmath=no")
+         #:phases
+         (modify-phases %standard-phases
+           (add-after 'unpack 'fix-makefile
+             ;; Remove hard-coded directories.  Also fix installation
+             ;; rule: it tries to move around non-existent files or
+             ;; files already moved.
+             (lambda* (#:key outputs #:allow-other-keys)
+               (substitute* "Makefile.am"
+                 (("/usr") (assoc-ref outputs "out"))
+                 (("cp .*?/foobillardplus\\.desktop.*") "")
+                 (("cp .*?/foobillardplus\\.(png|xbm) \\$\\(datarootdir\\).*")
+                  ""))
+               #t))
+           (add-after 'unpack 'unbundle-font
+             ;; XXX: The package ships with LinBiolinum_aSB.ttf and
+             ;; LinBiolinum_aS.ttf, which are not provided by
+             ;; `font-linuxlibertine' package.  Therefore, we cannot replace
+             ;; them yet.
+             (lambda* (#:key inputs #:allow-other-keys)
+               (let ((dejavu (string-append (assoc-ref inputs "font-dejavu")
+                                            "/share/fonts/truetype/")))
+                 (with-directory-excursion "data"
+                   (for-each (lambda (f)
+                               (delete-file f)
+                               (symlink (string-append dejavu f) f))
+                             '("DejaVuSans-Bold.ttf" "DejaVuSans.ttf"))))
+               #t))
+           (replace 'bootstrap
+             (lambda _
+               (invoke "aclocal" "--force")
+               (invoke "autoconf" "-f")
+               (invoke "autoheader" "-f")
+               (invoke "automake" "-a" "-c" "-f")))
+           (add-before 'build 'prepare-build
+             ;; Set correct environment for SDL.
+             (lambda* (#:key inputs #:allow-other-keys)
+               (setenv "CPATH"
+                       (string-append (assoc-ref inputs "sdl")
+                                      "/include/SDL:"
+                                      (or (getenv "CPATH") "")))
+               #t))
+           (add-before 'build 'fix-settings-directory
+             ;; Hide foobillardplus settings directory in $HOME.
+             (lambda _
+               (substitute* "src/history.c"
+                 (("/foobillardplus-data") "/.foobillardplus"))
+               #t))
+           (add-before 'install 'create-directories
+             ;; Install process does not create directories before
+             ;; trying to move file in it.
+             (lambda* (#:key outputs #:allow-other-keys)
+               (let ((out (assoc-ref outputs "out")))
+                 (mkdir-p (string-append out "/share/icons"))
+                 (mkdir-p (string-append out "/share/applications")))
+               #t))
+           (add-after 'install 'symlink-executable
+             ;; Symlink executable to $out/bin.
+             (lambda* (#:key outputs #:allow-other-keys)
+               (let* ((out (assoc-ref outputs "out"))
+                      (bin (string-append out "/bin")))
+                 (mkdir-p bin)
+                 (with-directory-excursion bin
+                   (symlink "../share/foobillardplus/bin/foobillardplus"
+                            "foobillardplus"))
+                 #t))))))
+      (native-inputs
+       `(("autoconf" ,autoconf)
+         ("automake" ,automake)
+         ("pkg-config" ,pkg-config)))
+      (inputs
+       `(("font-dejavu" ,font-dejavu)
+         ("freetype" ,freetype)
+         ("glu" ,glu)
+         ("libpng" ,libpng)
+         ("sdl" ,(sdl-union (list sdl sdl-mixer sdl-net)))))
+      (home-page "http://foobillardplus.sourceforge.net/")
+      (synopsis "3D billiard game")
+      (description "FooBillard++ is an advanced 3D OpenGL billiard game
+based on the original foobillard 3.0a sources from Florian Berger.
+You can play it with one or two players or against the computer.
+
+The game features:
+
+@itemize
+@item Wood paneled table with gold covers and gold diamonds.
+@item Reflections on balls.
+@item Zoom in and out, rotation, different angles and bird's eye view.
+@item Different game modes: 8 or 9-ball, Snooker or Carambole.
+@item Tournaments.  Compete against other players.
+@item Animated cue with strength and eccentric hit adjustment.
+@item Jump shots and snipping.
+@item Realistic gameplay and billiard sounds.
+@item Red-Green stereo.
+@item And much more.
+@end itemize")
+      (license (list license:gpl2 license:silofl1.1)))))
+
 (define-public freedoom
   (package
     (name "freedoom")
-    (version "0.11.3")
+    (version "0.12.1")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/freedoom/freedoom.git")
+             (url "https://github.com/freedoom/freedoom")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "0k4dlgr82qk6i7dchp3nybq6awlfag2ivy3zzl1v6vhcrnbvssgl"))))
+        (base32 "1mq60lfwaaxmch7hsz8403pwafnlsmsd5z2df2j77ppwndwcrypb"))))
     (build-system gnu-build-system)
     (arguments
      '(#:make-flags
        (list (string-append "prefix=" (assoc-ref %outputs "out")))
-       #:parallel-build? #f
        #:tests? #f                      ; no check target
        #:phases
        (modify-phases %standard-phases
          (delete 'bootstrap)
          (replace 'configure
            (lambda* (#:key inputs outputs #:allow-other-keys)
-             (let* ((dejavu (assoc-ref inputs "font-dejavu"))
-                    (freedoom (assoc-ref outputs "out"))
+             (let* ((freedoom (assoc-ref outputs "out"))
                     (wad-dir (string-append freedoom "/share/games/doom")))
-               ;; Replace the font-searching function in a shell
-               ;; script with a direct path to the required font.
-               ;; This is necessary because ImageMagick can only find the
-               ;; most basic fonts while in the build environment.
-               (substitute* "graphics/titlepic/create_caption"
-                 (("font=\\$\\(find_font.*$")
-                  (string-append
-                   "font=" dejavu
-                   "/share/fonts/truetype/DejaVuSansCondensed-Bold.ttf\n")))
-               ;; Make icon creation reproducible.
-               (substitute* "dist/Makefile"
-                 (("freedm.png")
-                  "-define png:exclude-chunks=date freedm.png")
-                 (("freedoom1.png")
-                  "-define png:exclude-chunks=date freedoom1.png")
-                 (("freedoom2.png")
-                  "-define png:exclude-chunks=date freedoom2.png"))
                ;; Make sure that the install scripts know where to find
                ;; the appropriate WAD files.
                (substitute* "dist/freedoom"
@@ -560,11 +1018,8 @@ tired of cows, a variety of other ASCII-art messengers are available.")
     (native-inputs
      `(("asciidoc" ,asciidoc)
        ("deutex" ,deutex)
-       ("font-dejavu" ,font-dejavu)
-       ("imagemagick" ,imagemagick)
-       ("python" ,python-2)))
-    (inputs
-     `(("prboom-plus" ,prboom-plus)))
+       ("python" ,python)
+       ("python-pillow" ,python-pillow)))
     (home-page "https://freedoom.github.io/")
     (synopsis "Free content game based on the Doom engine")
     (native-search-paths
@@ -611,7 +1066,7 @@ effects and music to make a completely free game.")
      `(("pkg-config" ,pkg-config)))
     (inputs
      `(("glu" ,glu)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libogg" ,libogg)
        ("libpng" ,libpng)
        ("libvorbis" ,libvorbis)
@@ -638,7 +1093,7 @@ real-time combat.")
 (define-public golly
   (package
     (name "golly")
-    (version "3.2")
+    (version "3.3")
     (source (origin
               (method url-fetch)
               (uri (string-append "mirror://sourceforge/golly/golly/golly-"
@@ -646,7 +1101,7 @@ real-time combat.")
                                   "-src.tar.gz"))
               (sha256
                (base32
-                "0cg9mbwmf4q6qxhqlnzrxh9y047banxdb8pd3hgj3smmja2zf0jd"))))
+                "1j3ksnar4rdam4xiyspgyrs1pifbvxfxkrn65brkwxpx39mpgzc8"))))
     (build-system gnu-build-system)
     (arguments
      '(#:make-flags (list "CC=gcc"
@@ -723,6 +1178,80 @@ automata.  The following features are available:
 @end enumerate")
     (license license:gpl2+)))
 
+(define-public julius
+  (package
+    (name "julius")
+    (version "1.4.1")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/bvschaik/julius")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "12hhnhdwgz7hd3hlndbnk15pxggm1375qs0764ija4nl1gbpb110"))
+       ;; Remove unused bundled libraries.
+       (modules '((guix build utils)))
+       (snippet
+        '(begin
+           (with-directory-excursion "ext"
+             (for-each delete-file-recursively '("dirent" "png" "SDL2" "zlib")))
+           #t))))
+    (build-system cmake-build-system)
+    (inputs
+     `(("libpng" ,libpng)
+       ("sdl2" ,sdl2)
+       ("sdl2-mixer" ,sdl2-mixer)))
+    (home-page "https://github.com/bvschaik/julius")
+    (synopsis "Re-implementation of Caesar III game engine")
+    (description
+     "Engine for Caesar III, a city-building real-time strategy game.
+Julius includes some UI enhancements while preserving the logic (including
+bugs) of the original game, so that saved games are compatible.  This package
+does not include game data.")
+    (license (list license:agpl3
+                   license:zlib))))     ; ext/tinyfiledialogs
+
+(define-public augustus
+  (package
+    (inherit julius)
+    (name "augustus")
+    (version (package-version julius))
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/Keriew/augustus")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "0ii0w0iwa9zv5bbqfcps5mxifd796m6fw4gvjf09pkm3yjgqc0ag"))
+       ;; Remove unused bundled libraries.
+       (modules '((guix build utils)))
+       (snippet
+        '(begin
+           (with-directory-excursion "ext"
+             (for-each delete-file-recursively '("dirent" "png" "SDL2" "zlib")))
+           #t))))
+    (arguments
+     ;; No tests.  See https://github.com/Keriew/augustus/issues/82.
+     `(#:tests? #f))
+    (home-page "https://github.com/Keriew/augustus")
+    (synopsis "Re-implementation of Caesar III game engine with gameplay changes")
+    (description
+     "Fork of Julius, an engine for the a city-building real-time strategy
+game Caesar III.  Gameplay enhancements include:
+
+@itemize
+@item roadblocks;
+@item market special orders;
+@item global labour pool;
+@item partial warehouse storage;
+@item increased game limits;
+@item zoom controls.
+@end itemize\n")))
+
 (define-public meandmyshadow
   (package
     (name "meandmyshadow")
@@ -756,6 +1285,74 @@ and much more stand between you and the exit.  Record your moves and let your
 shadow mimic them to reach blocks you couldn't reach alone.")
     (license license:gpl3+)))
 
+(define-public opensurge
+  (package
+    (name "opensurge")
+    (version "0.5.1.2")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/alemart/opensurge")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "0ih7hlqjnp9rv0m4lqf7c0s1ai532way5i4pk45jq1gqm8325dbv"))))
+    (build-system cmake-build-system)
+    (arguments
+     `(#:tests? #f                      ;there are no tests
+       #:configure-flags
+       (let* ((out (assoc-ref %outputs "out"))
+              (share (string-append out "/share")))
+         (list (string-append "-DCMAKE_INSTALL_PREFIX=" out "/bin")
+               (string-append "-DGAME_DATADIR=" share "/" ,name)
+               (string-append "-DDESKTOP_ENTRY_PATH=" share "/applications")
+               (string-append "-DDESKTOP_ICON_PATH=" share "/pixmaps")
+               (string-append "-DDESKTOP_METAINFO_PATH=" share "/metainfo")))
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'fix-xdg-open-path
+           (lambda* (#:key inputs #:allow-other-keys)
+             ;; Look for xdg-open in the store.
+             (substitute* "src/core/web.c"
+               (("/usr(/bin/xdg-open)" _ bin)
+                (string-append (assoc-ref inputs "xdg-utils") bin)))
+             #t))
+         (add-after 'unpack 'unbundle-fonts
+           (lambda* (#:key inputs #:allow-other-keys)
+             ;; Replace bundled Roboto fonts with links to the store.
+             (with-directory-excursion "fonts"
+               (let ((roboto-dir (string-append
+                                  (assoc-ref inputs "font-google-roboto")
+                                  "/share/fonts/truetype/")))
+                 (for-each
+                  (lambda (font)
+                    (delete-file font)
+                    (symlink (string-append roboto-dir font) font))
+                  '("Roboto-Black.ttf" "Roboto-Bold.ttf" "Roboto-Medium.ttf")))
+               #t))))))
+    (inputs
+     `(("allegro" ,allegro)
+       ("font-google-roboto" ,font-google-roboto)
+       ("surgescript" ,surgescript)
+       ("xdg-utils" ,xdg-utils)))
+    (home-page "https://opensurge2d.org")
+    (synopsis "2D retro side-scrolling game")
+    (description "@code{Open Surge} is a 2D retro side-scrolling platformer
+inspired by the Sonic games.  The player runs at high speeds through each
+level while collecting items and avoiding obstacles.  The game includes a
+built-in level editor.")
+    (license
+     ;; Code is under GPL 3+, assets are under various licenses.
+     ;; See src/misc/credits.c for details.
+     (list license:gpl3+
+           license:cc0
+           license:cc-by3.0
+           license:cc-by-sa3.0
+           license:expat
+           license:public-domain
+           license:silofl1.1))))
+
 (define-public knights
   (package
     (name "knights")
@@ -770,7 +1367,8 @@ shadow mimic them to reach blocks you couldn't reach alone.")
     (build-system gnu-build-system)
     (arguments
      '(#:make-flags
-       (list (string-append "PREFIX=" (assoc-ref %outputs "out")))
+       (list (string-append "PREFIX=" (assoc-ref %outputs "out"))
+             "CXXFLAGS=-lpthread")
        #:phases
        (modify-phases %standard-phases
          ;; No configure script.
@@ -799,6 +1397,46 @@ destroying an ancient book using a special wand.")
     ;; license.  The whole package is released under GPLv3+.
     (license license:gpl3+)))
 
+(define-public gnome-chess
+  (package
+    (name "gnome-chess")
+    (version "3.36.1")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append "mirror://gnome/sources/gnome-chess/"
+                                  (version-major+minor version)  "/"
+                                  "gnome-chess-" version ".tar.xz"))
+              (sha256
+               (base32
+                "165bk8s3nngyqbikggspj4rff5nxxfkfcmgzjb4grmsrgbqwk5di"))))
+    (build-system meson-build-system)
+    (arguments
+     '(#:glib-or-gtk? #t
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'skip-gtk-update-icon-cache
+           ;; Don't create 'icon-theme.cache'.
+           (lambda _
+             (substitute* "meson_post_install.py"
+               (("gtk-update-icon-cache") "true"))
+             #t)))))
+    (inputs
+     `(("gtk+" ,gtk+)
+       ("librsvg" ,librsvg)))
+    (native-inputs
+     `(("gettext" ,gettext-minimal)
+       ("glib:bin" ,glib "bin") ; for desktop-file-validate and appstream-util
+       ("itstool" ,itstool)
+       ("pkg-config" ,pkg-config)
+       ("vala" ,vala)))
+    (home-page "https://wiki.gnome.org/Apps/Chess")
+    (synopsis "Chess board for GNOME")
+    (description "GNOME Chess provides a 2D board for playing chess games
+against human or computer players.  It supports loading and saving games in
+Portable Game Notation.  To play against a computer, install a chess engine
+such as chess or stockfish.")
+    (license license:gpl3+)))
+
 (define-public gnubg
   (package
     (name "gnubg")
@@ -806,13 +1444,17 @@ destroying an ancient book using a special wand.")
     (source
      (origin
        (method url-fetch)
-       (uri (string-append "http://files.gnubg.org/media/sources/gnubg-release-"
-                           version "-sources." "tar.gz"))
+       (uri (string-append "mirror://gnu/gnubg/gnubg-release-"
+                           version "-sources.tar.gz"))
        (sha256
         (base32
          "11xwhcli1h12k6rnhhyq4jphzrhfik7i8ah3k32pqw803460n6yf"))))
     (build-system gnu-build-system)
-    (inputs `(("glib" ,glib)
+    (inputs `(;; XXX: Build with an older Pango for 'pango_font_get_hb_font' and
+              ;; 'pango_coverage_get_type'.  Try removing this for versions > 1.06.002.
+              ("pango" ,pango-1.42)
+
+              ("glib" ,glib)
               ("readline" ,readline)
               ("gtk+" ,gtk+-2)
               ("mesa" ,mesa)
@@ -822,7 +1464,27 @@ destroying an ancient book using a special wand.")
               ("libcanberra" ,libcanberra)))
     (native-inputs `(("python-2" ,python-2)
                      ("pkg-config" ,pkg-config)))
-    (home-page "http://gnubg.org")
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-after 'install 'install-desktop-file
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (apps (string-append out "/share/applications")))
+               (mkdir-p apps)
+               (with-output-to-file (string-append apps "/gnubg.desktop")
+                 (lambda _
+                   (format #t
+                           "[Desktop Entry]~@
+                            Name=GNU Backgammon~@
+                            Exec=~a/bin/gnubg -w~@
+                            Icon=gnubg~@
+                            Categories=Game;~@
+                            Terminal=false~@
+                            Type=Application~%"
+                           out))))
+             #t)))))
+    (home-page "https://www.gnu.org/software/gnubg/")
     (synopsis "Backgammon game")
     (description "The GNU backgammon application (also known as \"gnubg\") can
 be used for playing, analyzing and teaching the game.  It has an advanced
@@ -830,9 +1492,6 @@ evaluation engine based on artificial neural networks suitable for both
 beginners and advanced players.  In addition to a command-line interface, it
 also features an attractive, 3D representation of the playing board.")
     (license license:gpl3+)))
-
-(define-public gnubackgammon
-  (deprecated-package "gnubackgammon" gnubg))
 
 (define-public gnubik
   (package
@@ -847,6 +1506,16 @@ also features an attractive, 3D representation of the playing board.")
        (base32
         "1vlf924mq8hg93bsjj0rzvs0crc6psmlxyc6zn0fr7msnmpx6gib"))))
     (build-system gnu-build-system)
+    (arguments
+     '(#:phases (modify-phases %standard-phases
+                  (add-after 'unpack 'skip-gtk-update-icon-cache
+                    (lambda _
+                      ;; Do not attempt to run 'gtk-update-icon-cache', which is
+                      ;; unnecessary and causes a needless dependency on glib.
+                      (substitute* "Makefile.in"
+                        (("gtk-update-icon-cache")
+                         "true"))
+                      #t)))))
     (inputs `(("gtk+" ,gtk+-2)
               ("mesa" ,mesa)
               ("glu" ,glu)
@@ -888,15 +1557,14 @@ Chess).  It is similar to standard chess but this variant is far more complicate
 (define-public ltris
   (package
     (name "ltris")
-    (version "1.0.19")
+    (version "1.2")
     (source
      (origin
        (method url-fetch)
-       (uri (string-append "http://prdownloads.sourceforge.net/lgames/"
+       (uri (string-append "mirror://sourceforge/lgames/ltris/"
                            "ltris-" version ".tar.gz"))
        (sha256
-        (base32
-         "1895wv1fqklrj4apkz47rnkcfhfav7zjknskw6p0886j35vrwslg"))))
+        (base32 "15b18p7id55xiz2jkf56w2f1g6yw1rcb98bpa188i6skqrgnrg57"))))
     (build-system gnu-build-system)
     (arguments
      '(;; The code in LTris uses traditional GNU semantics for inline functions
@@ -907,7 +1575,8 @@ Chess).  It is similar to standard chess but this variant is far more complicate
            (lambda* (#:key inputs #:allow-other-keys)
              (setenv "CPATH"
                      (string-append (assoc-ref inputs "sdl-union")
-                                    "/include/SDL"))
+                                    "/include/SDL:"
+                                    (or (getenv "CPATH") "")))
              #t)))))
     (inputs
      `(("sdl-union" ,(sdl-union (list sdl sdl-mixer)))))
@@ -929,7 +1598,7 @@ watch your CPU playing while enjoying a cup of tea!")
 (define-public nethack
   (package
     (name "nethack")
-    (version "3.6.2")
+    (version "3.6.6")
     (source
       (origin
         (method url-fetch)
@@ -937,11 +1606,12 @@ watch your CPU playing while enjoying a cup of tea!")
          (string-append "https://www.nethack.org/download/" version "/nethack-"
                         (string-join (string-split version #\.) "") "-src.tgz"))
         (sha256
-          (base32 "07fvkm3v11a4pjrq2f66vjslljsvk6raal53skn4gqsfdbd0ml7v"))))
+          (base32 "1liyckjp34j354qnxc1zn9730lh1p2dabrg1hap24z6xnqx0rpng"))))
+    (native-inputs
+      `(("bison" ,bison)
+        ("flex" ,flex)))
     (inputs
       `(("ncurses" ,ncurses)
-        ("bison" ,bison)
-        ("flex" ,flex)
         ("less" ,less)))
     (build-system gnu-build-system)
     (arguments
@@ -1119,7 +1789,8 @@ Every puzzle has a complete solution, although there may be more than one.")
           (lambda* (#:key inputs #:allow-other-keys)
             (setenv "CPATH"
                     (string-append (assoc-ref inputs "sdl-union")
-                                   "/include/SDL"))
+                                   "/include/SDL:"
+                                   (or (getenv "CPATH") "")))
             #t)))))
    (inputs
     `(("fluidsynth" ,fluidsynth)
@@ -1198,7 +1869,7 @@ utilizing the art assets from the @code{SuperTux} project.")
 (define-public roguebox-adventures
   (package
     (name "roguebox-adventures")
-    (version "2.2.1")
+    (version "3.0.1")
     (source
      (origin
        (method url-fetch)
@@ -1208,7 +1879,7 @@ utilizing the art assets from the @code{SuperTux} project.")
        (file-name (string-append name "-" version ".zip"))
        (sha256
         (base32
-         "0kmzdgnik8fsf3bg55546l77p3mfxn2awkzfzzdn20n82rd2babw"))))
+         "05zd03s5w9kcpklfgcggbaa6rwf59nm0q9vcj6gh9v2lh402k067"))))
     (build-system python-build-system)
     (arguments
      `(#:tests? #f ; no check target
@@ -1234,6 +1905,9 @@ utilizing the art assets from the @code{SuperTux} project.")
                   (string-append "'" data "'"))
                  (("^basic_path.*$")
                   (string-append "basic_path ='" data "'\n")))
+               (substitute* "LIB/dialog.py"
+                 (("d_path = os\\.path\\.dirname\\(.*\\)\\)")
+                  (string-append "d_path = '" data "'")))
                (substitute* "LIB/gra_files.py"
                  (("basic_path = b_path\\.replace\\('/LIB',''\\)")
                   (string-append "basic_path ='" data "'\n")))
@@ -1301,6 +1975,440 @@ can be explored and changed freely.")
                    license:gpl3+
                    license:silofl1.1))))
 
+(define-public seahorse-adventures
+  (package
+    (name "seahorse-adventures")
+    (version "1.2")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/dulsi/seahorse-adventures")
+             (commit (string-append "release-" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "1rnvk06npaqcpjz5z6xcmssz61i32s422lydp49vrnf3j2g4yimd"))
+       (modules '((guix build utils)
+                  (ice-9 ftw)
+                  (srfi srfi-1)))
+       ;; Remove non-free (non-commercial) font.
+       (snippet
+        `(begin
+           (for-each delete-file (find-files "data/fonts" "."))
+           #t))))
+    (build-system python-build-system)
+    (arguments
+     `(#:tests? #f                      ;no test
+       #:phases
+       (modify-phases %standard-phases
+         (delete 'build)                ;pure Python
+         (replace 'install              ;no install script
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (bin (string-append out "/bin"))
+                    (share (string-append out "/share"))
+                    (applications (string-append share "/applications"))
+                    (data (string-append share "/seahorse-adventures")))
+               ;; Install data.
+               (for-each (lambda (f)
+                           (chmod f #o555)
+                           (install-file f data))
+                         '("leveledit.py" "run_game.py" "tileedit.py"))
+               (for-each (lambda (dir)
+                           (let ((target (string-append data "/" dir)))
+                             (mkdir-p target)
+                             (copy-recursively dir target)))
+                         '("data" "lib"))
+               ;; Create executable.
+               (mkdir-p bin)
+               (let ((executable (string-append bin "/seahorse-adventures")))
+                 (call-with-output-file executable
+                   (lambda (p)
+                     (format p
+                             "#!~a~@
+                              export PYTHONPATH=~a:~a~@
+                              exec -a \"~a\" ~a \"$@\"~%"
+                             (which "bash") data (getenv "PYTHONPATH")
+                             (which "python3")
+                             (string-append data "/run_game.py"))))
+                 (chmod executable #o555))
+               ;; Add desktop file.
+               (mkdir-p applications)
+               (make-desktop-entry-file
+                (string-append applications "/seahorse-adventures.desktop")
+                #:name "Seahorse Adventures"
+                #:comment
+                '((#f "Help Barbie the seahorse float on bubbles to the moon"))
+                #:exec ,name
+                #:icon ,name
+                #:categories '("Game" "ActionGame")
+                #:keywords '("game" "retro" "platform"))
+               ;; Add icons.
+               (for-each
+                (lambda (size)
+                  (let ((dir (string-append share "/icons/hicolor/"
+                                            size "x" size "/apps")))
+                    (mkdir-p dir)
+                    (copy-file
+                     (string-append "icon" size ".png")
+                     (string-append dir "/searhorse-adventures.png"))))
+                '("32" "64" "128")))
+             #t))
+         (add-after 'install 'unbundle-fonts
+           ;; Unbundle Bitstream Vera font and replace deleted one.
+           (lambda* (#:key outputs inputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (data (string-append out "/share/seahorse-adventures"))
+                    (vera (string-append (assoc-ref inputs "font-bitstream-vera")
+                                         "/share/fonts/truetype/Vera.ttf")))
+               (let ((themes-dir (string-append data "/data/themes/")))
+                 (for-each
+                  (lambda (theme)
+                    (let ((target (string-append themes-dir theme "/Vera.ttf")))
+                      (delete-file target)
+                      (symlink vera target)))
+                  '("default" "gray")))
+               (symlink vera (string-append data "/data/fonts/04B_20__.TTF"))
+               (substitute* (string-append data "/lib/main.py")
+                 (("f_scale = 0.35") "f_scale = 0.47")))
+             #t)))))
+    (inputs
+     `(("font-bitstream-vera" ,font-bitstream-vera)
+       ("python-pygame" ,python-pygame)))
+    (home-page "http://www.imitationpickles.org/barbie/")
+    (synopsis "Help Barbie the seahorse float on bubbles to the moon")
+    (description
+     "Barbie Seahorse Adventures is a retro style platform arcade game.
+You are Barbie the seahorse who travels through the jungle, up to the
+volcano until you float on bubbles to the moon.  On the way to your
+final destination you will encounter various enemies, servants of the
+evil overlord who has stolen the galaxy crystal.  Avoid getting hit
+and defeat them with your bubbles!")
+    ;; GPL2+ is for code, CC0 is for art.
+    (license (list license:gpl2+ license:cc0))))
+
+(define-public superstarfighter
+  (package
+    (name "superstarfighter")
+    (version "0.6.4")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/notapixelstudio/superstarfighter")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "1fly63yf5ls1xwm15if4lxwy67wi84k4gvjllljpykrl18vw2y0y"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:tests? #f                      ;there are no tests
+       #:phases
+       (modify-phases %standard-phases
+         (replace 'configure
+           (lambda _
+             (chdir "godot")
+             (setenv "HOME" (getcwd))
+             (with-output-to-file "export_presets.cfg"
+               (lambda ()
+                 (display
+                  "[preset.0]
+name=\"Guix\"
+platform=\"Linux/X11\"
+runnable=true
+[preset.0.options]")))
+             #t))
+         (replace 'build
+           (lambda _
+             (let ((godot (assoc-ref %build-inputs "godot-headless")))
+               (invoke (string-append godot "/bin/godot_server")
+                       "--export-pack" "Guix"
+                       "superstarfighter.pck" "project.godot"))
+             #t))
+         (replace 'install
+           (lambda* (#:key inputs outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (bin (string-append out "/bin"))
+                    (share (string-append out "/share"))
+                    (data (string-append share "/superstarfighter"))
+                    (icons (string-append share "/icons/hicolor/256x256/apps")))
+               (install-file "superstarfighter.pck" data)
+               (mkdir-p bin)
+               (call-with-output-file (string-append bin "/superstarfighter")
+                 (lambda (port)
+                   (format port
+                           "#!/bin/sh~@
+                            exec ~a/bin/godot --main-pack ~a/superstarfighter.pck~%"
+                           (assoc-ref inputs "godot")
+                           data)
+                   (chmod port #o755)))
+               (mkdir-p icons)
+               (copy-file "icon.png" (string-append icons "/" ,name ".png"))
+               (make-desktop-entry-file
+                (string-append share "/applications/" ,name ".desktop")
+                #:name "SuperStarfighter"
+                #:comment "Fast-paced arcade combat game"
+                #:exec ,name
+                #:icon ,name
+                #:categories '("Game" "ArcadeGame")))
+             #t)))))
+    (native-inputs
+     `(("godot-headless" ,godot "headless")))
+    (inputs
+     `(("godot" ,godot)))
+    (home-page "https://notapixel.itch.io/superstarfighter")
+    (synopsis "Fast-paced local multiplayer arcade game")
+    (description "In SuperStarfighter, up to four local players compete in a
+2D arena with fast-moving ships and missiles.  Different game types are
+available, as well as a single-player mode with AI-controlled ships.")
+    (license (list license:expat         ; game
+                   license:silofl1.1)))) ; fonts
+
+(define %ufoai-commit "a542a87a891f96b1ab2c44d35b2f6f16859a5019")
+(define %ufoai-revision "0")
+(define %ufoai-version (git-version "2.6.0_dev" %ufoai-revision %ufoai-commit))
+(define ufoai-source
+  (origin
+    (method git-fetch)
+    (uri (git-reference
+          (url "git://git.code.sf.net/p/ufoai/code") ;HTTPS fails mid-clone
+          (commit %ufoai-commit)))
+    (file-name (string-append "ufoai-" %ufoai-version "-checkout"))
+    (sha256
+     (base32
+      "024s7b9rcg7iw8i2p72gwnvabk23ljlq0nldws0y4b6hpwzyn1wz"))
+    (modules '((guix build utils)
+               (srfi srfi-1)
+               (ice-9 ftw)))
+    (snippet
+     '(begin
+        ;; Delete ~32MiB of bundled dependencies.
+        (with-directory-excursion "src/libs"
+          (for-each delete-file-recursively
+                    (lset-difference equal? (scandir ".")
+                                     '("." ".." "gtest" "mumble"))))
+
+        ;; Use relative path to Lua headers.
+        (substitute* "src/common/scripts_lua.h"
+          (("\\.\\./libs/lua/") ""))
+
+        ;; Adjust Makefile targets to not depend on 'ufo2map', since we build
+        ;; it as a separate package.  This way we don't need to make the same
+        ;; adjustments for 'ufoai-data' and 'ufoai' below.
+        (substitute* "build/maps.mk"
+          (("\\./ufo2map") "ufo2map")
+          (("maps: ufo2map") "maps:"))
+        (substitute* "build/modules/testall.mk"
+          (("testall: ufo2map") "testall:"))
+
+        ;; If no cURL headers are found, the build system will try to include
+        ;; the bundled version, even when not required.  Prevent that.
+        (substitute* "build/default.mk"
+          (("^include src/libs/curl/lib/Makefile\\.inc")
+           ""))
+
+        ;; While here, improve reproducibility by adding the '-X' flag to the
+        ;; zip command used to create the map files, in order to prevent time
+        ;; stamps from making it into the generated archives.
+        (substitute* "build/data.mk"
+          (("\\$\\(call ZIP\\)")
+           "$(call ZIP) -X"))
+        #t))))
+
+(define-public ufo2map
+  (package
+    (name "ufo2map")
+    (version %ufoai-version)
+    (home-page "https://ufoai.org/")
+    (source ufoai-source)
+    (build-system gnu-build-system)
+    (arguments
+     '(#:configure-flags '("CC=gcc" "CXX=g++"
+                           "--enable-release"
+                           "--enable-ufo2map"
+                           "--disable-uforadiant"
+                           "--disable-cgame-campaign"
+                           "--disable-cgame-multiplayer"
+                           "--disable-cgame-skirmish"
+                           "--disable-game"
+                           "--disable-memory"
+                           "--disable-testall"
+                           "--disable-ufoded"
+                           "--disable-ufo"
+                           "--disable-ufomodel"
+                           "--disable-ufoslicer")
+       #:tests? #f ;no tests
+       #:phases (modify-phases %standard-phases
+                  (replace 'configure
+                    (lambda* (#:key (configure-flags '()) #:allow-other-keys)
+                      ;; The home-made configure script does not understand
+                      ;; some of the default flags of gnu-build-system.
+                      (apply invoke "./configure" configure-flags)))
+                  (replace 'install
+                    (lambda* (#:key outputs #:allow-other-keys)
+                      (let ((out (assoc-ref outputs "out")))
+                        (install-file "ufo2map" (string-append out "/bin"))
+                        (install-file "debian/ufo2map.6"
+                                      (string-append out "/share/man/man6"))
+                        #t))))))
+    (native-inputs
+     `(("pkg-config" ,pkg-config)))
+    (inputs
+     `(("libjpeg" ,libjpeg-turbo)
+       ("libpng" ,libpng)
+       ("lua" ,lua-5.1)
+       ("sdl-union" ,(sdl-union (list sdl2 sdl2-mixer sdl2-ttf)))))
+    (synopsis "UFO: AI map generator")
+    (description
+     "This package provides @command{ufo2map}, a program used to generate
+maps for the UFO: Alien Invasion strategy game.")
+    (license license:gpl2+)))
+
+(define ufoai-data
+  (package
+    (name "ufoai-data")
+    (version %ufoai-version)
+    (home-page "https://ufoai.org/")
+    (source ufoai-source)
+    (build-system gnu-build-system)
+    (arguments
+     '(#:tests? #f
+       #:configure-flags '("CC=gcc" "CXX=g++")
+       #:phases (modify-phases %standard-phases
+                  (replace 'configure
+                    (lambda* (#:key outputs (configure-flags '()) #:allow-other-keys)
+                      (apply invoke "./configure" configure-flags)))
+                  (replace 'build
+                    (lambda* (#:key (parallel-build? #t) #:allow-other-keys)
+                      (invoke "make"
+                              "-j" (if parallel-build?
+                                       (number->string (parallel-job-count))
+                                       "1")
+                              "maps")))
+                  (add-after 'build 'pack
+                    (lambda _
+                      (invoke "make" "pk3")))
+                  (replace 'install
+                    (lambda* (#:key outputs #:allow-other-keys)
+                      (let ((out (assoc-ref outputs "out")))
+                        (for-each (lambda (file)
+                                    (install-file file out))
+                                  (find-files "base" "\\.pk3$"))
+                        #t))))))
+    (native-inputs
+     `(("python" ,python-2)
+       ("ufo2map" ,ufo2map)
+       ("which" ,which)
+       ("zip" ,zip)))
+    (synopsis "UFO: AI data files")
+    (description
+     "This package contains maps and other assets for UFO: Alien Invasion.")
+    ;; Most assets are available under either GPL2 or GPL2+.  Some use other
+    ;; licenses, see LICENSES for details.
+    (license (list license:gpl2+ license:gpl2 license:cc-by3.0
+                   license:cc-by-sa3.0 license:public-domain))))
+
+(define-public ufoai
+  (package
+    (name "ufoai")
+    (version %ufoai-version)
+    (home-page "https://ufoai.org/")
+    (source ufoai-source)
+    (build-system gnu-build-system)
+    (arguments
+     `(#:configure-flags
+       (list (string-append "--prefix=" (assoc-ref %outputs "out"))
+             (string-append "--datadir=" (assoc-ref %outputs "out")
+                            "/share/games/ufo")
+             "CC=gcc" "CXX=g++"
+             "--enable-release"
+             "--enable-game"
+             "--disable-ufo2map"
+             "--disable-dependency-tracking"
+
+             ;; Disable hard links to prevent huge NARs.
+             "--disable-hardlinkedgame"
+             "--disable-hardlinkedcgame")
+       #:phases (modify-phases %standard-phases
+                  (add-after 'unpack 'symlink-data-files
+                    (lambda* (#:key inputs #:allow-other-keys)
+                      (let ((data (assoc-ref inputs "ufoai-data")))
+                        ;; Symlink the data files to where the build system
+                        ;; expects to find them.  Ultimately these files are
+                        ;; copied to $out/share/games/ufoai/base, losing the
+                        ;; symlinks; we could fix that after install, but it
+                        ;; does not make a big difference in practice due to
+                        ;; deduplication.
+                        (with-directory-excursion "base"
+                          (for-each (lambda (file)
+                                      (symlink file (basename file)))
+                                    (find-files data "\\.pk3$")))
+                        #t)))
+                  (add-before 'configure 'create-language-files
+                    (lambda _
+                      (invoke "make" "lang")))
+                  (replace 'configure
+                    (lambda* (#:key outputs (configure-flags '()) #:allow-other-keys)
+                      (apply invoke "./configure" configure-flags)))
+                  (replace 'check
+                    (lambda* (#:key tests? #:allow-other-keys)
+                      (if tests?
+                          (invoke "./testall")
+                          (format #t "test suite not run~%"))
+                      #t))
+                  (add-after 'install 'install-man-pages
+                    (lambda* (#:key outputs #:allow-other-keys)
+                      (let* ((out (assoc-ref outputs "out"))
+                             (man6 (string-append out "/share/man/man6")))
+                        (install-file "debian/ufo.6" man6)
+                        (install-file "debian/ufoded.6" man6)
+                        #t))))
+
+       ;; TODO: Some map tests occasionally fail because of randomness issues,
+       ;; e.g. not enough generated aliens.  The test runner also fails early
+       ;; in the build container with 'failed to shutdown server'?
+       #:tests? #f))
+    (native-inputs
+     `(("gettext" ,gettext-minimal)
+       ("pkg-config" ,pkg-config)
+       ("python" ,python-2)
+       ("ufo2map" ,ufo2map)
+       ("ufoai-data" ,ufoai-data)))
+    (inputs
+     `(("curl" ,curl)
+       ("libjpeg" ,libjpeg-turbo)
+       ("libogg" ,libogg)
+       ("libpng" ,libpng)
+       ("libtheora" ,libtheora)
+       ("libvorbis" ,libvorbis)
+       ("libxml2" ,libxml2)
+       ("lua" ,lua-5.1)
+       ("mesa" ,mesa)
+       ("minixml" ,minixml)
+       ("sdl-union" ,(sdl-union (list sdl2 sdl2-mixer sdl2-ttf)))
+       ("zlib" ,zlib)))
+    (synopsis "Turn-based tactical strategy game")
+    (description
+     "UFO: Alien Invasion is a tactical strategy game set in the year 2084.
+You control a secret organisation charged with defending Earth from a brutal
+alien enemy.  Build up your bases, prepare your team, and dive head-first into
+the fast and flowing turn-based combat.
+
+Over the long term you will need to conduct research into the alien threat to
+figure out their mysterious goals and use their powerful weapons for your own
+ends.  You will produce unique items and use them in combat against your
+enemies.
+
+You can also use them against your friends with the multiplayer functionality.
+
+Warning: This is a pre-release version of UFO: AI!  Some things may not work
+properly.")
+
+    ;; The game code and most assets are GPL2+, but we use GPL2 only here
+    ;; because some assets do not use the "or later" clause.  Many individual
+    ;; assets use Creative Commons or Public Domain; see the LICENSE file.
+    (license (delete license:gpl2+ (package-license ufoai-data)))))
+
 (define-public xshogi
   (package
     (name "xshogi")
@@ -1332,7 +2440,7 @@ can be explored and changed freely.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/nevat/abbayedesmorts-gpl.git")
+             (url "https://github.com/nevat/abbayedesmorts-gpl")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
@@ -1351,7 +2459,8 @@ can be explored and changed freely.")
                     (lambda* (#:key inputs #:allow-other-keys)
                       (setenv "CPATH"
                               (string-append (assoc-ref inputs "sdl-union")
-                                             "/include/SDL"))))
+                                             "/include/SDL:"
+                                             (or (getenv "CPATH") "")))))
                   (add-after 'patch-source-shebangs 'patch-makefile
                     (lambda* (#:key outputs #:allow-other-keys)
                       ;; Replace /usr with package output directory.
@@ -1378,22 +2487,18 @@ them, called Jean Raymond, found an old church in which to hide, not knowing
 that beneath its ruins lay buried an ancient evil.")
     (license license:gpl3)))
 
-(define-public l-abbaye-des-morts
-  (deprecated-package "l-abbaye-des-morts" abbaye))
-
 (define-public angband
   (package
     (name "angband")
-    (version "4.2.0")
+    (version "4.2.1")
     (source
      (origin
        (method url-fetch)
-       (uri (string-append "http://rephial.org/downloads/"
+       (uri (string-append "https://rephial.org/downloads/"
                            (version-major+minor version)
                            "/angband-" version ".tar.gz"))
        (sha256
-        (base32
-         "0vdm1ymm28wawp94nl1p5q3lhc0k7cnn2kkvvrkfx962gif4kqfk"))
+        (base32 "03qdavkj2ik02mqjxmlm5bn17ba3yxb1rirp8ghnxy3bsk4kbmxc"))
        (modules '((guix build utils)))
        (snippet
         ;; So, some of the sounds/graphics/tilesets are under different
@@ -1426,7 +2531,7 @@ that beneath its ruins lay buried an ancient evil.")
      `(("autoconf" ,autoconf)
        ("automake" ,automake)))
     (inputs `(("ncurses" ,ncurses)))
-    (home-page "http://rephial.org/")
+    (home-page "https://rephial.org/")
     (synopsis "Dungeon exploration roguelike")
     (description "Angband is a Classic dungeon exploration roguelike.  Explore
 the depths below Angband, seeking riches, fighting monsters, and preparing to
@@ -1441,14 +2546,23 @@ fight Morgoth, the Lord of Darkness.")
      (origin
        (method git-fetch)
        (uri (git-reference
-              (url "https://github.com/Pingus/pingus.git")
+              (url "https://gitlab.com/pingus/pingus.git")
               (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
         (base32
          "0wp06kcmknsnxz7bjnsndb8x062z7r23fb3yrnbfnj68qhz18y74"))
        (patches (search-patches "pingus-boost-headers.patch"
-                                "pingus-sdl-libs-config.patch"))))
+                                "pingus-sdl-libs-config.patch"))
+       (modules '((guix build utils)))
+       (snippet
+        '(begin
+           (substitute* "src/pingus/screens/demo_session.cpp"
+             (("#include <iostream>")
+              ;; std::function moved to <functional> with C++ 11.
+              ;; Remove this for versions newer than 0.7.6.
+              "#include <iostream>\n#include <functional>"))
+           #t))))
     (build-system gnu-build-system)
     (native-inputs `(("pkg-config" ,pkg-config)
                      ("scons-python2" ,scons-python2)))
@@ -1484,8 +2598,8 @@ level's exit.  The game is presented in a 2D side view.")
     (source
      (origin
        (method url-fetch)
-       (uri (string-append "http://www.hyperrealm.com/" name "/"
-                           name  "-" version  ".tar.gz"))
+       (uri (string-append "http://www.hyperrealm.com/talkfilters/"
+                           "talkfilters-" version  ".tar.gz"))
        (sha256
         (base32 "19nc5vq4bnkjvhk8srqddzhcs93jyvpm9r6lzjzwc1mgf08yg0a6"))))
     (build-system gnu-build-system)
@@ -1496,19 +2610,77 @@ into stereotyped or otherwise humorous dialects.  The filters are provided as
 a C library, so they can easily be integrated into other programs.")
     (license license:gpl2+)))
 
-(define-public cmatrix
+(define-public taisei
   (package
-    (name "cmatrix")
-    (version "1.2a")
+    (name "taisei")
+    (version "1.3.1")
     (source
      (origin
        (method url-fetch)
-       (uri (string-append "http://www.asty.org/cmatrix/dist/cmatrix-" version
-                           ".tar.gz"))
+       (uri (string-append "https://github.com/taisei-project/"
+                           "taisei/releases/download/v" version
+                           "/taisei-v" version ".tar.xz"))
+       (sha256
+        (base32 "11f9mlqmzy1lszwcc1nsbar9q1hs4ml6pbm52hqfd4q0f4x3ln46"))))
+    (build-system meson-build-system)
+    (arguments
+     `(#:build-type "release"      ;comment out for bug-reporting (and cheats)
+       #:configure-flags
+       (list "-Dr_default=gles30"
+             "-Dr_gles20=true"
+             "-Dr_gles30=true"
+             "-Dshader_transpiler=true")))
+    (native-inputs
+     `(("pkg-config" ,pkg-config)
+       ("python" ,python)
+       ("python-docutils" ,python-docutils)
+       ("python-pygments" ,python-pygments)))
+    (inputs
+     `(("freetype" ,freetype)
+       ("libpng" ,libpng)
+       ("libwebp" ,libwebp)
+       ("libzip" ,libzip)
+       ("mesa" ,mesa)
+       ("openssl" ,openssl)
+       ("opusfile" ,opusfile)
+       ("sdl2" ,sdl2)
+       ("sdl2-mixer" ,sdl2-mixer)
+       ("shaderc" ,shaderc)
+       ("spirv-cross" ,spirv-cross)
+       ("zlib" ,zlib)))
+    (home-page "https://taisei-project.org/")
+    (synopsis "Shoot'em up fangame and libre clone of Touhou Project")
+    (description
+     "The player controls a character (one of three: Good, Bad, and Dead),
+dodges the missiles (lots of it cover the screen, but the character's hitbox
+is very small), and shoot at the adversaries that keep appear on the screen.")
+    (license (list ;;game
+                   license:expat
+                   ;;resources/00-taisei.pkgdir/bgm/
+                   ;;atlas/portraits/
+                   license:cc-by4.0
+                   ;;miscellaneous
+                   license:cc0
+                   license:public-domain))))
+
+(define-public cmatrix
+  (package
+    (name "cmatrix")
+    (version "2.0")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/abishekvashok/cmatrix")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
        (sha256
         (base32
-         "0k06fw2n8nzp1pcdynhajp5prba03gfgsbj91bknyjr5xb5fd9hz"))))
+         "1h9jz4m4s5l8c3figaq46ja0km1gimrkfxm4dg7mf4s84icmasbm"))))
     (build-system gnu-build-system)
+    (native-inputs
+     `(("autoconf" ,autoconf)
+       ("automake" ,automake)))
     (arguments
      '(#:phases
        (modify-phases %standard-phases
@@ -1532,7 +2704,7 @@ asynchronously and at a user-defined speed.")
 (define-public chess
   (package
     (name "chess")
-    (version "6.2.5")
+    (version "6.2.7")
     (source
      (origin
        (method url-fetch)
@@ -1540,13 +2712,15 @@ asynchronously and at a user-defined speed.")
                            ".tar.gz"))
        (sha256
         (base32
-         "00j8s0npgfdi41a0mr5w9qbdxagdk2v41lcr42rwl1jp6miyk6cs"))))
+         "0ilq4bfl0lwyzf11q7n2skydjhalfn3bgxhrp5hjxs5bc5d6fdp5"))))
     (build-system gnu-build-system)
     (home-page "https://www.gnu.org/software/chess/")
     (synopsis "Full chess implementation")
     (description "GNU Chess is a chess engine.  It allows you to compete
 against the computer in a game of chess, either through the default terminal
 interface or via an external visual interface such as GNU XBoard.")
+    (properties '((upstream-name . "gnuchess")
+                  (ftp-directory . "/chess")))
     (license license:gpl3+)))
 
 (define freedink-engine
@@ -1788,7 +2962,7 @@ are primarily in English, however some in other languages are provided.")
        #:make-flags '("CC=gcc" "sharedlib")))
     (inputs
      `(("bzip2" ,bzip2)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libpng" ,libpng)
        ("libx11" ,libx11)
        ("libxxf86vm" ,libxxf86vm)
@@ -1814,7 +2988,7 @@ for common mesh file formats, and collision detection.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/thelaui/M.A.R.S..git")
+                      (url "https://github.com/thelaui/M.A.R.S.")
                       (commit commit)))
                 (file-name (git-file-name name version))
                 (sha256
@@ -1846,7 +3020,7 @@ for common mesh file formats, and collision detection.")
          ("fribidi" ,fribidi)
          ("taglib" ,taglib)
          ("sfml" ,sfml)))
-      (home-page "http://marsshooter.org")
+      (home-page "http://mars-game.sourceforge.net/")
       (synopsis "2D space shooter")
       (description
        "M.A.R.S. is a 2D space shooter with pretty visual effects and
@@ -1855,71 +3029,39 @@ enemies in different game modes such as space ball, death match, team death
 match, cannon keep, and grave-itation pit.")
       (license license:gpl3+))))
 
-(define minetest-data
-  (package
-    (name "minetest-data")
-    (version "5.0.1")
-    (source (origin
-              (method git-fetch)
-              (uri (git-reference
-                     (url "https://github.com/minetest/minetest_game")
-                     (commit version)))
-              (file-name (git-file-name name version))
-              (sha256
-               (base32
-                "1hw3n7qqpasq6bivxhq01kr0d58w0gp46s0baxixp1fakd79p8a7"))))
-    (build-system trivial-build-system)
-    (native-inputs
-     `(("source" ,source)))
-    (arguments
-     `(#:modules ((guix build utils))
-       #:builder (begin
-                   (use-modules (guix build utils))
-                   (let ((install-dir (string-append
-                                       %output
-                                       "/share/minetest/games/minetest_game")))
-                     (mkdir-p install-dir)
-                     (copy-recursively
-                       (assoc-ref %build-inputs "source")
-                       install-dir)
-                     #t))))
-    (synopsis "Main game data for the Minetest game engine")
-    (description
-     "Game data for the Minetest infinite-world block sandbox game.")
-    (home-page "http://minetest.net")
-    (license license:lgpl2.1+)))
-
 (define-public minetest
   (package
     (name "minetest")
-    (version "5.0.1")
+    (version "5.3.0")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                     (url "https://github.com/minetest/minetest")
-                     (commit version)))
+                    (url "https://github.com/minetest/minetest")
+                    (commit version)))
               (file-name (git-file-name name version))
               (sha256
                (base32
-                "11i8fqjpdggqfdlx440k5758zy0nbf9phxan9r63mavc7mph88ay"))
+                "03ga3j3cg38w4lg4d4qxasmnjdl8n3lbizidrinanvyfdyvznyh6"))
               (modules '((guix build utils)))
               (snippet
-                '(begin
-                   (delete-file-recursively "lib") #t))))
+               '(begin
+                  ;; Delete bundled libraries.
+                  (delete-file-recursively "lib")
+                  #t))))
     (build-system cmake-build-system)
     (arguments
      '(#:configure-flags
-         (list "-DRUN_IN_PLACE=0"
-               "-DENABLE_FREETYPE=1"
-               "-DENABLE_GETTEXT=1"
-               "-DENABLE_SYSTEM_JSONCPP=TRUE"
-               (string-append "-DIRRLICHT_INCLUDE_DIR="
-                              (assoc-ref %build-inputs "irrlicht")
-                              "/include/irrlicht")
-               (string-append "-DCURL_INCLUDE_DIR="
-                              (assoc-ref %build-inputs "curl")
-                              "/include/curl"))
-       #:tests? #f)) ; no check target
+       (list "-DRUN_IN_PLACE=0"
+             "-DENABLE_FREETYPE=1"
+             "-DENABLE_GETTEXT=1"
+             "-DENABLE_SYSTEM_JSONCPP=TRUE"
+             (string-append "-DIRRLICHT_INCLUDE_DIR="
+                            (assoc-ref %build-inputs "irrlicht")
+                            "/include/irrlicht")
+             (string-append "-DCURL_INCLUDE_DIR="
+                            (assoc-ref %build-inputs "curl")
+                            "/include/curl"))
+       #:tests? #f))                    ;no check target
     (native-search-paths
      (list (search-path-specification
             (variable "MINETEST_SUBGAME_PATH")
@@ -1933,7 +3075,7 @@ match, cannon keep, and grave-itation pit.")
        ("gmp" ,gmp)
        ("irrlicht" ,irrlicht)
        ("jsoncpp" ,jsoncpp)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libpng" ,libpng)
        ("libogg" ,libogg)
        ("libvorbis" ,libvorbis)
@@ -1952,7 +3094,41 @@ various types of blocks in a three-dimensional open world.  This allows
 forming structures in every possible creation, on multiplayer servers or as a
 single player.  Mods and texture packs allow players to personalize the game
 in different ways.")
-    (home-page "http://minetest.net")
+    (home-page "https://www.minetest.net/")
+    (license license:lgpl2.1+)))
+
+(define minetest-data
+  (package
+    (name "minetest-data")
+    (version (package-version minetest))
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/minetest/minetest_game")
+                     (commit version)))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "1liciwlh013z5h08ib0psjbwn5wkvlr937ir7kslfk4vly984cjx"))))
+    (build-system trivial-build-system)
+    (native-inputs
+     `(("source" ,source)))
+    (arguments
+     `(#:modules ((guix build utils))
+       #:builder (begin
+                   (use-modules (guix build utils))
+                   (let ((install-dir (string-append
+                                       %output
+                                       "/share/minetest/games/minetest_game")))
+                     (mkdir-p install-dir)
+                     (copy-recursively
+                       (assoc-ref %build-inputs "source")
+                       install-dir)
+                     #t))))
+    (synopsis "Main game data for the Minetest game engine")
+    (description
+     "Game data for the Minetest infinite-world block sandbox game.")
+    (home-page "https://www.minetest.net/")
     (license license:lgpl2.1+)))
 
 (define glkterm
@@ -2025,7 +3201,7 @@ using the @code{curses.h} library for screen control.")
               (install-file "glulxe" bin))
             #t))
         (delete 'configure))))          ; no configure script
-   (home-page "http://www.eblong.com/zarf/glulx/")
+   (home-page "https://www.eblong.com/zarf/glulx/")
    (synopsis "Interpreter for Glulx VM")
    (description
     "Glulx is a 32-bit portable virtual machine intended for writing and
@@ -2033,6 +3209,129 @@ playing interactive fiction.  It was designed by Andrew Plotkin to relieve
 some of the restrictions in the venerable Z-machine format.  This is the
 reference interpreter, using the Glk API.")
    (license license:expat)))
+
+(define-public fifechan
+  (package
+    (name "fifechan")
+    (version "0.1.5")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append "https://codeload.github.com/fifengine/"
+                                  "fifechan/tar.gz/" version))
+              (file-name (string-append name "-" version ".tar.gz"))
+              (sha256
+               (base32
+                "0wxs9vz5x9y8chghd8vp7vfk089lfb0qnzggi17zrqkrngs5zgi9"))))
+    (build-system cmake-build-system)
+    (inputs
+     `(("sdl2" ,sdl2)
+       ("sdl2-image" ,sdl2-image)
+       ("mesa" ,mesa)))
+    (arguments
+     '(#:tests? #f))                    ; No included tests
+    (home-page "https://fifengine.github.io/fifechan/")
+    (synopsis "Cross platform GUI library specifically for games")
+    (description
+     "Fifechan is a lightweight cross platform GUI library written in C++
+specifically designed for games.  It has a built in set of extendable GUI
+Widgets, and allows users to create more.")
+    (license license:lgpl2.1+)))
+
+(define-public fifengine
+  (package
+    (name "fifengine")
+    (version "0.4.2")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append "https://codeload.github.com/fifengine/"
+                                  "fifengine/tar.gz/" version))
+              (file-name (string-append name "-" version ".tar.gz"))
+              (patches (search-patches "fifengine-swig-compat.patch"))
+              (sha256
+               (base32
+                "1y4grw25cq5iqlg05rnbyxw1njl11ypidnlsm3qy4sm3xxdvb0p8"))))
+    (build-system cmake-build-system)
+    (arguments
+     `(#:tests? #f            ; TODO The test running fails to run some tests.
+       #:modules ((srfi srfi-1)
+                  (guix build cmake-build-system)
+                  (guix build utils))
+       #:configure-flags
+       (list
+        (string-append "-DOPENALSOFT_INCLUDE_DIR="
+                       (assoc-ref %build-inputs "openal")
+                       "/include/AL")
+        (string-append "-DPYTHON_SITE_PACKAGES="
+                       (assoc-ref %outputs "out")
+                       "/lib/python"
+                       ,(version-major+minor (package-version python))
+                       "/site-packages"))
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'patch-run_tests.py
+           (lambda _
+             ;; Patch the test runner to exit with a status of 1 if any test
+             ;; fails, to allow detecting failures.
+             (substitute* "run_tests.py"
+               (("ERROR\\. One or more tests failed!'\\)")
+                "ERROR. One or more tests failed!')
+\t\texit(1)"))
+             #t))
+         ;; Run tests after installation so that we can make use of the built
+         ;; python modules.
+         (delete 'check)
+         (add-after 'install 'check
+           (lambda* (#:key inputs outputs tests? #:allow-other-keys)
+             (define python-version
+               (let* ((version     (last (string-split
+                                          (assoc-ref inputs "python")
+                                          #\-)))
+                      (components  (string-split version #\.))
+                      (major+minor (take components 2)))
+                 (string-join major+minor ".")))
+
+             (when tests?
+               ;; Set PYTHONPATH so that python finds the installed modules.
+               (setenv "PYTHONPATH"
+                       (string-append (getenv "PYTHONPATH") ":"
+                                      (assoc-ref outputs "out")
+                                      "/lib/python"
+                                      python-version
+                                      "/site-packages"))
+               ;; The tests require an X server.
+               (system "Xvfb :1 &")
+               (setenv "DISPLAY" ":1")
+               (setenv "XDG_RUNTIME_DIR" "/tmp")
+               ;; Run tests
+               (chdir ,(string-append "../" name "-" version))
+               (invoke "python3" "run_tests.py" "-a"))
+             #t)))))
+    (inputs
+     `(("sdl2" ,sdl2)
+       ("sdl2-image" ,sdl2-image)
+       ("sdl2-ttf" ,sdl2-ttf)
+       ("tinyxml" ,tinyxml)
+       ("openal" ,openal)
+       ("libogg" ,libogg)
+       ("glew" ,glew)
+       ("libvorbis" ,libvorbis)
+       ("boost" ,boost)
+       ("fifechan" ,fifechan)
+       ("swig" ,swig)
+       ("python" ,python)))
+    (native-inputs
+     `(("python" ,python)
+       ("swig" ,swig)
+       ("xvfb" ,xorg-server)))
+    (propagated-inputs
+     `(("python-future" ,python-future)))
+    (home-page "https://www.fifengine.net/")
+    (synopsis "FIFE is a multi-platform isometric game engine written in C++")
+    (description
+     "@acronym{FIFE, Flexible Isometric Free Engine} is a multi-platform
+isometric game engine.  Python bindings are included allowing users to create
+games using Python as well as C++.")
+    (license license:lgpl2.1+)))
 
 (define-public fizmo
   (package
@@ -2055,7 +3354,7 @@ reference interpreter, using the Glk API.")
      `(("pkg-config" ,pkg-config)))
     (inputs
      `(("freetype" ,freetype)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libpng" ,libpng)
        ("libsndfile" ,libsndfile)
        ("libxml2" ,libxml2)
@@ -2097,7 +3396,7 @@ Protocol).")
 (define-public extremetuxracer
   (package
     (name "extremetuxracer")
-    (version "0.7.5")
+    (version "0.8.0")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -2105,7 +3404,7 @@ Protocol).")
                     version "/etr-" version ".tar.xz"))
               (sha256
                (base32
-                "1ly63316c07i0gyqqmyzsyvygsvygn0fpk3bnbg25fi6li99rlsg"))))
+                "05ysaxvsgps9fxc421kdifsxmc1sn6n79cjaa0k0i3fs9qqrja2b"))))
     (build-system gnu-build-system)
     (native-inputs
      `(("pkg-config" ,pkg-config)))
@@ -2129,7 +3428,7 @@ This game is based on the GPL version of the famous game TuxRacer.")
 (define-public supertuxkart
   (package
     (name "supertuxkart")
-    (version "1.0")
+    (version "1.1")
     (source
      (origin
        (method url-fetch)
@@ -2137,7 +3436,7 @@ This game is based on the GPL version of the famous game TuxRacer.")
                            version "/supertuxkart-" version "-src.tar.xz"))
        (sha256
         (base32
-         "106rlp99hq18b4q1kdri3pl06cc4v7iqfp1hp9k2f8751lzz923d"))
+         "1s0ai07g3sswck9mr0142989mrgzzq1njc1qxk5als5b245jpc79"))
        (modules '((guix build utils)))
        (snippet
         ;; Delete bundled library sources
@@ -2145,7 +3444,7 @@ This game is based on the GPL version of the famous game TuxRacer.")
            ;; Supertuxkart uses modified versions of the Irrlicht engine
            ;; and the bullet library.  The developers gave an explanation
            ;; here: http://forum.freegamedev.net/viewtopic.php?f=17&t=3906
-           ;; FIXME: try to unbundle angelscript
+           ;; FIXME: try to unbundle angelscript and libraqm
            (for-each delete-file-recursively
                      '("lib/zlib"
                        "lib/libpng"
@@ -2163,6 +3462,9 @@ This game is based on the GPL version of the famous game TuxRacer.")
              "-DNO_IRR_COMPILE_WITH_ZLIB_=TRUE"
              "-DUSE_SYSTEM_GLEW=TRUE"
              "-DUSE_SYSTEM_ENET=TRUE"
+             ;; In order to use the system ENet library, IPv6 support (added in
+             ;; SuperTuxKart version 1.1) must be disabled.
+             "-DUSE_IPV6=FALSE"
              ;; FIXME: needs libopenglrecorder
              "-DBUILD_RECORDER=0"
              ;; Irrlicht returns an integer instead of a boolean
@@ -2174,24 +3476,97 @@ This game is based on the GPL version of the famous game TuxRacer.")
        ("libvorbis" ,libvorbis)
        ("freetype" ,freetype)
        ("fribidi" ,fribidi)
+       ("harfbuzz" ,harfbuzz)
        ("mesa" ,mesa)
        ("libx11" ,libx11)
        ("libxrandr" ,libxrandr)
        ("curl" ,curl)
        ;; The following input is needed to build the bundled and modified
        ;; version of irrlicht.
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("openssl" ,openssl)
        ("enet" ,enet)))
     (native-inputs
      `(("pkg-config" ,pkg-config)))
-    (home-page "https://supertuxkart.net/")
+    (home-page "https://supertuxkart.net/Main_Page")
     (synopsis "3D kart racing game")
     (description "SuperTuxKart is a 3D kart racing game, with a focus on
 having fun over realism.  You can play with up to 4 friends on one PC, racing
 against each other or just trying to beat the computer; single-player mode is
 also available.")
     (license license:gpl3+)))
+
+(define-public unknown-horizons
+  (package
+    (name "unknown-horizons")
+    (version "2019.1")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append "https://codeload.github.com/unknown-horizons/"
+                                  "unknown-horizons/tar.gz/" version))
+              (file-name (string-append name "-" version ".tar.gz"))
+              (sha256
+               (base32
+                "1n747p7h0qp48szgp262swg0xh8kxy1bw8ag1qczs4i26hyzs5x4"))))
+    (build-system python-build-system)
+    (arguments
+     '(#:phases
+       (modify-phases %standard-phases
+         (add-before 'build 'set-HOME
+           (lambda _
+             (setenv "HOME" "/tmp")))
+         (add-after 'build 'build-extra
+           (lambda _
+             (invoke "python3" "./setup.py" "build_i18n")
+             (invoke "python3" "horizons/engine/generate_atlases.py" "2048")
+             #t))
+         (add-after 'install 'patch
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out")))
+               (substitute* (string-append out "/bin/unknown-horizons")
+                 (("os\\.chdir\\(get\\_content\\_dir\\_parent_path\\(\\)\\)")
+                  (string-append "os.chdir(\""
+                                 (assoc-ref outputs "out")
+                                 "/share/unknown-horizons\")"))))
+             #t))
+         ;; TODO: Run GUI tests as well
+         (replace 'check
+           (lambda _
+             (substitute* "horizons/constants.py"
+               (("IS_DEV_VERSION = False")
+                "IS_DEV_VERSION = True"))
+             (invoke "pytest" "tests")
+             (substitute* "horizons/constants.py"
+               (("IS_DEV_VERSION = True")
+                "IS_DEV_VERSION = False"))
+             #t)))))
+    (inputs
+     `(("fifengine" ,fifengine)
+       ("python:tk" ,python "tk")
+       ("python-pillow" ,python-pillow)
+       ("python-pyyaml" ,python-pyyaml)))
+    (native-inputs
+     `(("intltool" ,intltool)
+
+       ;; Required for tests
+       ("python-greenlet" ,python-greenlet)
+       ("python-polib" ,python-polib)
+       ("python-pytest" ,python-pytest)
+       ("python-pytest-mock" ,python-pytest-mock)))
+    (home-page "http://unknown-horizons.org/")
+    (synopsis "Isometric realtime strategy, economy and city building simulation")
+    (description
+     "Unknown Horizons is a 2D realtime strategy simulation with an emphasis
+on economy and city building.  Expand your small settlement to a strong and
+wealthy colony, collect taxes and supply your inhabitants with valuable
+goods.  Increase your power with a well balanced economy and with strategic
+trade and diplomacy.")
+    (license (list
+              license:gpl2+        ; Covers code
+              license:expat        ; tests/dummy.py, ext/polib.py
+              license:cc-by-sa3.0  ; Covers some media content
+              license:cc-by3.0     ; Covers some media content
+              license:bsd-3))))    ; horizons/ext/speaklater.py
 
 (define-public gnujump
   (package
@@ -2210,7 +3585,24 @@ also available.")
        (modify-phases %standard-phases
          (add-before
           'configure 'link-libm
-          (lambda _ (setenv "LIBS" "-lm"))))))
+          (lambda _ (setenv "LIBS" "-lm")))
+         (add-after 'install 'create-desktop-entry
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (apps (string-append out "/share/applications")))
+               (mkdir-p apps)
+               (with-output-to-file
+                 (string-append apps "/gnujump.desktop")
+                 (lambda _
+                   (format #t
+                           "[Desktop Entry]~@
+                           Name=GNUjump~@
+                           Comment=Jump up the tower to survive~@
+                           Exec=~a/bin/gnujump~@
+                           Terminal=false~@
+                           Type=Application~@
+                           Categories=Game;ArcadeGame~%"
+                           out)))))))))
     (inputs
      `(("glu" ,glu)
        ("mesa" ,mesa)
@@ -2230,7 +3622,7 @@ falling, themeable graphics and sounds, and replays.")
 (define-public wesnoth
   (package
     (name "wesnoth")
-    (version "1.14.7")
+    (version "1.14.13")
     (source (origin
               (method url-fetch)
               (uri (string-append "mirror://sourceforge/wesnoth/wesnoth-"
@@ -2239,10 +3631,10 @@ falling, themeable graphics and sounds, and replays.")
                                   "wesnoth-" version ".tar.bz2"))
               (sha256
                (base32
-                "0j2yvkcggj5k0r2cqk8ndnj77m37a00srfd9qg7pdpqffbinqpj7"))))
+                "1pmqj4rah0256qi9w394ksb9apid723i5f5agkg6x1lahb1ac91q"))))
     (build-system cmake-build-system)
     (arguments
-     `(#:tests? #f))                    ; no check target
+     `(#:tests? #f))                    ;no check target
     (native-inputs
      `(("gettext" ,gettext-minimal)
        ("pkg-config" ,pkg-config)))
@@ -2267,9 +3659,6 @@ experience and advance levels, and are carried over from one scenario to the
 next campaign.")
     (license license:gpl2+)))
 
-(define-public the-battle-for-wesnoth
-  (deprecated-package "the-battle-for-wesnoth" wesnoth))
-
 (define-public wesnoth-server
   (package
     (inherit wesnoth)
@@ -2285,9 +3674,6 @@ next campaign.")
     (synopsis "Dedicated @emph{Battle for Wesnoth} server")
     (description "This package contains a dedicated server for @emph{The
 Battle for Wesnoth}.")))
-
-(define-public the-battle-for-wesnoth-server
-  (deprecated-package "the-battle-for-wesnoth-server" wesnoth-server))
 
 (define-public gamine
   (package
@@ -2376,30 +3762,14 @@ world}, @uref{http://evolonline.org, Evol Online} and
 (define openttd-engine
   (package
     (name "openttd-engine")
-    (version "1.8.0")
+    (version "1.10.0")
     (source
      (origin (method url-fetch)
-             (uri (string-append "http://binaries.openttd.org/releases/"
+             (uri (string-append "https://cdn.openttd.org/openttd-releases/"
                                  version "/openttd-" version "-source.tar.xz"))
-             (patches
-              (list
-               (origin (method url-fetch)
-                       (uri (string-append
-                             "https://github.com/OpenTTD/OpenTTD/commit/"
-                             "19076c24c1f3baf2a22d1fa832d5688216cf54a3.patch"))
-                       (file-name "openttd-fix-compilation-with-ICU-61.patch")
-                       (sha256
-                        (base32
-                         "02d1xmb75yv4x6rfnvxk3vvq4l3lvvwr2pfsdzn7lzalic51ziqh")))))
              (sha256
               (base32
-               "0zq8xdg0k92p3s4j9x76591zaqz7k9ra69q008m209vdfffjvly2"))
-             (modules '((guix build utils)))
-             (snippet
-              ;; The DOS port contains proprietary software.
-              '(begin
-                 (delete-file-recursively "os/dos")
-                 #t))))
+               "0lz2y2rjc23k0d97y65cqhy2splw9cmrbvhgz0iqps8xkan1m8hv"))))
     (build-system gnu-build-system)
     (arguments
      `(#:tests? #f              ; no "check" target
@@ -2438,7 +3808,7 @@ Tycoon Deluxe with many enhancements including multiplayer mode,
 internationalization support, conditional orders and the ability to clone,
 autoreplace and autoupdate vehicles.  This package only includes the game
 engine.  When you start it you will be prompted to download a graphics set.")
-    (home-page "http://openttd.org/")
+    (home-page "https://www.openttd.org/")
     ;; This package is GPLv2, except for a few files located in
     ;; "src/3rdparty/" which are under the 3-clause BSD, LGPLv2.1+ and Zlib
     ;; licenses.  In addition, this software contains an in-game downloader
@@ -2449,15 +3819,15 @@ engine.  When you start it you will be prompted to download a graphics set.")
 (define openttd-opengfx
   (package
     (name "openttd-opengfx")
-    (version "0.5.2")
+    (version "0.6.0")
     (source
      (origin
        (method url-fetch)
-       (uri (string-append "http://binaries.openttd.org/extra/opengfx/"
+       (uri (string-append "https://cdn.openttd.org/opengfx-releases/"
                            version "/opengfx-" version "-source.tar.xz"))
        (sha256
         (base32
-         "0iz66q7p1mf00njfjbc4vibh3jaybki7armkl18iz7p6x4chp9zv"))))
+         "0qxc6gl2gxcrn1np88dnjgbaaakkkx96b13rcmy1spryc8c09hyr"))))
     (build-system gnu-build-system)
     (arguments
      '(#:make-flags (list "CC=gcc"
@@ -2487,6 +3857,7 @@ engine.  When you start it you will be prompted to download a graphics set.")
                      ("gimp" ,gimp)
                      ("grfcodec" ,grfcodec)
                      ("nml" ,nml)
+                     ("which" ,which)
                      ("python" ,python-2)))
     (home-page "http://dev.openttdcoop.org/projects/opengfx")
     (synopsis "Base graphics set for OpenTTD")
@@ -2692,16 +4063,16 @@ Transport Tycoon Deluxe.")
 (define-public openrct2
   (package
     (name "openrct2")
-    (version "0.2.3")
+    (version "0.2.6")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/OpenRCT2/OpenRCT2.git")
+             (url "https://github.com/OpenRCT2/OpenRCT2")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "01mj6jlbl2cn3wpk6sy34ldzdl0qykpn7fncznjykklj2nqzr4ig"))))
+        (base32 "1vikbkg3wh5ngzdfilb6irbh6nqinf138qpdz8wz9izlvl8s36k4"))))
     (build-system cmake-build-system)
     (arguments
      `(#:configure-flags (list "-DDOWNLOAD_OBJECTS=OFF"
@@ -2723,16 +4094,12 @@ Transport Tycoon Deluxe.")
                (copy-recursively
                 (string-append objects "/share/openrct2/objects")
                 "data/object"))))
-         (add-before 'configure 'fixgcc7
-           (lambda _
-             (unsetenv "C_INCLUDE_PATH")
-             (unsetenv "CPLUS_INCLUDE_PATH")
-             #t))
-         (add-after 'fixgcc7 'get-rid-of-errors
+         (add-before 'configure 'get-rid-of-errors
            (lambda _
              ;; Don't treat warnings as errors.
              (substitute* "CMakeLists.txt"
-               (("-Werror") "")))))))
+               (("-Werror") ""))
+             #t)))))
     (inputs `(("curl" ,curl)
               ("fontconfig" ,fontconfig)
               ("freetype" ,freetype)
@@ -2748,8 +4115,7 @@ Transport Tycoon Deluxe.")
               ("speexdsp" ,speexdsp)
               ("zlib" ,zlib)))
     (native-inputs
-     `(("gcc" ,gcc-7)
-       ("pkg-config" ,pkg-config)))
+     `(("pkg-config" ,pkg-config)))
     (home-page "https://github.com/OpenRCT2/OpenRCT2")
     (synopsis "Free software re-implementation of RollerCoaster Tycoon 2")
     (description "OpenRCT2 is a free software re-implementation of
@@ -2898,45 +4264,8 @@ http://lavachat.symlynx.com/unix/")
     (license license:gpl2+)))
 
 (define-public red-eclipse
-  (let ((release "1.6.0")
-        (revision 0)
-        (data-sources
-         '(("acerspyro" "12b0bngl7hlxw4iwdbn99jp081yl6z1ic0s788nm349drbr2pck8")
-           ("actors" "0x7qqx67679q6ark9zz02skwhzgabid69kwi6zmhfpfgicn4927r")
-           ("appleflap" "08xslwqfqz3j4m03pv5ry2gdzj5k2ns51z8n6sln3sa94i9x8qkm")
-           ("blendbrush" "18zf5i2ax4p14x4c9nhk9fq6l1xgbxw62gm72vx59vbfdpjrw3cg")
-           ("caustics" "172fxwx7kbz5nmbjq98kr52ips505wb99fibgnpg8cj02syrya8k")
-           ("crosshairs" "14w8ysqzdsx9bzpfbl700jzngbh14rdghhjdf6zd6jlkvrl6754r")
-           ("dziq" "056imqszvp90j7cgz52ly0f31px64gsrmvm9k2c78ldbx87jnhc3")
-           ("elyvisions" "1bsgr0gr7njydj8fqclh0a27lrsyic3xfd5a4vwggw7g54azpgk2")
-           ("fonts" "00ibisza1qci0ghf2rynyf28l6r3nqhfzjf80k6gg76q4v7p1myx")
-           ("freezurbern" "07l9ldk9b82f12c13wcg5xxdf15bw0yjxk3vvk8v3ygrl2mwksyr")
-           ("john" "1jdmwkrdi5b9pivkm22rxhmkk1db9dx6l54wzcc23cvdz04ij93k")
-           ("jojo" "0f7kjy43fbk9kw8fip6bbw4gn3pryh0fndlahjfkaysrx98krdj3")
-           ("jwin" "0nc8dndnpqk2ad6316a8k6kgzsrkpwvk8s4gyh7aqfi4axfclril")
-           ("luckystrike" "04jiipqahphmvz5cd74dygr62dlvv6l4iglb8hzh4pp8frhls8bq")
-           ("maps" "0an46ipjvw4h0nxvb6qvnzp1cdkzlkiinqz4zh9lmxy1ds0gclim")
-           ("mayhem" "15k10imm2wr6c6fq35n4r99k7kz7n9zdnjlw6dmdq6fba67i6sbc")
-           ("mikeplus64" "0v4wiiivm3829j4phlavy22n4c6k6ib9ixxpdz7r6ysg5cdkaw33")
-           ("misc" "13rfgwrlfhflz6inbkg3fypyf8im0m49sw112b17qrw2zgp8i1rz")
-           ("nieb" "0z0h9jdn2gkkjil3vsvwidb1p2k09pi5n3wjxza12hhvqmcs7q8f")
-           ("nobiax" "08bfp4q6gbfis18bp1h4d0hqssk79jc4fhyjxnv21dbam4v4mnkn")
-           ("particles" "1vsx3fgg19xggxfhz3vlrh6nqhmw7kl9kmxrvb2j84blp00vd6z2")
-           ("philipk" "14irscg80607i5k5l2ci0n9nwibvda2f3xsykgv96d0vldrp5n5a")
-           ("projectiles" "09bnfsrywirwgjm6d7ff5nicx6w6b7w9568x9pb5q0ncaps3l85s")
-           ("props" "1dlabbprlkif8af3daf9nbgcwgxiymvj0yiphqhlri8ylfy2vpz4")
-           ("skyboxes" "14bi3md5y47cvb9ybipdvksz40gqsqw2r0lh3zzqb4acq367w18y")
-           ("snipergoth" "0m8rvvy5n8n9pm0b5cqvzsxsw51mqk8m7s1h3qc849b38isliwq2")
-           ("sounds" "0ivf3w5bphz5pzzx6kwcb67vbly1l19cgv3s0cyp8n87afiqj5rd")
-           ("textures" "0qdmgx7zbcqnb9rrga2izr93p5inirczhddfxs504rsnv0v8vyxm")
-           ("torley" "05ppyhghq859cbbxzj3dnl9fcx3ghy04ds1pylypwg2hsxzbjwcd")
-           ("trak" "0g3vq86q91a3syli38lwc8ca4ychfwsmmqf85kqzfzyd627ybclm")
-           ("ulukai" "0asa5fz400impklcg6dy2f7jiaqfc1sn1c36fpg8jd01gw66lw93")
-           ("unnamed" "0rz5683j7sfwkcycfypbv4b0ihp0qwn9rzskfsabwc1s5g324917")
-           ("vanities" "13f18783rc8cjf22p61zr8m5g1migzlx05fzl8xnbjdkqq4cdyix")
-           ("vegetation" "1y5d97nfmvax7y4fr0y5v0c8zb1ajkqwx76kjd4qc9n4spdsi5sc")
-           ("weapons" "103g1dhxv5ffz4ddg2xcbshbgv9606chsbas3pzk6h9ybqsyjrqh")
-           ("wicked" "1884rk34a2dj83gz82rc4zh3ch0dyj5221hvsr0a5h60578i7yj6"))))
+  (let ((release "2.0.0")
+        (revision 0))
     (package
       (name "red-eclipse")
       (version (if (zero? revision)
@@ -2947,13 +4276,18 @@ http://lavachat.symlynx.com/unix/")
        (origin
          (method git-fetch)
          (uri (git-reference
-               (url "https://github.com/red-eclipse/base.git")
-               (commit (string-append "v" release))))
+               (url "https://github.com/redeclipse/base")
+               (commit (string-append "v" release))
+               (recursive? #t))) ; for game data
          (file-name (git-file-name name version))
          (sha256
-          (base32 "0qy9kmq21wc4bdhwifasxc5dv1y5c53sn7dfmyc5y3zyz8wjyij4"))
-         (patches
-          (search-patches "red-eclipse-remove-gamma-name-hack.patch"))))
+          (base32 "0sz0mqhwx8r9n4mk3qrxw420nlsm3y0n48gd0lazgd64lfqjh3ab"))
+         (modules '((guix build utils)))
+         (snippet
+          ;; Remove proprietary libraries and other pre-compiled binaries.
+          '(begin
+             (delete-file-recursively "bin")
+             #t))))
       (build-system gnu-build-system)
       (arguments
        `(#:tests? #f            ; no check target
@@ -2964,41 +4298,21 @@ http://lavachat.symlynx.com/unix/")
                                            (assoc-ref %outputs "out")))
          #:phases
          (modify-phases %standard-phases
-           (add-after 'unpack 'unpack-data
-             (lambda* (#:key inputs #:allow-other-keys)
-               (delete-file-recursively "data")
-               (mkdir "data")
-               (with-directory-excursion "data"
-                 (for-each (lambda (name)
-                             (copy-recursively (assoc-ref inputs name) name))
-                           (list ,@(map car data-sources))))
-               #t))
-           (add-after 'unpack-data 'add-store-data-package-path-as-default
+           (add-after 'unpack 'add-store-data-package-path-as-default
              (lambda* (#:key outputs #:allow-other-keys)
                (substitute* "src/engine/server.cpp"
-                 (("(else[[:space:]]*)((addpackagedir\\()\"data\"(\\);))"
-                   _
-                   else_part
-                   addpackagedir_original
-                   addpackagedir_open
-                   addpackagedir_close)
-                  (string-append else_part
-                                 "{ "
-                                 addpackagedir_open
-                                 "\""
+                 (("data = \"data\"")
+                  (string-append "data = \""
                                  (assoc-ref outputs "out")
-                                 "/share/redeclipse/data\""
-                                 addpackagedir_close
-                                 " "
-                                 addpackagedir_original
-                                 " }")))
+                                 "/share/redeclipse/data\"")))
                #t))
            (delete 'configure)  ; no configure script
            (add-after 'set-paths 'set-sdl-paths
              (lambda* (#:key inputs #:allow-other-keys)
                (setenv "CPATH"
                        (string-append (assoc-ref inputs "sdl-union")
-                                      "/include/SDL2"))
+                                      "/include/SDL2:"
+                                      (or (getenv "CPATH") "")))
                #t))
            (add-after 'install 'copy-data
              (lambda* (#:key outputs #:allow-other-keys)
@@ -3047,37 +4361,27 @@ exec -a \"$0\" ~a/.redeclipse_server_linux-real~%"
        `(("pkg-config" ,pkg-config)))
       (inputs
        `(("curl" ,curl)
+         ("freetype" ,freetype)
          ("glu" ,glu)
          ("sdl-union" ,(sdl-union (list sdl2
                                         sdl2-image
-                                        sdl2-mixer)))
-         ;; Create origin records for the many separate data packages.
-         ,@(map (match-lambda
-                  ((name hash)
-                   (list name
-                         (origin
-                           (method git-fetch)
-                           (uri
-                            (git-reference
-                             (url (string-append "https://github.com/"
-                                                 "red-eclipse/" name ".git"))
-                             (commit (string-append "v" release))))
-                           (sha256 (base32 hash))
-                           (file-name (git-file-name name version))))))
-                data-sources)))
-      (home-page "http://redeclipse.net/")
+                                        sdl2-mixer)))))
+      (home-page "https://redeclipse.net/")
       (synopsis "Arena shooter derived from the Cube 2 engine")
       (description
        "Red Eclipse is an arena shooter, created from the Cube2 engine.
 Offering an innovative parkour system and distinct but all potent weapons,
 Red Eclipse provides fast paced and accessible gameplay.")
       ;; The engine is under Zlib; data files are covered by the other
-      ;; licenses.  More details at <http://redeclipse.net/wiki/License>.
+      ;; licenses.  More details at file:///doc/all-licenses.txt.
       (license (list license:expat
                      license:zlib
+                     license:cc-by-sa4.0
                      license:cc-by-sa3.0
                      license:cc-by3.0
-                     license:cc0)))))
+                     license:cc0
+                     license:public-domain
+                     license:silofl1.1)))))
 
 (define-public grue-hunter
   (package
@@ -3127,7 +4431,7 @@ Red Eclipse provides fast paced and accessible gameplay.")
               ("tar" ,tar)
               ("gzip" ,gzip)
               ("tarball" ,source)))
-    (home-page "http://jxself.org/grue-hunter.shtml")
+    (home-page "https://jxself.org/grue-hunter.shtml")
     (synopsis "Text adventure game")
     (description
      "Grue Hunter is a text adventure game written in Perl.  You must make
@@ -3198,27 +4502,106 @@ fullscreen, use F5 or Alt+Enter.")
     ;; Code mainly BSD-2, some parts under Boost 1.0. All assets are WTFPL2.
     (license (list license:bsd-2 license:boost1.0 license:wtfpl2))))
 
+(define-public tennix
+  (package
+    (name "tennix")
+    (version "1.3.1")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://repo.or.cz/tennix.git")
+             (commit (string-append "tennix-" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "02cj4lrdrisal5s9pnbf2smx7qz9czczjzndfkhfx0qy67b957sk"))
+       ;; Remove non-free images.
+       (modules '((guix build utils)))
+       (snippet
+        '(begin
+           (for-each delete-file
+                     '("data/loc_training_camp.png"
+                       "data/loc_austrian_open.png"
+                       "data/loc_olympic_green_tennis.png"))
+           #t))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:tests? #f                      ;no test
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'fix-include
+           (lambda _
+             (substitute* '("src/graphics.h" "src/sound.h")
+               (("#include \"(SDL_(image|ttf|mixer)\\.h)\"" _ header)
+                (string-append "#include \"SDL/" header "\"")))
+             (substitute* '("src/tennix.h" "src/network.h" "src/SDL_rotozoom.h")
+               (("#include <SDL.h>") "#include <SDL/SDL.h>")
+               (("#include <SDL_net.h>") "#include <SDL/SDL_net.h>"))
+             #t))
+         (add-after 'unpack 'locate-install
+           ;; Build process cannot expand "$(INSTALL)" in Makefile.
+           (lambda _
+             (substitute* "makefile"
+               (("^CONFIGURE_OUTPUT :=.*" all)
+                (string-append "INSTALL := install -c\n" all)))
+             #t))
+         (replace 'configure
+           ;; The "configure" script is picky about the arguments it
+           ;; gets.  Call it ourselves.
+           (lambda _
+             (invoke "./configure" "--prefix" (assoc-ref %outputs "out")))))))
+    (native-inputs
+     `(("which" ,which)))
+    (inputs
+     `(("python" ,python-wrapper)
+       ("sdl" ,(sdl-union (list sdl sdl-image sdl-mixer sdl-ttf sdl-net)))))
+    (home-page "http://icculus.org/tennix/")
+    (synopsis "Play tennis against the computer or a friend")
+    (description "Tennix is a 2D tennis game.  You can play against the
+computer or against another player using the keyboard.  The game runs
+in-window at 640x480 resolution or fullscreen.")
+    ;; Project is licensed under GPL2+ terms.  It includes images
+    ;; released under Public Domain terms, and SDL_rotozoom, released
+    ;; under LGPL2.1 terms.
+    (license (list license:gpl2+ license:public-domain license:lgpl2.1))))
+
 (define-public warzone2100
   (package
     (name "warzone2100")
-    (version "3.2.3")
+    (version "3.4.1")
     (source
      (origin
        (method url-fetch)
-       (uri (string-append "mirror://sourceforge/warzone2100/archives/"
-                           "unsupported/Warzone2100-"
-                           (version-major+minor version) "/" version
-                           "/warzone2100-" version ".tar.xz"))
+       (uri (string-append "mirror://sourceforge/warzone2100/releases/"
+                           version
+                           "/warzone2100_src.tar.xz"))
        (sha256
-        (base32 "10kmpr4cby95zwqsl1zwx95d9achli6khq7flv6xmrq30a39xazw"))))
-    (build-system gnu-build-system)
+        (base32 "0savalmw1kp1sf8vg5aqrl5hc77p4jacxy5y9qj8k2hi2vqdfb7a"))
+       (modules '((guix build utils)))
+       (snippet
+        '(begin
+           (with-directory-excursion "3rdparty"
+             (for-each
+              delete-file-recursively
+              '("discord-rpc"
+                "miniupnp"
+                "utfcpp")))
+             #t))))
+    (build-system cmake-build-system)
     (arguments
-     `(#:configure-flags '("--with-distributor=Guix")
+     `(#:configure-flags '("-DWZ_DISTRIBUTOR=Guix"
+                           "-DENABLE_DISCORD=off")
+       #:tests? #f ; TODO: Tests seem to be broken, configure.ac is missing.
        #:phases
        (modify-phases %standard-phases
+         (add-after 'unpack 'fix-utfcpp-include
+           (lambda _
+             (substitute* "lib/framework/wzstring.cpp"
+               (("<utfcpp/source/utf8.h>") "<utf8.h>"))
+             #t))
          (add-after 'unpack 'link-tests-with-qt
            (lambda _
-             (substitute* "tests/Makefile.in"
+             (substitute* "tests/Makefile.am"
                (("(framework_linktest_LDADD|maptest_LDADD) = " prefix)
                 (string-append prefix "$(QT5_LIBS) ")))
              #t))
@@ -3229,32 +4612,38 @@ fullscreen, use F5 or Alt+Enter.")
                 (string-append "iV_DrawTextRotated(\"Press ESC to exit.\", "
                                "100, 100, 0.0f, font_regular);")))
              #t)))))
-    (native-inputs `(("gettext" ,gettext-minimal)
+    (native-inputs `(("asciidoc" ,asciidoc)
+                     ("asciidoctor" ,ruby-asciidoctor)
+                     ("gettext" ,gettext-minimal)
                      ("pkg-config" ,pkg-config)
                      ("unzip" ,unzip)
-                     ("zip" ,zip)))
-    (inputs `(("fontconfig" ,fontconfig)
+                     ;; 7z is used to create .zip archive, not `zip' as in version 3.2.*.
+                     ("p7zip" ,p7zip)))
+    (inputs `(("curl" ,curl)
+              ("fontconfig" ,fontconfig)
               ("freetype" ,freetype)
-              ("fribidi" ,fribidi)
               ("glew" ,glew)
               ("harfbuzz" ,harfbuzz)
               ("libtheora" ,libtheora)
               ("libvorbis" ,libvorbis)
               ("libxrandr" ,libxrandr)
+              ("libsodium" ,libsodium)
+              ("miniupnpc" ,miniupnpc)
               ("openal" ,openal)
               ("physfs" ,physfs)
               ("qtbase" ,qtbase)
               ("qtscript" ,qtscript)
               ("openssl" ,openssl)
-              ("sdl2" ,sdl2)))
-    (home-page "http://wz2100.net")
+              ("sdl2" ,sdl2)
+              ("utfcpp" ,utfcpp)))
+    (home-page "https://wz2100.net")
     (synopsis "3D Real-time strategy and real-time tactics game")
     (description
      "Warzone 2100 offers campaign, multi-player, and single-player skirmish
-modes. An extensive tech tree with over 400 different technologies, combined
+modes.  An extensive tech tree with over 400 different technologies, combined
 with the unit design system, allows for a wide variety of possible units and
 tactics.")
-    ; Everything is GPLv2+ unless otherwise specified in COPYING.NONGPL
+    ;; Everything is GPLv2+ unless otherwise specified in COPYING.NONGPL
     (license (list license:bsd-3
                    license:cc0
                    license:cc-by-sa3.0
@@ -3262,19 +4651,108 @@ tactics.")
                    license:gpl2+
                    license:lgpl2.1+))))
 
+(define-public widelands
+  (package
+    (name "widelands")
+    (version "21")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "https://launchpad.net/widelands/"
+                           "build" version "/build" version "/+download/"
+                           "widelands-build" version "-source.tar.gz"))
+       (sha256
+        (base32 "0mz3jily0w1zxxqbnkqrp6hl88xhrwzbil9crq7gpcwidx60w7k0"))
+       (modules '((guix build utils)))
+       (snippet
+        '(begin
+           (delete-file-recursively "src/third_party/minizip")
+           #t))
+       (patches
+        ;; Use system Minizip.  Patch is provided by Debian, and discussed
+        ;; upstream at <https://github.com/widelands/widelands/issues/399>.
+        (search-patches "widelands-system-wide_minizip.patch"))))
+    (build-system cmake-build-system)
+    (arguments
+     `(#:configure-flags
+       (let* ((out (assoc-ref %outputs "out"))
+              (share (string-append out "/share")))
+         (list (string-append "-DCMAKE_INSTALL_PREFIX=" out "/bin")
+               (string-append "-DWL_INSTALL_BASEDIR=" share "/widelands")
+               (string-append "-DWL_INSTALL_DATADIR=" share "/widelands")
+               "-DOPTION_BUILD_WEBSITE_TOOLS=OFF"
+               ;; CMakeLists.txt does not handle properly RelWithDebInfo build
+               ;; type.  When used, no game data is installed!
+               "-DCMAKE_BUILD_TYPE=Release"))
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'unbundle-fonts
+           ;; Unbundle fonts already packaged in Guix.  XXX: missing fonts are
+           ;; amiri, Culmus, mmrCensus, Nakula, and Sinhala.
+           (lambda* (#:key inputs #:allow-other-keys)
+             (with-directory-excursion "data/i18n/fonts"
+               (for-each (lambda (font)
+                           (delete-file-recursively font)
+                           (symlink (string-append (assoc-ref inputs font)
+                                                   "/share/fonts/truetype")
+                                    font))
+                         '("DejaVu" "MicroHei")))
+             #t)))))
+    (native-inputs
+     `(("gettext" ,gettext-minimal)
+       ("python" ,python-wrapper)))
+    (inputs
+     `(("boost" ,boost)
+       ("glew" ,glew)
+       ("icu4c" ,icu4c)
+       ("libpng" ,libpng)
+       ("minizip" ,minizip)
+       ("sdl" ,(sdl-union (list sdl2 sdl2-image sdl2-mixer sdl2-ttf)))
+       ("zlib" ,zlib)
+       ;; Fonts for the ‘unbundle-fonts’ phase.  Case matters in name!
+       ("DejaVu" ,font-dejavu)
+       ("MicroHei" ,font-wqy-microhei)))
+    (home-page "https://www.widelands.org/")
+    (synopsis "Fantasy real-time strategy game")
+    (description
+     "In Widelands, you are the regent of a small clan.  You start out with
+nothing but your headquarters, where all your resources are stored.
+
+In the course of the game, you will build an ever growing settlement.  Every
+member of your clan will do his or her part to produce more resources---wood,
+food, iron, gold and more---to further this growth.  The economic network is
+complex and different in the four tribes (Barbarians, Empire, Atlanteans, and
+Frisians).
+
+As you are not alone in the world, you will meet other clans sooner or later.
+Some of them may be friendly and you may eventually trade with them.  However,
+if you want to rule the world, you will have to train soldiers and fight.
+
+Widelands offers single-player mode with different campaigns; the campaigns
+all tell stories of tribes and their struggle in the Widelands universe!
+However, settling really starts when you unite with friends over the Internet
+or LAN to build up new empires together---or to crush each other in the dusts
+of war.  Widelands also offers an Artificial Intelligence to challenge you.")
+    ;; Game is released as GPL2+.  Some parts, e.g., art, are released under
+    ;; different licenses.
+    (license (list license:gpl2+
+                   license:expat           ;src/third_party/eris
+                   license:silofl1.1       ;Widelands.ttf
+                   license:cc-by-sa3.0)))) ;some music files
+
 (define-public starfighter
   (package
     (name "starfighter")
-    (version "2.0.0.3")
+    (version "2.3.1")
     (source (origin
               (method url-fetch)
               (uri (string-append
                     "https://github.com/pr-starfighter/starfighter/releases"
                     "/download/v" version "/starfighter-"
-                    (version-major+minor version) "-src.tar.gz"))
+                    version "-src.tar.gz"))
               (sha256
                (base32
-                "13vi5kh9ahws4f52421cbyw0jn7pmbnld358lqfmr6flql7ilj3b"))))
+                "13396hvsj4cswlrw52kwqn37dadxps00vhr0hrqgm87fl4ih5yyx"))))
     (build-system gnu-build-system)
     (native-inputs
      `(("pkg-config" ,pkg-config)))
@@ -3298,9 +4776,6 @@ in strikes against the evil corporation.")
                    license:cc-by-sa3.0
                    license:cc0
                    license:public-domain))))
-
-(define-public project-starfighter
-  (deprecated-package "project-starfighter" starfighter))
 
 (define-public chromium-bsu
   (package
@@ -3503,7 +4978,7 @@ with the \"Stamp\" tool within Tux Paint.")
 (define-public supertux
   (package
    (name "supertux")
-   (version "0.6.0")
+   (version "0.6.2")
    (source (origin
             (method url-fetch)
             (uri (string-append "https://github.com/SuperTux/supertux/"
@@ -3512,14 +4987,12 @@ with the \"Stamp\" tool within Tux Paint.")
             (file-name (string-append name "-" version ".tar.gz"))
             (sha256
              (base32
-              "1h1s4abirkdv4ag22zvyk6zkk64skqbjmcnnba67ps4hdzxfbhy4"))
+              "167m3z4m8n76dvbv42m1fnvabpbpsxvr28zk9641916jl9pfba96"))
             (patches
-             (search-patches "supertux-fix-build-with-gcc5.patch"
-                             "supertux-unbundle-squirrel.patch"))))
+             (search-patches "supertux-unbundle-squirrel.patch"))))
    (arguments
     '(#:tests? #f
       #:configure-flags '("-DINSTALL_SUBDIR_BIN=bin"
-                          "-DENABLE_BOOST_STATIC_LIBS=OFF"
                           "-DUSE_SYSTEM_PHYSFS=ON")
       #:phases
       (modify-phases %standard-phases
@@ -3547,27 +5020,26 @@ with the \"Stamp\" tool within Tux Paint.")
              ("boost" ,boost)
              ("freetype" ,freetype)
              ("squirrel" ,squirrel)))
-   (native-inputs `(("pkg-config" ,pkg-config)))
+   (native-inputs
+    `(("pkg-config" ,pkg-config)))
    (synopsis "2D platformer game")
-   (description "SuperTux is a free classic 2D jump'n run sidescroller game
-in a style similar to the original Super Mario games covered under
-the GNU GPL.")
+   (description "SuperTux is a classic 2D jump'n run sidescroller game in
+a style similar to the original Super Mario games.")
    (home-page "https://supertux.org/")
    (license license:gpl3+)))
 
 (define-public tintin++
   (package
     (name "tintin++")
-    (version "2.01.7")
+    (version "2.02.02")
     (source
      (origin
        (method url-fetch)
        (uri (string-append "mirror://sourceforge/tintin/TinTin++ Source Code/"
-                           (version-major+minor version)
+                           (string-drop-right version 1)
                            "/tintin-" version ".tar.gz"))
        (sha256
-        (base32
-         "033n84pyxml3n3gd4dq0497n9w331bnrr1gppwipz9ashmq8jz7v"))))
+        (base32 "11ylbp8ip7dwmh4gzb53z147pcfxkl3lwhyy8ngyn2zc634vdn65"))))
     (inputs
      `(("gnutls" ,gnutls)
        ("pcre" ,pcre)
@@ -3583,27 +5055,28 @@ the GNU GPL.")
              (chdir "src")
              #t)))))
     (build-system gnu-build-system)
-    (home-page "http://tintin.sourceforge.net/")
+    (home-page "https://tintin.mudhalla.net/")
     (synopsis "MUD client")
     (description
      "TinTin++ is a MUD client which supports MCCP (Mud Client Compression
 Protocol), MMCP (Mud Master Chat Protocol), xterm 256 colors, most TELNET
 options used by MUDs, as well as those required to login via telnet on
 Linux / Mac OS X servers, and an auto mapper with a VT100 map display.")
-    (license license:gpl2+)))
+    (license license:gpl3+)))
 
 (define-public laby
   (package
     (name "laby")
     (version "0.6.4")
     (source
-     (origin (method url-fetch)
-             (uri (string-append
-                   "https://github.com/sgimenez/laby/archive/"
-                   "laby-" version ".tar.gz"))
+     (origin (method git-fetch)
+             (uri (git-reference
+                    (url "https://github.com/sgimenez/laby")
+                    (commit (string-append name "-" version))))
+             (file-name (git-file-name name version))
              (sha256
               (base32
-               "0gyrfa95l1qka7gbjf7l6mk7mbfvph00l0c995ia272qdw7rjhyf"))
+               "12fq9hhrxpzgfinmj9ra9ckss9yficwdlrmgjvvsq7agvh3sgyl1"))
              (patches (search-patches "laby-make-install.patch"))))
     (build-system gnu-build-system)
     (inputs
@@ -3640,29 +5113,22 @@ programmers may also add their own favorite language.")
 (define-public bambam
   (package
     (name "bambam")
-    (version "0.6")
+    (version "1.0.0")
     (source
       (origin
         (method git-fetch)
         (uri (git-reference
               (url "https://github.com/porridge/bambam")
-              (commit version)))
+              (commit (string-append "v" version))))
         (file-name (git-file-name name version))
         (sha256
-         (base32
-          "08hcd0gzia3pz7fzk4pqc5kbq1074j4q0jcmbpgvr7n623nj2xa5"))))
+         (base32 "18cwd1wpyyx8y61cags9bkdhx9x858xicc4y1c9c2s0xjmgzhl3i"))))
     (build-system python-build-system)
     (arguments
-     `(#:python ,python-2
-       #:tests? #f ; no tests
+     `(#:tests? #f                      ; no tests
        #:phases
        (modify-phases %standard-phases
-         (delete 'build)
-         (add-before 'install 'patch-data-dir-location
-           (lambda _
-             (substitute* "bambam.py"
-               (("'data'") "'../share/bambam/data'"))
-             #t))
+         (delete 'build)                ; nothing to build
          (replace 'install
            (lambda* (#:key outputs #:allow-other-keys)
              (let* ((out   (assoc-ref outputs "out"))
@@ -3740,7 +5206,7 @@ colors, pictures, and sounds.")
     (inputs
      `(("bash" ,bash)
        ("love" ,love)))
-    (home-page "http://tangramgames.dk/games/mrrescue")
+    (home-page "https://tangramgames.dk/games/mrrescue")
     (synopsis "Arcade-style fire fighting game")
     (description
      "Mr. Rescue is an arcade styled 2d action game centered around evacuating
@@ -3753,7 +5219,7 @@ throwing people around in pseudo-randomly generated buildings.")
 (define-public hyperrogue
   (package
     (name "hyperrogue")
-    (version "10.5d")
+    (version "11.3a")
     ;; When updating this package, be sure to update the "hyperrogue-data"
     ;; origin in native-inputs.
     (source (origin
@@ -3764,7 +5230,7 @@ throwing people around in pseudo-randomly generated buildings.")
                     "-src.tgz"))
               (sha256
                (base32
-                "1ls055v4pv2xmn2a8lav7wl370zn0wsd91q41bk0amxd168kcndy"))))
+                "1yxabbswq02fc5frigvs43f83m5vlxybc7n5mynkwzj2c70lfp2k"))))
     (build-system gnu-build-system)
     (arguments
      `(#:tests? #f ; no check target
@@ -3775,7 +5241,8 @@ throwing people around in pseudo-randomly generated buildings.")
          (add-after 'set-paths 'set-sdl-paths
            (lambda* (#:key inputs #:allow-other-keys)
              (setenv "CPATH"
-                     (string-append (assoc-ref inputs "sdl-union")
+                     (string-append (or (getenv "CPATH") "") ":"
+                                    (assoc-ref inputs "sdl-union")
                                     "/include/SDL"))))
          (replace 'configure
            (lambda* (#:key inputs outputs #:allow-other-keys)
@@ -3841,7 +5308,7 @@ throwing people around in pseudo-randomly generated buildings.")
              "-win.zip"))
            (sha256
             (base32
-             "13n9hcvf9yv7kjghm5jhjpwq1kh94i4bgvcczky9kvdvw1y9278n"))))
+             "11yhbia45f1w9z0j67h9nynwjqmvakr9l6rnrmdrdkzin6lvzzj4"))))
        ("unzip" ,unzip)))
     (inputs
      `(("font-dejavu" ,font-dejavu)
@@ -3896,7 +5363,9 @@ symbols, it still needs graphics to render the non-euclidean world.")
        (list (string-append "CPPFLAGS=-I"
                             (assoc-ref %build-inputs "sdl-union")
                             "/include/SDL"))))
-    (inputs `(("sdl-union" ,(sdl-union (list sdl sdl-image)))))
+    (inputs
+     `(("glu" ,glu)
+       ("sdl-union" ,(sdl-union (list sdl sdl-image)))))
     (synopsis "Shooter with space station destruction")
     (description
      "Kobo Deluxe is an enhanced version of Akira Higuchi's XKobo graphical game
@@ -3907,7 +5376,7 @@ for Un*x systems with X11.")
 (define-public freeciv
   (package
    (name "freeciv")
-   (version "2.6.0")
+   (version "2.6.2")
    (source
     (origin
      (method url-fetch)
@@ -3919,8 +5388,7 @@ for Un*x systems with X11.")
                   (version-major+minor version) "/" version
                   "/freeciv-" version ".tar.bz2")))
      (sha256
-      (base32
-       "16f9wsnn7073s6chzbm3819swd0iw019p9nrzr3diiynk28kj83w"))))
+      (base32 "13vc2xg1cf19rhbnr7k38b56b2hdapqymq5vma1l69kn7hyyz0b1"))))
    (build-system gnu-build-system)
    (inputs
     `(("curl" ,curl)
@@ -3931,11 +5399,11 @@ for Un*x systems with X11.")
    (native-inputs
     `(("pkg-config" ,pkg-config)))
    (home-page "http://www.freeciv.org/")
-   (synopsis "Turn based empire building strategy game")
-   (description "Freeciv is a turn based empire building strategy game
+   (synopsis "Turn-based empire building strategy game")
+   (description "Freeciv is a turn-based empire building strategy game
 inspired by the history of human civilization.  The game commences in
 prehistory and your mission is to lead your tribe from the Stone Age
-to the Space Age.")
+into the Space Age.")
    (license license:gpl2+)))
 
 (define-public no-more-secrets
@@ -3946,7 +5414,7 @@ to the Space Age.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/bartobri/no-more-secrets.git")
+             (url "https://github.com/bartobri/no-more-secrets")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
@@ -4061,7 +5529,7 @@ Magic, Egypt, Indians, Norsemen, Persian or Romans.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/freegish/freegish.git")
+                      (url "https://github.com/freegish/freegish")
                       (commit commit)))
                 (file-name (git-file-name name version))
                 (sha256
@@ -4113,24 +5581,27 @@ emerges from a sewer hole and pulls her below ground.")
 (define-public cdogs-sdl
   (package
     (name "cdogs-sdl")
-    (version "0.6.9")
-    (source (origin
-              (method git-fetch)
-              (uri (git-reference
-                    (url "https://github.com/cxong/cdogs-sdl.git")
-                    (commit version)))
-              (file-name (git-file-name name version))
-              (sha256
-               (base32
-                "13gyv2hzk43za1n3lsjnd5v64xlzfzq7n10scd1rcbsnk1n007zr"))))
+    (version "0.8.0")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/cxong/cdogs-sdl")
+             (commit version)))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "0vx37zb2iw7sfw5a2bs97ydlmb301nvy485ybdm8g46c5hn9s13c"))))
     (build-system cmake-build-system)
     (arguments
      `(#:configure-flags
        (list (string-append "-DCDOGS_DATA_DIR="
                             (assoc-ref %outputs "out")
                             "/share/cdogs-sdl/"))))
+    (native-inputs
+     `(("pkg-config" ,pkg-config)))
     (inputs
-     `(("mesa" ,mesa)
+     `(("gtk+" ,gtk+)
+       ("mesa" ,mesa)
        ("sdl2" ,sdl2)
        ("sdl2-image" ,sdl2-image)
        ("sdl2-mixer" ,sdl2-mixer)))
@@ -4183,7 +5654,7 @@ over 100 user-created campaigns.")
                                     "/include/SDL:"
                                     (assoc-ref inputs "python")
                                     "/include/python2.7:"
-                                    (getenv "CPLUS_INCLUDE_PATH")))
+                                    (or (getenv "CPLUS_INCLUDE_PATH") "")))
              (substitute* "src/main/main.cpp"
                (("#include <SDL.h>" line)
                 (string-append line "
@@ -4245,22 +5716,19 @@ small robot living in the nano world, repair its maker.")
     ;; for a statement from the author.
     (license license:public-domain)))
 
-(define-public kiki-the-nano-bot
-  (deprecated-package "kiki-the-nano-bot" kiki))
-
 (define-public teeworlds
   (package
     (name "teeworlds")
-    (version "0.7.2")
+    (version "0.7.5")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/teeworlds/teeworlds.git")
+                    (url "https://github.com/teeworlds/teeworlds")
                     (commit version)))
               (file-name (git-file-name name version))
               (sha256
                (base32
-                "15l988qcsqgb6rjais0qd5sd2rjanm2708jmzvkariqzz0d6pb93"))
+                "169dl83q08zl4h813az8hjs4rs3dms9yjn6bnsld4fjcj0imvvc6"))
               (modules '((guix build utils)
                          (ice-9 ftw)
                          (ice-9 regex)
@@ -4272,9 +5740,7 @@ small robot living in the nano world, repair its maker.")
                                      (cut string-append base-dir <>))
                             (remove (cut string-match "(^.)|(^md5$)" <>)
                                     (scandir base-dir)))
-                  #t))
-              (patches
-               (search-patches "teeworlds-use-latest-wavpack.patch"))))
+                  #t))))
     (build-system gnu-build-system)
     (arguments
      `(#:tests? #f                      ; no tests included
@@ -4285,19 +5751,6 @@ small robot living in the nano world, repair its maker.")
        (modify-phases %standard-phases
          (replace 'configure
            (lambda* (#:key outputs #:allow-other-keys)
-             ;; The bundled json-parser uses an old API.
-             ;; To use the latest non-bundled version, we need to pass the
-             ;; length of the data in all 'json_parse_ex' calls.
-             (define (use-latest-json-parser file)
-               (substitute* file
-                 (("engine/external/json-parser/json\\.h")
-                  "json-parser/json.h")
-                 (("json_parse_ex\\(&JsonSettings, pFileData, aError\\);")
-                  "json_parse_ex(&JsonSettings,
-                                 pFileData,
-                                 strlen(pFileData),
-                                 aError);")))
-
              ;; Embed path to assets.
              (substitute* "src/engine/shared/storage.cpp"
                (("#define DATA_DIR.*")
@@ -4329,13 +5782,6 @@ settings.link.libs:Add(\"wavpack\")")
              (substitute* "src/engine/client/sound.cpp"
                (("engine/external/wavpack/wavpack\\.h")
                 "wavpack/wavpack.h"))
-             (for-each use-latest-json-parser
-                       '("src/game/client/components/countryflags.cpp"
-                         "src/game/client/components/menus_settings.cpp"
-                         "src/game/client/components/skins.cpp"
-                         "src/game/client/localization.cpp"
-                         "src/game/editor/auto_map.h"
-                         "src/game/editor/editor.cpp"))
              #t))
          (replace 'build
            (lambda _
@@ -4345,7 +5791,9 @@ settings.link.libs:Add(\"wavpack\")")
              (let* ((arch ,(system->linux-architecture
                             (or (%current-target-system)
                                 (%current-system))))
-                    (build (string-append "build/" arch "/release/"))
+                    (build (string-append "build/" (if (string=? arch "i386")
+                                                       "x86" arch)
+                                          "/release/"))
                     (data-built (string-append build "data/"))
                     (out (assoc-ref outputs "out"))
                     (bin (string-append out "/bin/"))
@@ -4395,6 +5843,14 @@ The Flag.  You can even design your own maps!")
        (list "--with-system-enet")
        #:phases
        (modify-phases %standard-phases
+         (add-after 'unpack 'fix-build-with-new-gcc
+           (lambda _
+             ;; Fix build with GCC6 and later by avoiding comparing ifstream
+             ;; to NULL.  Can be removed for versions > 1.21.
+             (substitute* "src/lev/Proxy.cc"
+               (("ifs != NULL")
+                "ifs"))
+             #t))
          (add-after 'unpack 'find-sdl
            (lambda _
              (substitute* "configure"
@@ -4449,7 +5905,8 @@ with the mouse isn’t always trivial.")
                 "047sf00x71xbmi8bqrhfbmr9bk89l2gbykkqsfpw4wz6yfjscs6y"))))
     (build-system gnu-build-system)
     (arguments
-     `(#:tests? #f))                    ; no tests included
+     `(#:tests? #f                      ; no tests included
+       #:configure-flags '("CFLAGS=-fgnu89-inline"))) ; fix inlines
     (inputs
      `(("sdl-union" ,(sdl-union (list sdl sdl-image sdl-mixer sdl-ttf)))
        ("freetype" ,freetype)
@@ -4462,10 +5919,10 @@ with the mouse isn’t always trivial.")
     (synopsis "Abstract puzzle game")
     (description "Chroma is an abstract puzzle game. A variety of colourful
 shapes are arranged in a series of increasingly complex patterns, forming
- fiendish traps that must be disarmed and mysterious puzzles that must be
- manipulated in order to give up their subtle secrets. Initially so
- straightforward that anyone can pick it up and begin to play, yet gradually
- becoming difficult enough to tax even the brightest of minds.")
+fiendish traps that must be disarmed and mysterious puzzles that must be
+manipulated in order to give up their subtle secrets.  Initially so
+straightforward that anyone can pick it up and begin to play, yet gradually
+becoming difficult enough to tax even the brightest of minds.")
     (license license:gpl2+)))
 
 (define-public fillets-ng
@@ -4537,13 +5994,10 @@ underwater realm quarrel among themselves or comment on the efforts of your
 fish.  The whole game is accompanied by quiet, comforting music.")
     (license license:gpl2+)))
 
-(define-public fish-fillets-ng
-  (deprecated-package "fish-fillets-ng" fillets-ng))
-
 (define-public crawl
   (package
     (name "crawl")
-    (version "0.23.2")
+    (version "0.25.0")
     (source
      (origin
        (method url-fetch)
@@ -4556,8 +6010,18 @@ fish.  The whole game is accompanied by quiet, comforting music.")
              (string-append "http://crawl.develz.org/release/stone_soup-"
                             version "-nodeps.tar.xz")))
        (sha256
-        (base32 "1hw10hqhh688mrqs9vxrl17y1dzfjzsmxz6izg1a9dzmjlhrc01a"))
-       (patches (search-patches "crawl-upgrade-saves.patch"))))
+        (base32 "0rn1wjxdqw33caiwisfypm1j8cid3c9pz01ahicl17144zs29z3d"))
+       (patches (search-patches "crawl-upgrade-saves.patch"))
+       ;; The 0.25.0 -nodeps.tar.xz was built from an OSX machine; normally
+       ;; apparently it's built from a Debian machine before the Debian
+       ;; packages are made.  These ._* files are binary and have the string
+       ;; "Mac OS X" in them... removing these seems to result in compilation
+       ;; again.
+       (modules '((guix build utils)))
+       (snippet
+        '(begin
+           (for-each delete-file (find-files "." "^\\._"))
+           #t))))
     (build-system gnu-build-system)
     (inputs
      `(("lua51" ,lua-5.1)
@@ -4619,9 +6083,6 @@ monsters in a quest to find the mystifyingly fabulous Orb of Zot.")
                    license:zlib
                    license:asl2.0))))
 
-(define-public dungeon-crawl-stone-soup
-  (deprecated-package "dungeon-crawl-stone-soup" crawl))
-
 ;; The linter here claims that patch file names should start with the package
 ;; name. But, in this case, the patches are inherited from crawl with the
 ;; "crawl-" prefix instead of "crawl-tiles-".
@@ -4657,9 +6118,6 @@ monsters in a quest to find the mystifyingly fabulous Orb of Zot.")
        ("pngcrush" ,pngcrush)
        ("which" ,which)))
     (synopsis "Graphical roguelike dungeon crawler game")))
-
-(define-public dungeon-crawl-stone-soup-tiles
-  (deprecated-package "dungeon-crawl-stone-soup-tiles" crawl-tiles))
 
 (define-public lugaru
   (package
@@ -4745,9 +6203,9 @@ fight against their plot and save his fellow rabbits from slavery.")
     (home-page "https://play0ad.com")
     (license (list (license:fsdg-compatible
                     "http://tavmjong.free.fr/FONTS/ArevCopyright.txt"
-                    (license:license-comment
-                     (package-license font-bitstream-vera)))
-                   (package-license font-bitstream-vera)
+                    "Similar to the license of the Bitstream Vera fonts.")
+                   (license:fsdg-compatible
+                    "https://www.gnome.org/fonts/#Final_Bitstream_Vera_Fonts")
                    license:cc-by-sa3.0
                    license:expat
                    license:gfl1.0
@@ -4788,7 +6246,7 @@ fight against their plot and save his fellow rabbits from slavery.")
        ("zlib" ,zlib)))
     (native-inputs
      `(("boost" ,boost)
-       ("cmake" ,cmake)
+       ("cmake" ,cmake-minimal)
        ("mesa" ,mesa)
        ("pkg-config" ,pkg-config)
        ("python-2" ,python-2)))
@@ -4946,7 +6404,7 @@ Crowther & Woods, its original authors, in 1995.  It has been known as
 (define-public tome4
   (package
     (name "tome4")
-    (version "1.5.10")
+    (version "1.6.7")
     (synopsis "Single-player, RPG roguelike game set in the world of Eyal")
     (source
      (origin
@@ -4954,8 +6412,7 @@ Crowther & Woods, its original authors, in 1995.  It has been known as
        (uri (string-append "https://te4.org/dl/t-engine/t-engine4-src-"
                            version ".tar.bz2"))
        (sha256
-        (base32
-         "0mc5dgh2x9nbili7gy6srjhb23ckalf08wqq2amyjr5rq392jvd7"))
+        (base32 "0283hvms5hr29zr0grd6gq059k0hg8hcz3fsmwjmysiih8790i68"))
        (modules '((guix build utils)))
        (snippet
         '(begin
@@ -4992,7 +6449,8 @@ Crowther & Woods, its original authors, in 1995.  It has been known as
                     (lambda* (#:key inputs #:allow-other-keys)
                       (setenv "CPATH"
                               (string-append (assoc-ref inputs "sdl-union")
-                                             "/include/SDL2"))
+                                             "/include/SDL2:"
+                                             (or (getenv "CPATH") "")))
                       #t))
                   (delete 'check)
                   ;; premake doesn't provide install target
@@ -5013,11 +6471,11 @@ Crowther & Woods, its original authors, in 1995.  It has been known as
                              (wrapper (string-append bin "/" ,name)))
                         ;; icon
                         (mkdir-p pixmaps)
-                        (system* unzip "-j"
-                                 (string-append
-                                  "game/engines/te4-" ,version ".teae")
-                                 (string-append
-                                  "data/gfx/" icon) "-d" pixmaps)
+                        (invoke unzip "-j"
+                                (string-append
+                                 "game/engines/te4-" ,version ".teae")
+                                (string-append
+                                 "data/gfx/" icon) "-d" pixmaps)
                         ;; game executable
                         (install-file "t-engine" data)
                         (mkdir-p bin)
@@ -5046,19 +6504,13 @@ Crowther & Woods, its original authors, in 1995.  It has been known as
                         (copy-recursively "game" (string-append data "/game"))
                         ;; launcher
                         (mkdir-p applications)
-                        (with-output-to-file (string-append applications "/"
-                                                            ,name ".desktop")
-                          (lambda ()
-                            (display
-                             (string-append
-                              "[Desktop Entry]
-Name=ToME4
-Comment=" ,synopsis "\n"
-"Exec=" ,name "\n"
-"Icon=" icon "\n"
-"Terminal=false
-Type=Application
-Categories=Game;RolePlaying;\n")))))
+                        (make-desktop-entry-file
+                         (string-append applications "/" ,name ".desktop")
+                         #:name "ToME4"
+                         #:comment ,synopsis
+                         #:exec ,name
+                         #:icon icon
+                         #:categories '("Game" "RolePlaying")))
                       #t)))))
     (home-page "https://te4.org")
     (description "Tales of Maj’Eyal (ToME) RPG, featuring tactical turn-based
@@ -5070,21 +6522,17 @@ intuitive mouse control, streamlined mechanics and deep, challenging combat,
 Tales of Maj’Eyal offers engaging roguelike gameplay for the 21st century.")
     (license license:gpl3+)))
 
-(define-public tales-of-maj-eyal
-  (deprecated-package "tales-of-maj-eyal" tome4))
-
 (define-public quakespasm
   (package
     (name "quakespasm")
-    (version "0.93.1")
+    (version "0.93.2")
     (source
      (origin
        (method url-fetch)
        (uri (string-append "mirror://sourceforge/quakespasm/Source/quakespasm-"
                            version ".tgz"))
        (sha256
-        (base32
-         "1bimv18f6rzhyjz78yvw2vqr5n0kdqbcqmq7cb3m951xgsxfcgpd"))))
+        (base32 "0qm0j5drybvvq8xadfyppkpk3rxqsxbywzm6iwsjwdf0iia3gss5"))))
     (arguments
      `(#:tests? #f
        #:make-flags '("CC=gcc"
@@ -5126,7 +6574,7 @@ some graphical niceities, and numerous bug-fixes and other improvements.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/Novum/vkQuake.git")
+             (url "https://github.com/Novum/vkQuake")
              (commit version)))
        (file-name (git-file-name name version))
        (sha256
@@ -5143,6 +6591,14 @@ some graphical niceities, and numerous bug-fixes and other improvements.")
                (string-append "LDFLAGS=-Wl,-rpath=" vulkanlib)
                "-CQuake"))
        #:phases (modify-phases %standard-phases
+                  (add-after 'unpack 'patch-for-new-vulkan
+                    (lambda _
+                      ;; Mimic upstream commit a869a22d9b51c68e for
+                      ;; compatibility with newer vulkan-headers.
+                      (substitute* "Quake/gl_rmisc.c"
+                        (("VK_DYNAMIC_STATE_RANGE_SIZE")
+                         "3"))
+                      #t))
                   (delete 'configure)
                   (add-after 'unpack 'fix-makefile-paths
                     (lambda* (#:key outputs #:allow-other-keys)
@@ -5251,14 +6707,14 @@ making Yamagi Quake II one of the most solid Quake II implementations available.
     (version "0.9.3.1")
     (source
      (origin
-       (method url-fetch)
-       (uri (string-append
-             "https://github.com/the-butterfly-effect/tbe/archive/"
-             "v" version ".tar.gz"))
-       (file-name (string-append name "-" version ".tar.gz"))
+       (method git-fetch)
+       (uri (git-reference
+              (url "https://github.com/the-butterfly-effect/tbe")
+              (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
        (sha256
         (base32
-         "18qkp7fgdvyl3haqqa693mgyic7afsznsxgz98z9wn4csaqxsnby"))))
+         "1ag2cp346f9bz9qy6za6q54id44d2ypvkyhvnjha14qzzapwaysj"))))
     (build-system gnu-build-system)
     (arguments
      `(#:phases
@@ -5285,7 +6741,7 @@ making Yamagi Quake II one of the most solid Quake II implementations available.
      `(("qtbase" ,qtbase)
        ("qtsvg" ,qtsvg)))
     (native-inputs
-     `(("cmake" ,cmake)
+     `(("cmake" ,cmake-minimal)
        ("gettext-minimal" ,gettext-minimal)
        ("qttools" ,qttools)))
     (synopsis "Realistic physics puzzle game")
@@ -5301,25 +6757,24 @@ elements to achieve a simple goal in the most complex way possible.")
 (define-public pioneer
   (package
     (name "pioneer")
-    (version "20180203")
+    (version "20200203")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/pioneerspacesim/pioneer.git")
+                    (url "https://github.com/pioneerspacesim/pioneer")
                     (commit version)))
               (file-name (git-file-name name version))
               (sha256
                (base32
-                "0hp2mf36kj2v93hka8m8lxw2qhmnjc62wjlpw7c7ix0r8xa01i6h"))))
-    (build-system gnu-build-system)
+                "1011xsi94jhw98mhm8kryq8ajig0qfbrdx5xdasi92bd4nk7lcp8"))))
+    (build-system cmake-build-system)
     (native-inputs
-     `(("autoconf" ,autoconf)
-       ("automake" ,automake)
-       ("pkg-config" ,pkg-config)))
+     `(("pkg-config" ,pkg-config)))
     (inputs
      `(("assimp" ,assimp)
        ("curl" ,curl)
        ("freetype" ,freetype)
+       ("glew" ,glew)
        ("glu" ,glu)
        ("libpng" ,libpng)
        ("libsigc++" ,libsigc++)
@@ -5329,17 +6784,10 @@ elements to achieve a simple goal in the most complex way possible.")
        ("sdl" ,(sdl-union (list sdl2 sdl2-image)))))
     (arguments
      `(#:tests? #f                      ;tests are broken
-       #:configure-flags (list "--with-external-liblua"
-                               (string-append "PIONEER_DATA_DIR="
-                                              %output "/share/games/pioneer"))
-       #:phases (modify-phases %standard-phases
-                  (add-before 'bootstrap 'fix-lua-check
-                    (lambda _
-                      (substitute* "configure.ac"
-                        (("lua5.2")
-                         (string-append "lua-" ,(version-major+minor
-                                                 (package-version lua-5.2))))))))))
-    (home-page "http://pioneerspacesim.net")
+       #:configure-flags (list "-DUSE_SYSTEM_LIBLUA:BOOL=YES"
+                               (string-append "-DPIONEER_DATA_DIR="
+                                              %output "/share/games/pioneer"))))
+    (home-page "https://pioneerspacesim.net")
     (synopsis "Game of lonely space adventure")
     (description
      "Pioneer is a space adventure game set in our galaxy at the turn of the
@@ -5360,7 +6808,7 @@ whatever you make of it.")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                     (url "https://github.com/umayr/badass.git")
+                     (url "https://github.com/umayr/badass")
                      (commit commit)))
               (file-name (git-file-name name version))
               (sha256
@@ -5385,7 +6833,7 @@ Github or Gitlab.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/colobot/colobot.git")
+             (url "https://github.com/colobot/colobot")
              (commit (string-append "colobot-gold-" version))
              (recursive? #t)))          ;for "data/" subdir
        (file-name (git-file-name name version))
@@ -5455,24 +6903,29 @@ You can save humanity and get programming skills!")
 (define-public gzdoom
   (package
     (name "gzdoom")
-    (version "3.7.2")
-    (source (origin
-              (method url-fetch)
-              (uri
-               (string-append "https://zdoom.org/files/gzdoom/src/gzdoom-src-g"
-                              version ".zip"))
-              (sha256
-               (base32
-                "0182f160m8d0c3nywjw3dxvnz93xjs4cn8akx7137cha4s05wdq7"))
-              (patches (search-patches "gzdoom-search-in-installed-share.patch"))
-              (modules '((guix build utils)))
-              (snippet
-               '(begin
-                  (delete-file-recursively "bzip2")
-                  (delete-file-recursively "game-music-emu")
-                  (delete-file-recursively "jpeg")
-                  (delete-file-recursively "zlib")
-                  #t))))
+    (version "4.3.2")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/coelckers/gzdoom")
+             (commit (string-append "g" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "0i4hyg72z84fc6ca2ic9q82q5cbgrbd7bynl3kpkypxvyasq08wz"))
+       (patches (search-patches "gzdoom-search-in-installed-share.patch"
+                                "gzdoom-find-system-libgme.patch"))
+       (modules '((guix build utils)))
+       (snippet
+        '(begin
+           ;; Remove some bundled libraries.  XXX There are more, but removing
+           ;; them would require, at least, patching the build system.
+           (with-directory-excursion "libraries"
+             (delete-file-recursively "bzip2")
+             (delete-file-recursively "game-music-emu")
+             (delete-file-recursively "jpeg")
+             (delete-file-recursively "zlib"))
+           #t))))
     (arguments
      '(#:tests? #f
        #:configure-flags
@@ -5482,8 +6935,12 @@ You can save humanity and get programming skills!")
            "-DCMAKE_CXX_FLAGS:="
            "-DSHARE_DIR=\\\"" out "/share/\\\" "
            "-DGUIX_OUT_PK3=\\\"" out "/share/games/doom\\\"")
-          ;; look for libraries at buildtime instead of
-          ;; dynamically finding them at runtime
+
+          ;; The build requires some extra convincing not to use the bundled
+          ;; libgme previously deleted in the soure snippet.
+          "-DFORCE_INTERNAL_GME=OFF"
+
+          ;; Link libraries at build time instead of loading them at run time.
           "-DDYN_OPENAL=OFF"
           "-DDYN_FLUIDSYNTH=OFF"
           "-DDYN_GTK=OFF"
@@ -5503,22 +6960,22 @@ You can save humanity and get programming skills!")
                   (string-append "COMMAND " (which "sh"))))
 
                (substitute*
-                   "src/sound/mididevices/music_fluidsynth_mididevice.cpp"
+                   "libraries/zmusic/mididevices/music_fluidsynth_mididevice.cpp"
                  (("/usr/share/sounds/sf2/FluidR3_GM.sf2")
                   (string-append fluid-3 "/share/soundfonts/FluidR3Mono_GM.sf3")))
 
                (substitute*
-                   "src/sound/mididevices/music_timiditypp_mididevice.cpp"
+                   "libraries/zmusic/mididevices/music_timiditypp_mididevice.cpp"
                  (("exename = \"timidity\"")
                   (string-append "exename = \"" timidity++ "/bin/timidity\"")))
                #t))))))
     (build-system cmake-build-system)
     (inputs `(("bzip2" ,bzip2)
               ("fluid-3" ,fluid-3)
-              ("fluidsynth" ,fluidsynth-1)      ;XXX: try using 2.x when updating
+              ("fluidsynth" ,fluidsynth)
               ("gtk+3" ,gtk+)
               ("libgme" ,libgme)
-              ("libjpeg" ,libjpeg)
+              ("libjpeg" ,libjpeg-turbo)
               ("libsndfile" ,libsndfile)
               ("mesa" ,mesa)
               ("mpg123" ,mpg123)
@@ -5546,7 +7003,7 @@ Strife, Chex Quest, and fan-created games like Harmony, Hacx and Freedoom.")
 (define-public odamex
   (package
     (name "odamex")
-    (version "0.8.0")
+    (version "0.8.1")
     (source
      (origin
        (method url-fetch)
@@ -5554,10 +7011,9 @@ Strife, Chex Quest, and fan-created games like Harmony, Hacx and Freedoom.")
              "mirror://sourceforge/odamex/Odamex/" version "/"
              "odamex-src-" version ".tar.gz"))
        (sha256
-        (base32
-         "1sh6lqj7vsdmnqz17hw0b6vy7xx6dp41k2sdw99ympsfa2xd1d2j"))))
+        (base32 "1ywbqkfacc9fc5di3dn95y5ah2ys9i241j64q3f37a73x92llw1i"))))
     (build-system cmake-build-system)
-    (arguments `(#:tests? #f)) ; no tests.
+    (arguments `(#:tests? #f))          ; no tests
     (inputs
      `(("sdl" ,sdl)
        ("sdl-mixer" ,sdl-mixer)
@@ -5574,7 +7030,7 @@ online.")
 (define-public chocolate-doom
   (package
     (name "chocolate-doom")
-    (version "3.0.0")
+    (version "3.0.1")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://www.chocolate-doom.org/downloads/"
@@ -5584,7 +7040,7 @@ online.")
                                   ".tar.gz"))
               (sha256
                (base32
-                "1f6sw6qa9z0a70dsjh5cs45fkyyxw68s7vkqlykihz8cjcisdbkk"))))
+                "1iy8rx7kjvi1zjiw4zh77szzmd1sgpqajvbhprh1sj93fhbxcdfl"))))
     (build-system gnu-build-system)
     (inputs `(("sdl2-net" ,sdl2-net)
               ("sdl2-mixer" , sdl2-mixer)
@@ -5610,15 +7066,15 @@ affect gameplay).")
   (package
     (inherit chocolate-doom)
     (name "crispy-doom")
-    (version "5.5.2")
+    (version "5.8.0")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/fabiangreffrath/crispy-doom.git")
+                    (url "https://github.com/fabiangreffrath/crispy-doom")
                     (commit (string-append "crispy-doom-" version))))
               (file-name (git-file-name name version))
               (sha256
-               (base32 "1a60ns0blhvml6gzj9qx18c18pbf02rq7vypaajd6nqy5h4fz3cn"))))
+               (base32 "1b6gn0dysv631jynh769whww9xcss1gms78sz3nrn855q1dsvcb4"))))
     (native-inputs
      (append
       (package-native-inputs chocolate-doom)
@@ -5628,7 +7084,7 @@ affect gameplay).")
      `(#:phases
        (modify-phases %standard-phases
          (replace 'bootstrap
-           ;; the autogen.sh script in the source tree doesn't work
+           ;; The bundled autogen.sh script unconditionally runs ./configure.
            (lambda _ (invoke "autoreconf" "-vif"))))))
     (synopsis "Limit-removing enhanced-resolution Doom source port based on
 Chocolate Doom")
@@ -5640,10 +7096,79 @@ entirely config file, savegame, netplay and demo compatible with the
 original.")
     (home-page "https://www.chocolate-doom.org/wiki/index.php/Crispy_Doom")))
 
+(define shlomif-cmake-modules
+  (origin
+    (method url-fetch)
+    (uri (string-append "https://bitbucket.org/shlomif/shlomif-cmake-modules/"
+                        "raw/c505713d7a7cda608f97f01577e5868a711b883e/"
+                        "shlomif-cmake-modules/Shlomif_Common.cmake"))
+    (sha256
+     (base32 "0kx9s1qqhhzprp1w3b67xmsns0n0v506bg5hgrshxaxpy6lqiwb2"))))
+
+(define-public rinutils
+  (package
+    (name "rinutils")
+    (version "0.2.0")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/shlomif/rinutils")
+                    (commit version)))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "1fpxyg86ggv0h7j8aarjjxrvwlj7jycd3bw066c0dwkq2fszxsf2"))))
+    (native-inputs
+     `(("perl" ,perl)
+       ;; The following is only needed for tests.
+       ("perl-file-find-object" ,perl-file-find-object)
+       ("perl-test-differences" ,perl-test-differences)
+       ("perl-class-xsaccessor" ,perl-class-xsaccessor)
+       ("perl-io-all" ,perl-io-all)
+       ("perl-test-runvalgrind" ,perl-test-runvalgrind)
+       ("cmake-rules" ,shlomif-cmake-modules)
+       ("pkg-config" ,pkg-config)))
+    (inputs
+     `(("cmocka" ,cmocka)
+       ("perl-env-path", perl-env-path)
+       ("perl-inline" ,perl-inline)
+       ("perl-inline-c" ,perl-inline-c)
+       ("perl-string-shellquote" ,perl-string-shellquote)
+       ("perl-test-trailingspace" ,perl-test-trailingspace)
+       ("perl-file-find-object-rule" ,perl-file-find-object-rule)
+       ("perl-text-glob" ,perl-text-glob)
+       ("perl-number-compare" ,perl-number-compare)
+       ("perl-moo" ,perl-moo)))
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'fix-build-env
+           (lambda* (#:key inputs #:allow-other-keys)
+             (use-modules (guix build utils))
+             (let* ((cmake-rules (assoc-ref inputs "cmake-rules")))
+               (copy-file cmake-rules
+                          (string-append "cmake/"
+                                         (strip-store-file-name cmake-rules)))
+               #t)))
+         (replace 'check
+           (lambda _
+             (with-directory-excursion "../source"
+               (setenv "FCS_TEST_BUILD" "1")
+               (setenv "RINUTILS_TEST_BUILD" "1")
+               ;; TODO: Run tests after setting RINUTILS_TEST_TIDY to `1',
+               ;; which requires tidy-all.
+               ;; (setenv "RINUTILS_TEST_TIDY" "1")
+               (invoke "perl" "CI-testing/continuous-integration-testing.pl")))))))
+    (build-system cmake-build-system)
+    (home-page "https://www.shlomifish.org/open-source/projects/")
+    (synopsis "C11 / gnu11 utilities C library")
+    (description "This package provides C11 / gnu11 utilities C library")
+    (license license:expat)))
+
 (define-public fortune-mod
   (package
     (name "fortune-mod")
-    (version "2.6.2")
+    (version "2.28.0")
     (source
      (origin
        (method git-fetch)
@@ -5652,8 +7177,7 @@ original.")
              (commit (string-append "fortune-mod-" version))))
        (file-name (git-file-name name version))
        (sha256
-        (base32
-         "11xff87s8ifw2dqs90n0rjq0psv4i7ykybygmibsqjj7id3xxw4c"))))
+        (base32 "1ppzgnffgdcmq6fq4gmdq2ig10ip2bnfgklkb3i8nc6bdxm7pb89"))))
     (build-system cmake-build-system)
     (arguments
      `(#:test-target "check"
@@ -5692,15 +7216,9 @@ original.")
        ("perl-class-xsaccessor" ,perl-class-xsaccessor)
        ("perl-io-all" ,perl-io-all)
        ("perl-test-runvalgrind" ,perl-test-runvalgrind)
-       ("cmake-rules"
-        ,(origin
-           (method url-fetch)
-           (uri (string-append "https://bitbucket.org/shlomif/shlomif-cmake-modules/"
-                               "raw/c505713d7a7cda608f97f01577e5868a711b883e/"
-                               "shlomif-cmake-modules/Shlomif_Common.cmake"))
-           (sha256
-            (base32 "0kx9s1qqhhzprp1w3b67xmsns0n0v506bg5hgrshxaxpy6lqiwb2"))))))
-    (home-page "http://www.shlomifish.org/open-source/projects/fortune-mod/")
+       ("cmake-rules" ,shlomif-cmake-modules)
+       ("rinutils" ,rinutils)))
+    (home-page "https://www.shlomifish.org/open-source/projects/fortune-mod/")
     (synopsis "The Fortune Cookie program from BSD games")
     (description "Fortune is a command-line utility which displays a random
 quotation from a collection of quotes.")
@@ -5913,7 +7431,7 @@ quotation from a collection of quotes.")
      `(("xonotic-data" ,xonotic-data)
        ("alsa-lib" ,alsa-lib)
        ("curl" ,curl)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libmodplug" ,libmodplug)
        ("libvorbis" ,libvorbis)
        ("libogg" ,libogg)
@@ -5937,7 +7455,7 @@ quotation from a collection of quotes.")
        ("pkg-config" ,pkg-config)
        ("libtool" ,libtool)
        ("gmp" ,gmp)))
-    (home-page "http://xonotic.org")
+    (home-page "https://xonotic.org")
     (synopsis "Fast-paced first-person shooter game")
     (description
      "Xonotic is a free, fast-paced first-person shooter.
@@ -6106,10 +7624,108 @@ when packaged in Blorb container files or optionally from individual files.")
       (home-page "http://frotz.sourceforge.net")
       (license license:gpl2+))))
 
+(define-public frozen-bubble
+  ;; Last official release is very outdated (2010).  Use latest commit (2017).
+  (let ((commit "d6a029110ad6ab9e4960052e175addc98807fb7e")
+        (revision "1"))
+    (package
+      (name "frozen-bubble")
+      (version (git-version "2.2.1" revision commit))
+      (source
+       (origin
+         (method git-fetch)
+         (uri (git-reference
+               (url "https://github.com/kthakore/frozen-bubble")
+               (commit commit)))
+         (file-name (git-file-name name version))
+         (sha256
+          (base32 "1rfrcym5lf4qac2qdklikb1ywijyxypq298azzxahy461dadl6cx"))))
+      (build-system perl-build-system)
+      (arguments
+       `(#:phases
+         (modify-phases %standard-phases
+           ;; Build process needs to create files in the "server"
+           ;; directory.
+           (add-after 'unpack 'fix-permissions
+             (lambda _
+               (for-each make-file-writable
+                         (find-files "server" "." #:directories? #t))))
+           ;; By default, build stops at warnings.
+           (add-after 'unpack 'prevent-build-error
+             (lambda _
+               (substitute* "inc/My/Builder.pm"
+                 (("-Werror") ""))
+               #t))
+           (add-after 'install 'install-desktop-file-and-icons
+             (lambda* (#:key outputs #:allow-other-keys)
+               (let* ((share (string-append (assoc-ref outputs "out") "/share"))
+                      (hicolor (string-append share "/icons/hicolor")))
+                 ;; Create desktop entry.
+                 (make-desktop-entry-file
+                  (string-append share "/applications/" ,name ".desktop")
+                  #:name "Frozen Bubble"
+                  #:comment "Frozen Bubble arcade game"
+                  #:exec ,name
+                  #:icon ,name
+                  #:categories '("Game" "ArcadeGame"))
+                 ;; Add icons.
+                 (with-directory-excursion "share/icons"
+                   (for-each
+                    (lambda (size)
+                      (let* ((dim (string-append size "x" size))
+                             (dir (string-append hicolor "/" dim "/apps")))
+                        (mkdir-p dir)
+                        (copy-file
+                         (string-append "frozen-bubble-icon-" dim ".png")
+                         (string-append dir "/frozen-bubble.png"))))
+                    '("16" "32" "48" "64"))))
+               #t))
+           (add-after 'install 'wrap-perl-libs
+             (lambda* (#:key outputs #:allow-other-keys)
+               (let ((out (assoc-ref outputs "out"))
+                     (perl5lib (getenv "PERL5LIB")))
+                 (for-each (lambda (prog)
+                             (wrap-program (string-append out "/" prog)
+                               `("PERL5LIB" ":" prefix
+                                 (,(string-append perl5lib ":" out
+                                                  "/lib/perl5/site_perl")))))
+                           (find-files "bin" ".")))
+               #t)))))
+      (native-inputs
+       `(("perl-alien-sdl" ,perl-alien-sdl)
+         ("perl-capture-tiny" ,perl-capture-tiny)
+         ("perl-locale-maketext-lexicon" ,perl-locale-maketext-lexicon)
+         ("perl-module-build" ,perl-module-build)
+         ("pkg-config" ,pkg-config)))
+      (inputs
+       `(("glib" ,glib)
+         ("perl-compress-bzip2" ,perl-compress-bzip2)
+         ("perl-file-sharedir" ,perl-file-sharedir)
+         ("perl-file-slurp" ,perl-file-slurp)
+         ("perl-file-which" ,perl-file-which)
+         ("perl-ipc-system-simple" ,perl-ipc-system-simple)
+         ("perl-sdl" ,perl-sdl)
+         ("sdl" ,(sdl-union (list sdl sdl-image sdl-mixer sdl-pango sdl-ttf)))))
+      (home-page "http://frozen-bubble.org/")
+      (synopsis "Puzzle with bubbles")
+      (description
+       "Frozen-Bubble is a clone of the popular Puzzle Bobble game, in which
+you attempt to shoot bubbles into groups of the same color to cause them to
+pop.
+
+Players compete as penguins and must use the arrow keys to aim a colored
+bubble at groups of bubbles.  The objective is to clear all the bubbles off
+the screen before a bubble passes below a line at the bottom.
+
+It features 100 single-player levels, a two-player mode, music and striking
+graphics.  A level editor is also included to allow players to create and play
+their own levels.")
+      (license license:gpl2))))
+
 (define-public libmanette
   (package
     (name "libmanette")
-    (version "0.2.2")
+    (version "0.2.4")
     (source (origin
               (method url-fetch)
               (uri (string-append "mirror://gnome/sources/libmanette/"
@@ -6117,7 +7733,7 @@ when packaged in Blorb container files or optionally from individual files.")
                                   "libmanette-" version ".tar.xz"))
               (sha256
                (base32
-                "1lpprk2qz1lsqf9xj6kj2ciyc1zmjhj5lwd584qkh7jgz2x9y6wb"))))
+                "1xrc6rh73v5w3kbkflzv1yg8sbxk4wf06hfk95raxhxlssza9q2g"))))
     (build-system meson-build-system)
     (native-inputs
      `(("glib" ,glib "bin")             ; for glib-compile-resources
@@ -6138,7 +7754,7 @@ GameController.")
 (define-public quadrapassel
   (package
     (name "quadrapassel")
-    (version "3.31.3")
+    (version "3.36.02")
     (source (origin
               (method url-fetch)
               (uri (string-append "mirror://gnome/sources/quadrapassel/"
@@ -6146,11 +7762,21 @@ GameController.")
                                   "quadrapassel-" version ".tar.xz"))
               (sha256
                (base32
-                "08i01nsgfb502xzzrrcxxbs7awb0j1h4c08vmj0j18ipa1sz8vb8"))))
-    (build-system glib-or-gtk-build-system)
+                "0c80pzipxricyh4wydffsc94wj6ymnanqr9bg6wdx51hz1mmmilb"))))
+    (build-system meson-build-system)
+    (arguments
+     '(#:glib-or-gtk? #t
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'skip-gtk-update-icon-cache
+           ;; Don't create 'icon-theme.cache'.
+           (lambda _
+             (substitute* "build-aux/meson_post_install.py"
+               (("gtk-update-icon-cache") (which "true")))
+             #t)))))
     (native-inputs
      `(("desktop-file-utils" ,desktop-file-utils) ;for desktop-file-validate
-       ("gettext" ,gnu-gettext)
+       ("gettext" ,gettext-minimal)
        ("glib" ,glib "bin")             ;for glib-compile-resources
        ("itstool" ,itstool)
        ("libxml2" ,libxml2)             ;for xmllint
@@ -6159,6 +7785,7 @@ GameController.")
     (inputs
      `(("clutter" ,clutter)
        ("clutter-gtk" ,clutter-gtk)
+       ("gsound" ,gsound)
        ("gtk+" ,gtk+)
        ("libcanberra" ,libcanberra)
        ("libmanette" ,libmanette)
@@ -6178,7 +7805,7 @@ your score gets higher, you level up and the blocks fall faster.")
 (define-public endless-sky
   (package
     (name "endless-sky")
-    (version "0.9.8")
+    (version "0.9.12")
     (source
       (origin
         (method git-fetch)
@@ -6187,8 +7814,7 @@ your score gets higher, you level up and the blocks fall faster.")
                (commit (string-append "v" version))))
         (file-name (git-file-name name version))
         (sha256
-         (base32
-          "0i36lawypikbq8vvzfis1dn7yf6q0d2s1cllshfn7kmjb6pqfi6c"))))
+         (base32 "18nkl4s3r5sy3sd9lhbdg9160c7fggklklprx0d5azifc8g6k0wj"))))
     (build-system scons-build-system)
     (arguments
      `(#:scons ,scons-python2
@@ -6239,7 +7865,7 @@ civilized than your own.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/stepmania/stepmania.git")
+             (url "https://github.com/stepmania/stepmania")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
@@ -6356,7 +7982,7 @@ civilized than your own.")
        ("gtk+" ,gtk+-2)
        ("jsoncpp" ,jsoncpp)
        ("libpng" ,libpng)
-       ("libjpeg" ,libjpeg-8)
+       ("libjpeg" ,libjpeg-turbo)
        ("libmad" ,libmad)
        ("libogg" ,libogg)
        ("libva" ,libva)
@@ -6409,7 +8035,8 @@ to download and install them in @file{$HOME/.stepmania-X.Y/Songs} directory.")
            (lambda* (#:key inputs #:allow-other-keys)
              (setenv "CPATH"
                      (string-append (assoc-ref inputs "sdl")
-                                    "/include/SDL"))
+                                    "/include/SDL:"
+                                    (or (getenv "CPATH") "")))
              #t))
          (add-after 'unpack 'fix-compilation-errors
            (lambda _
@@ -6465,9 +8092,6 @@ and cooperative.")
     ;; developers.
     (license (list license:gpl2+ license:lgpl2.1+))))
 
-(define-public battle-tanks
-  (deprecated-package "battle-tanks" btanks))
-
 (define-public slingshot
   (package
     (name "slingshot")
@@ -6476,7 +8100,7 @@ and cooperative.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/ryanakca/slingshot.git")
+             (url "https://github.com/ryanakca/slingshot")
              (commit version)))
        (file-name (git-file-name name version))
        (sha256
@@ -6528,7 +8152,8 @@ affected by the gravity of the planets.")
            (lambda* (#:key inputs #:allow-other-keys)
              (setenv "CPATH"
                      (string-append (assoc-ref inputs "sdl")
-                                    "/include/SDL"))
+                                    "/include/SDL:"
+                                    (or (getenv "CPATH") "")))
              #t)))))
     (inputs
      `(("fontconfig" ,fontconfig)
@@ -6613,19 +8238,18 @@ game field is extended to 4D space, which has to filled up by the gamer with
        ("innoextract" ,innoextract)))
     (home-page "https://arx-libertatis.org/")
     (synopsis "Port of Arx Fatalis, a first-person role-playing game")
-    (description "Arx Libertatis is a cross-platform, open source port of Arx
-Fatalis, a 2002 first-person role-playing game / dungeon crawler developed by
-Arkane Studios.  This port however does not include the game data, so you need
-to obtain a copy of the original Arx Fatalis or its demo to play Arx
-Libertatis.  Arx Fatalis features crafting, melee and ranged combat, as well
-as a unique casting system where the player draws runes in real time to effect
-the desired spell.")
+    (description "Arx Libertatis is a cross-platform port of Arx Fatalis, a 2002
+first-person role-playing game / dungeon crawler developed by Arkane Studios.
+This port however does not include the game data, so you need to obtain a copy
+of the original Arx Fatalis or its demo to play Arx Libertatis.  Arx Fatalis
+features crafting, melee and ranged combat, as well as a unique casting system
+where the player draws runes in real time to effect the desired spell.")
     (license license:gpl3+)))
 
 (define-public edgar
   (package
     (name "edgar")
-    (version "1.31")
+    (version "1.33")
     (source
      (origin
        (method url-fetch)
@@ -6633,7 +8257,7 @@ the desired spell.")
         (string-append "https://github.com/riksweeney/edgar/releases/download/"
                        version "/edgar-" version "-1.tar.gz"))
        (sha256
-        (base32 "0i4851ci8a86ql4bhdq3xdfmf4b9z5zrd4xpc6vhi06697zgm13i"))))
+        (base32 "1mbx7dvizdca4g1blcv3bdh6yxd13k47rkya4rdzg0nvvz24m175"))))
     (build-system gnu-build-system)
     (arguments '(#:tests? #f            ; there are no tests
                  #:make-flags
@@ -6647,7 +8271,8 @@ the desired spell.")
                      (lambda* (#:key inputs #:allow-other-keys)
                        (setenv "CPATH"
                                (string-append (assoc-ref inputs "sdl2-union")
-                                              "/include/SDL2"))
+                                              "/include/SDL2:"
+                                              (or (getenv "CPATH") "")))
                        #t)))))
     (inputs
      `(("sdl2-union" ,(sdl-union (list sdl2 sdl2-image sdl2-mixer sdl2-ttf)))
@@ -6656,7 +8281,7 @@ the desired spell.")
      `(("pkg-config" ,pkg-config)
        ("autoconf" ,autoconf)
        ("automake" ,automake)
-       ("gnu-gettext" ,gnu-gettext)
+       ("gnu-gettext" ,gettext-minimal)
        ("libtool" ,libtool)
        ("which" ,which)))
     (synopsis "2d action platformer game")
@@ -6666,9 +8291,6 @@ Edgar fears the worst: he has been captured by the evil sorcerer who lives in
 a fortress beyond the forbidden swamp.")
     (home-page "https://www.parallelrealities.co.uk/games/edgar/")
     (license license:gpl2+)))
-
-(define-public the-legend-of-edgar
-  (deprecated-package "the-legend-of-edgar" edgar))
 
 (define-public openclonk
   (package
@@ -6699,6 +8321,22 @@ a fortress beyond the forbidden swamp.")
                 (string-append (getcwd) "/gmock/googletest"))
                (("PATH_SUFFIXES \"src\" \"gtest\"")
                 "PATH_SUFFIXES \"src\""))
+             #t))
+         (add-after 'unpack 'adjust-backward-cpp-includes
+           (lambda _
+             ;; XXX: The bundled backward-cpp exports a CMake "interface"
+             ;; that includes external libraries such as libdl from glibc.
+             ;; By default, CMake interface includes are treated as "system
+             ;; headers", and GCC behaves poorly when glibc is passed as a
+             ;; system header (causing #include_next failures).
+
+             ;; Here we prevent targets that consume the Backward::Backward
+             ;; interface from treating it as "system includes".
+             (substitute* "CMakeLists.txt"
+               (("target_link_libraries\\((.+) Backward::Backward\\)" all target)
+                (string-append "set_property(TARGET " target " PROPERTY "
+                               "NO_SYSTEM_FROM_IMPORTED true)\n"
+                               all)))
              #t))
          (add-after 'unpack 'add-libiberty
            ;; Build fails upon linking executables without this.
@@ -6751,7 +8389,7 @@ a fortress beyond the forbidden swamp.")
      "Multiplayer action game where you control small and nimble humanoids")
     (description "OpenClonk is a multiplayer action/tactics/skill game.  It is
 often referred to as a mixture of The Settlers and Worms.  In a simple 2D
-antfarm-style landscape, the player controls his crew of Clonks, small but
+antfarm-style landscape, the player controls a crew of Clonks, small but
 robust humanoid beings.  The game encourages free play but the normal goal is
 to either exploit valuable resources from the earth by building a mine or
 fight each other on an arena-like map.")
@@ -6765,7 +8403,7 @@ fight each other on an arena-like map.")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/flareteam/flare-engine.git")
+                    (url "https://github.com/flareteam/flare-engine")
                     (commit (string-append "v" version))))
               (file-name (git-file-name name version))
               (sha256
@@ -6793,7 +8431,7 @@ action RPGs.")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/flareteam/flare-game.git")
+                    (url "https://github.com/flareteam/flare-game")
                     (commit (string-append "v" version))))
               (file-name (git-file-name name version))
               (sha256
@@ -6919,7 +8557,7 @@ Orcus Dome from evil.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/HackerPoet/MarbleMarcher.git")
+                      (url "https://github.com/HackerPoet/MarbleMarcher")
                       (commit commit)))
                 (file-name (git-file-name name version))
                 (sha256
@@ -6977,15 +8615,15 @@ levels to unlock.")
 (define simgear
   (package
     (name "simgear")
-    (version "2018.3.2")
-    (source (origin
-              (method url-fetch)
-              (uri (string-append "mirror://sourceforge/flightgear/release-"
-                                  (version-major+minor version) "/"
-                                  "simgear-" version ".tar.bz2"))
-              (sha256
-               (base32
-                "1941ay8rngz4vwsx37bbpxr48hpcvcbj3xw1hy264lq4qnl99c68"))))
+    (version "2018.3.5")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "mirror://sourceforge/flightgear/release-"
+                           (version-major+minor version) "/"
+                           "simgear-" version ".tar.bz2"))
+       (sha256
+        (base32 "1vkqm66r1205k3hdjmx5wmx5kvmsb0dgfzrs8n5gqnxj8szs42dl"))))
     (build-system cmake-build-system)
     (arguments
      `(#:phases
@@ -6995,7 +8633,7 @@ levels to unlock.")
              ;; Skip tests that require internet access.
              (invoke "ctest" "-E" "(http|dns)"))))))
     (inputs
-     `(("boost" ,boost-for-mysql) ; fails with 1.69
+     `(("boost" ,boost-for-mysql)       ; fails with 1.69
        ("curl" ,curl)
        ("expat" ,expat)
        ("mesa" ,mesa)
@@ -7014,21 +8652,21 @@ and also provides the base for the FlightGear Flight Simulator.")
   (package
     (name "flightgear")
     (version (package-version simgear))
-    (source (origin
-              (method url-fetch)
-              (uri (string-append "mirror://sourceforge/flightgear/release-"
-                                  (version-major+minor version) "/"
-                                  "flightgear-" version ".tar.bz2"))
-              (sha256
-               (base32
-                "0lzy524cjzs8vldcjcc750bgg5c4mq9fkymxxxzqf68ilc4d1jss"))
-              (modules '((guix build utils)))
-              (snippet
-               '(begin
-                  ;; There are some bundled libraries.
-                  (for-each delete-file-recursively
-                            '("3rdparty/sqlite3/"))
-                  #t))))
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "mirror://sourceforge/flightgear/release-"
+                           (version-major+minor version) "/"
+                           "flightgear-" version ".tar.bz2"))
+       (sha256
+        (base32 "0ya3vb539kwi1qrifqhsj5j3k4w6s06hrllp2vdzxf6id7cgf0hc"))
+       (modules '((guix build utils)))
+       (snippet
+        '(begin
+           ;; There are some bundled libraries.
+           (for-each delete-file-recursively
+                     '("3rdparty/sqlite3/"))
+           #t))))
     (build-system cmake-build-system)
     (arguments
      `(#:configure-flags
@@ -7094,7 +8732,7 @@ and also provides the base for the FlightGear Flight Simulator.")
                                "FlightGear-" version "-data.tar.bz2"))
            (sha256
             (base32
-             "0h4npa7gqpf5fw6pv2bpw0wbwr7fa2vhia21cjbigfgd75x82zi7"))))))
+             "04fv9za5zlyxlyfh6jx78y42l3jazvzl9dq2y6rzxqlcc9g5swhk"))))))
     (home-page "https://home.flightgear.org/")
     (synopsis "Flight simulator")
     (description "The goal of the FlightGear project is to create a
@@ -7108,7 +8746,7 @@ simulator.")
 (define-public jumpnbump
   (package
     (name "jumpnbump")
-    (version "1.60")
+    (version "1.61")
     (source (origin
               (method git-fetch)
               (uri (git-reference
@@ -7117,7 +8755,7 @@ simulator.")
               (file-name (git-file-name name version))
               (sha256
                (base32
-                "0gwi58ck4magvdim8wmxdqnsi0fqdpvqia9kcc7q73nqf34jjz3v"))))
+                "12lwl5sl5n009nb83r8l4lakb9286csqdf1ynpmwwydy17giqsdp"))))
     (build-system gnu-build-system)
     (arguments
      `(#:make-flags
@@ -7152,14 +8790,14 @@ play with up to four players simultaneously.  It has network support.")
 (define-public hedgewars
   (package
     (name "hedgewars")
-    (version "0.9.25")
+    (version "1.0.0")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://www.hedgewars.org/download/releases/"
                                   "hedgewars-src-" version ".tar.bz2"))
               (sha256
                (base32
-                "08x7fqpy0hpnbfq2k06g522xayi7s53bca819zfhalvqnqs76pdk"))))
+                "0nqm9w02m0xkndlsj6ys3wr0ik8zc14zgilq7k6fwjrf3zk385i1"))))
     (build-system cmake-build-system)
     (arguments
      ;; XXX: Engine is built as Pascal source code, requiring Free Pascal
@@ -7168,32 +8806,16 @@ play with up to four players simultaneously.  It has network support.")
      `(#:configure-flags (list "-DBUILD_ENGINE_C=ON")
        #:phases
        (modify-phases %standard-phases
-         (add-after 'unpack 'remove-failing-test
-           ;; XXX: Remove single failing test.  Note: it is marked
-           ;; a "non-critical" test.
-           (lambda _
-             (delete-file-recursively "tests/lua_noncritical")
-             #t))
-         (add-after 'unpack 'fix-compiler
-           ;; XXX: Flag BUILD_ENGINE_C, as set above, implies using Clang to
-           ;; compile files.  However, using `clang' globally leads to the
-           ;; error: qtbase-5.11.3/include/qt5/QtCore/qglobal.h:45:12: fatal
-           ;; error: 'type_traits' file not found.
-           ;;
-           ;; Therefore, we make sure to use `c++' everywhere but in the
-           ;; engine.
-           (lambda _
-             (substitute* "project_files/hwc/CMakeLists.txt"
-               (("find_package\\(SDL2_ttf 2 REQUIRED\\)" all)
-                (string-append all "\n"
-                               "set(CMAKE_C_COMPILER ${CLANG_EXECUTABLE})\n"
-                               "set(CMAKE_CXX_COMPILER ${CLANG_EXECUTABLE})")))
-             (substitute* "CMakeLists.txt"
-               (("set\\(CMAKE_C(XX)?_COMPILER" all) (string-append "#" all)))
-             #t))
          (replace 'check
+           (lambda _ (invoke "ctest")))
+         (add-after 'install 'install-icon
            (lambda _
-             (invoke "ctest"))))))
+             ;; Install icon for the desktop file.
+             (let* ((out (assoc-ref %outputs "out"))
+                    (icons (string-append out "/share/icons/hicolor/512x512/apps")))
+               (with-directory-excursion (string-append "../hedgewars-src-" ,version)
+                 (install-file "misc/hedgewars.png" icons)))
+             #t)))))
     (inputs
      `(("ffmpeg" ,ffmpeg)
        ("freeglut" ,freeglut)
@@ -7238,7 +8860,7 @@ and bring the war to your enemy.")
 (define-public harmonist
   (package
     (name "harmonist")
-    (version "0.2")
+    (version "0.3.0")
     (source (origin
               (method git-fetch)
               (uri (git-reference
@@ -7247,7 +8869,7 @@ and bring the war to your enemy.")
               (file-name (git-file-name name version))
               (sha256
                (base32
-                "0hqy9kqwgirwkq1v3vj1hp9m93hjvdj4nxcfbjfvvwk2bbzri3s2"))))
+                "146wiyanag0zqj6fhyll2sw6sydnnll8mgxhhqf9sjqsl2rx4s5r"))))
     (build-system go-build-system)
     (arguments
      '(#:import-path "git.tuxfamily.org/harmonist/harmonist"))
@@ -7347,22 +8969,18 @@ on items and player adaptability for character progression.")
            ;; game, so we borrow SCUMMVM's.
            (let ((apps (string-append out "/share/applications")))
              (mkdir-p apps)
-             (with-output-to-file (string-append apps "/drascula.desktop")
-               (lambda _
-                 (format #t
-                         "[Desktop Entry]~@
-                     Name=Drascula: The Vampire Strikes Back~@
-                     GenericName=Drascula~@
-                     Exec=~a/bin/drascula~@
-                     Icon=~a/share/icons/hicolor/scalable/apps/scummvm.svg~@
-                     Categories=AdventureGame;Game;RolePlaying;~@
-                     Keywords=game;adventure;roleplaying;2D,fantasy;~@
-                     Comment=Classic 2D point and click adventure game~@
-                     Comment[de]=klassisches 2D-Abenteuerspiel in Zeigen-und-Klicken-Manier~@
-                     Comment[fr]=Jeux classique d'aventure pointer-et-cliquer en 2D~@
-                     Comment[it]=Gioco classico di avventura punta e clicca 2D~@
-                     Type=Application~%"
-                         out scummvm))))
+             (make-desktop-entry-file
+              (string-append apps "/drascula.desktop")
+              #:name "Drascula: The Vampire Strikes Back"
+              #:generic-name "Drascula"
+              #:exec (string-append out "/bin/drascula")
+              #:icon (string-append scummvm "/share/icons/hicolor/scalable/apps/scummvm.svg")
+              #:categories '("AdventureGame" "Game" "RolePlaying")
+              #:keywords '("game" "adventure" "roleplaying" "2D" "fantasy")
+              #:comment '((#f "Classic 2D point and click adventure game")
+                          ("de" "Klassisches 2D-Abenteuerspiel in Zeigen-und-Klicken-Manier")
+                          ("fr" "Jeu classique d'aventure pointer-et-cliquer en 2D")
+                          ("it" "Gioco classico di avventura punta e clicca 2D"))))
            #t))))
     (native-inputs
      `(("bash" ,bash)
@@ -7400,6 +9018,301 @@ Count Drascula and embark on a fun yet dangerous quest to rescue her.
 Unfortunately, Hacker is not aware of Drascula's real ambitions: DOMINATING
 the World and demonstrating that he is even more evil than his brother Vlad.")
     ;; Drascula uses a BSD-like license.
+    (license (license:non-copyleft "file:///readme.txt"))))
+
+(define (make-lure-package name language hash)
+  (package
+    (name name)
+    (version "1.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append
+             "mirror://sourceforge/scummvm/extras/"
+             "Lure%20of%20the%20Temptress/"
+             name "-" version ".zip"))
+       (sha256
+        (base32 hash))))
+    (build-system trivial-build-system)
+    (arguments
+     `(#:modules ((guix build utils))
+       #:builder
+       (begin
+         (use-modules (guix build utils))
+         (let* ((out (assoc-ref %outputs "out"))
+                (share (string-append out "/share"))
+                (data (string-append share "/" ,name "/" ,language))
+                (apps (string-append share "/applications"))
+                (bin (string-append out "/bin"))
+                (executable (string-append bin "/" ,name))
+                (scummvm (assoc-ref %build-inputs "scummvm")))
+           (let ((unzip (string-append (assoc-ref %build-inputs "unzip")
+                                       "/bin/unzip")))
+             (invoke unzip "-j" (assoc-ref %build-inputs "source")))
+           (let ((doc (string-append share "/doc/" ,name "-" ,version)))
+             (for-each (lambda (f) (install-file f doc))
+                       (find-files "." "\\.(txt|PDF|pdf)$")))
+           (for-each (lambda (f) (install-file f data))
+                     (find-files "." "\\.(vga|VGA)$"))
+           ;; Build the executable.
+           (mkdir-p bin)
+           (let ((bash (assoc-ref %build-inputs "bash")))
+             (with-output-to-file executable
+               (lambda ()
+                 (format #t "#!~a/bin/bash~%" bash)
+                 (format #t "exec ~a/bin/scummvm -q ~a -p ~a lure~%"
+                         scummvm ,language data))))
+           (chmod executable #o755)
+           ;; Create desktop file.  There is no dedicated
+           ;; icon for the game, so we borrow SCUMMVM's.
+           (mkdir-p apps)
+           (with-output-to-file (string-append apps "/" ,name ".desktop")
+             (lambda _
+               (format #t
+                       "[Desktop Entry]~@
+                     Name=Lure of the Temptress~@
+                     GenericName=Lure~@
+                     Exec=~a~@
+                     Icon=~a/share/icons/hicolor/scalable/apps/scummvm.svg~@
+                     Categories=AdventureGame;Game;RolePlaying;~@
+                     Keywords=game;adventure;roleplaying;2D,fantasy;~@
+                     Comment=Classic 2D point and click adventure game~@
+                     Comment[de]=klassisches 2D-Abenteuerspiel in Zeigen-und-Klicken-Manier~@
+                     Comment[fr]=Jeu classique d'aventure pointer-et-cliquer en 2D~@
+                     Comment[it]=Gioco classico di avventura punta e clicca 2D~@
+                     Type=Application~%"
+                       executable scummvm)))
+           #t))))
+    (native-inputs
+     `(("unzip" ,unzip)))
+    (inputs
+     `(("bash" ,bash)
+       ("scummvm" ,scummvm)))
+    (home-page "https://www.scummvm.org")
+    (synopsis "2D point and click fantasy adventure game")
+    (description
+     "Lure of the Temptress is a classic 2D point and click adventure game.
+
+You are Diermot, an unwilling hero who'd prefer a quiet life, and are, to all
+intents and purposes, a good man.  After decades of unrest the King has united
+the warring factions in his kingdom and all his lands are at peace, except
+a remote region around a town called Turnvale.  A revolt has recently taken
+place in Turnvale, a revolt orchestrated by an apprentice sorceress called
+Selena, the titular temptress.  The king calls together his finest horsemen
+and heads off (with you in tow) to Turnvale just to witness how hellish
+mercenary monsters called Skorl are invading the town.
+
+The king's men are defeated, the king is killed and you fall of your horse and
+bang your head heavily on the ground.  You have been *unconscious for a while
+when you realize that you are in a dingy cell guarded by a not so friendly
+Skorl.  Maybe it would be an idea to try and escape...")
+    (license (license:non-copyleft "file:///README"))))
+
+(define-public lure
+  (make-lure-package
+   "lure" "en" "0201i70qcs1m797kvxjx3ygkhg6kcl5yf49sihba2ga8l52q45zk"))
+
+(define-public lure-de
+  (make-lure-package
+   "lure-de" "de" "0sqq7h5llml6rv85x0bfv4bgzwhs4c82p4w4zmfcaab6cjlad0sy"))
+
+(define-public lure-es
+  (make-lure-package
+   "lure-es" "es" "1dvv5znvlsakw6w5r16calv9jkgw27aymgybsf4q22lcmpxbj1lk"))
+
+(define-public lure-fr
+  (make-lure-package
+   "lure-fr" "fr" "1y51jjb7f8023832g44vd1jsb6ni85586pi2n5hjg9qjk6gi90r9"))
+
+(define-public lure-it
+  (make-lure-package
+   "lure-it" "it" "1ks6n39r1cllisrrh6pcr39swsdv7ng3gx5c47vaw71zzfr70hjj"))
+
+(define (make-queen-package name file-prefix release language hash)
+  (package
+    (name name)
+    (version release)
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "mirror://sourceforge/scummvm/extras/"
+                           "Flight%20of%20the%20Amazon%20Queen/"
+                           file-prefix release ".zip"))
+       (sha256
+        (base32 hash))))
+    (build-system trivial-build-system)
+    (arguments
+     `(#:modules ((guix build utils))
+       #:builder
+       (begin
+         (use-modules (guix build utils))
+         (let* ((out (assoc-ref %outputs "out"))
+                (share (string-append out "/share"))
+                (data (string-append share "/" ,name))
+                (apps (string-append share "/applications"))
+                (bin (string-append out "/bin"))
+                (executable (string-append bin "/" ,name))
+                (scummvm (assoc-ref %build-inputs "scummvm")))
+           (let ((unzip (string-append (assoc-ref %build-inputs "unzip")
+                                       "/bin/unzip")))
+             (invoke unzip "-j" (assoc-ref %build-inputs "source")))
+           (let ((doc (string-append share "/doc/" ,name "-" ,version)))
+             (install-file "readme.txt" doc))
+           (install-file "queen.1c" data)
+           (mkdir-p bin)
+           (let ((bash (assoc-ref %build-inputs "bash")))
+             (with-output-to-file executable
+               (lambda ()
+                 (format #t "#!~a/bin/bash~%" bash)
+                 (format #t "exec ~a/bin/scummvm -q fr -p ~a queen~%"
+                         scummvm data))))
+           (chmod executable #o755)
+           ;; Create desktop file.  There is no dedicated
+           ;; icon for the game, so we borrow SCUMMVM's.
+           (mkdir-p apps)
+           (with-output-to-file (string-append apps "/" ,name ".desktop")
+             (lambda _
+               (format #t
+                       "[Desktop Entry]~@
+                       Name=Flight of the Amazon Queen~@
+                       GenericName=Queen~@
+                       Comment=Embark on a quest to rescue a kidnapped princess and in the process, discover the true sinister intentions of a suspiciously located Lederhosen company~@
+                       Comment[de]=Begib dich auf ein Abenteuer, um eine entführte Prinzessin zu retten und entdecke die wahren, finsteren Absichten eines verdächtig erscheinenden Lederhosen-Unternehmens~@
+                       Type=Application~@
+                       Exec=~a~@
+                       Icon=~a/share/icons/hicolor/scalable/apps/scummvm.svg~@
+                       Categories=AdventureGame;Game;RolePlaying;~@
+                       Keywords=adventure;game;roleplaying;fantasy;~%"
+                       executable scummvm))))
+         #t)))
+    (native-inputs
+     `(("unzip" ,unzip)))
+    (inputs
+     `(("bash" ,bash)
+       ("scummvm" ,scummvm)))
+    (home-page "https://www.scummvm.org/")
+    (synopsis "Classic 2D point and click adventure game")
+    (description "Flight of the Amazon Queen is a 2D point-and-click
+adventure game set in the 1940s.
+
+You assume the role of Joe King, a pilot for hire who is given the job
+of flying Faye Russell (a famous movie star) into the Amazon jungle
+for a photo shoot.  Of course, things never go according to plans.
+After an unfortunate turn of events they find themselves stranded in
+the heart of the Amazon jungle, where Joe will embark on a quest to
+rescue a kidnapped princess and in the process, discover the true
+sinister intentions of a suspiciously located Lederhosen company.  In
+a rich 2D environment, Joe will cross paths with a variety of unlikely
+jungle inhabitants including, but not limited to, a tribe of Amazon
+women and 6-foot-tall pygmies.")
+    (license (license:non-copyleft "file:///readme.txt"))))
+
+(define-public queen
+  (make-queen-package
+   "queen" "FOTAQ_Talkie-" "1.1" "en"
+   "1a6q71q1dl9vvw2qqsxk5h1sv0gaqy6236zr5905w2is01gdsp52"))
+
+(define-public queen-de
+  (make-queen-package
+   "queen-de" "FOTAQ_Ger_talkie-" "1.0" "de"
+   "13vn43x7214vyprlpqabvv71k890nff3d6fjscflr1ll7acjca3f"))
+
+(define-public queen-fr
+  (make-queen-package
+   "queen-fr" "FOTAQ_Fr_Talkie_" "1.0" "fr"
+   "0hq5g4qrkcwm2kn5i4kv4hijs9hi7bw9xl1vrwd1l69qqn30crwy"))
+
+(define-public queen-it
+  (make-queen-package
+   "queen-it" "FOTAQ_It_Talkie_" "1.0" "it"
+   "1h76y70lrpzfjkm53n4nr364nhyka54vbz9r7sadzyzl7c7ilv4d"))
+
+(define-public sky
+  (package
+    (name "sky")
+    (version "1.2")                     ;1.3 is floppy version
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "mirror://sourceforge/scummvm/extras/"
+                           "Beneath%20a%20Steel%20Sky/"
+                           "bass-cd-" version ".zip"))
+       (sha256
+        (base32 "14s5jz67kavm8l15gfm5xb7pbpn8azrv460mlxzzvdpa02a9n82k"))))
+    (build-system trivial-build-system)
+    (arguments
+     `(#:modules ((guix build utils))
+       #:builder
+       (begin
+         (use-modules (guix build utils))
+         (let* ((out (assoc-ref %outputs "out"))
+                (share (string-append out "/share"))
+                (data (string-append share "/" ,name))
+                (apps (string-append share "/applications"))
+                (bin (string-append out "/bin"))
+                (executable (string-append bin "/" ,name))
+                (scummvm (assoc-ref %build-inputs "scummvm")))
+           (let ((unzip (string-append (assoc-ref %build-inputs "unzip")
+                                       "/bin/unzip")))
+             (invoke unzip "-j" (assoc-ref %build-inputs "source")))
+           (let ((doc (string-append share "/doc/bass-" ,version)))
+             (install-file "readme.txt" doc))
+           (for-each (lambda (f) (install-file f data))
+                     (find-files "." "^sky\\."))
+           ;; Build the executable.
+           (mkdir-p bin)
+           (let ((bash (assoc-ref %build-inputs "bash")))
+             (with-output-to-file executable
+               (lambda ()
+                 (format #t "#!~a/bin/bash~%" bash)
+                 (format #t "exec ~a/bin/scummvm -p ~a sky~%" scummvm data))))
+           (chmod executable #o755)
+           ;; Create desktop file.  There is no dedicated
+           ;; icon for the game, so we borrow SCUMMVM's.
+           (mkdir-p apps)
+           (with-output-to-file (string-append apps "/" ,name ".desktop")
+             (lambda _
+               (format #t
+                       "[Desktop Entry]~@
+                       Name=Beneath a Steel Sky~@
+                       GenericName=Bass~@
+                       Exec=~a~@
+                       Icon=~a/share/icons/hicolor/scalable/apps/scummvm.svg~@
+                       Categories=AdventureGame;Game;RolePlaying;~@
+                       Keywords=adventure;game;roleplaying;cyberpunk;~@
+                       Comment=A science-fiction adventure game set in a bleak post-apocalyptic vision of the future~@
+                       Comment[de]=Ein Science-Fiction-Abenteuerspiel \
+angesiedelt in einer düsteren, postapokalyptischen Vision der Zukunft~@
+                       Type=Application~%"
+                       executable scummvm)))
+           #t))))
+    (native-inputs
+     `(("unzip" ,unzip)))
+    (inputs
+     `(("bash" ,bash)
+       ("scummvm" ,scummvm)))
+    (home-page "https://www.scummvm.org/")
+    (synopsis "Classic 2D point an click science-fiction adventure game")
+    (description
+     "Beneath a Steel Sky is a science-fiction thriller set in a bleak
+post-apocalyptic vision of the future.  It revolves around Union City,
+where selfishness, rivalry, and corruption by its citizens seems to be
+all too common, those who can afford it live underground, away from
+the pollution and social problems which are plaguing the city.
+
+You take on the role of Robert Foster, an outcast of sorts from the
+city since a boy who was raised in a remote environment outside of
+Union City simply termed ``the gap''.  Robert's mother took him away
+from Union City as a child on their way to ``Hobart'' but the
+helicopter crashed on its way.  Unfortunately, Robert's mother died,
+but he survived and was left to be raised by a local tribe from the
+gap.
+
+Years later, Union City security drops by and abducts Robert, killing
+his tribe in the process; upon reaching the city the helicopter taking
+him there crashes with him escaping, high upon a tower block in the
+middle of the city.  He sets out to discover the truth about his past,
+and to seek vengeance for the killing of his tribe.")
     (license (license:non-copyleft "file:///readme.txt"))))
 
 (define-public gnurobots
@@ -7523,23 +9436,15 @@ win.")
 (define-public freeorion
   (package
     (name "freeorion")
-    (version "0.4.8")
+    (version "0.4.10")
     (source
      (origin
-       (method git-fetch)
-       (uri (git-reference
-             (url "https://github.com/freeorion/freeorion.git")
-             ;; Most recent stable release uses boost_signals (v1) which was
-             ;; later replaced with boost-signals2 and no longer exists.  This
-             ;; commit builds and runs.
-             ;;
-             ;; TODO: Update this when the next stable release when it is
-             ;; available.
-             (commit "470d0711537804df3c2ca25532f674ab4bec58af")))
-       (file-name (git-file-name name version))
+       (method url-fetch)
+       (uri (string-append "https://github.com/freeorion/freeorion/releases/"
+                           "download/v" version "/FreeOrion_v" version
+                           "_2020-07-10.f3d403e_Source.tar.gz"))
        (sha256
-        (base32
-         "1wsw632l1cj17px6i88nqjzs0dngp5rsr67n6qkkjlfjfxi69j0f"))
+        (base32 "12xspixrkx6mmmsdqjha0hg02r4y73pk229l0wjq9s0yp8nb8ap7"))
        (modules '((guix build utils)))
        (snippet
         '(begin
@@ -7572,7 +9477,7 @@ win.")
        ("libpng" ,libpng)
        ("libvorbis" ,libvorbis)
        ("openal" ,openal)
-       ("python2" ,python-2.7)
+       ("python" ,python)
        ("sdl2" ,sdl2)
        ("zlib" ,zlib)))
     (home-page "https://www.freeorion.org/index.php/Main_Page")
@@ -7598,7 +9503,7 @@ remake of that series or any other game.")
     (origin
      (method git-fetch)
      (uri (git-reference
-           (url "https://github.com/leela-zero/leela-zero.git")
+           (url "https://github.com/leela-zero/leela-zero")
            (commit (string-append "v" version))))
      (file-name (git-file-name name version))
      (sha256
@@ -7638,3 +9543,2167 @@ remake of that series or any other game.")
 the AlphaGo Zero paper.  The current best network weights file for the engine
 can be downloaded from @url{https://zero.sjeng.org/best-network}.")
    (license license:gpl3+)))
+
+(define-public q5go
+  (package
+   (name "q5go")
+   (version "1.0")
+   (source (origin
+            (method git-fetch)
+            (uri (git-reference
+                  (url "https://github.com/bernds/q5Go")
+                  (commit (string-append "q5go-" version))))
+            (file-name (git-file-name name version))
+            (sha256
+             (base32
+              "1gdlfqcqkqv7vph3qwq78d0qz6dhmdsranxq9bmixiisbzkqby31"))))
+   (build-system gnu-build-system)
+   (native-inputs
+    `(("pkg-config" ,pkg-config)))
+   (inputs
+    `(("qtbase" ,qtbase)
+      ("qtmultimedia" ,qtmultimedia)
+      ("qtsvg" ,qtsvg)))
+   (arguments
+    '(#:phases
+      (modify-phases %standard-phases
+        (add-after 'unpack 'fix-configure-script
+          (lambda _
+            ;; Bypass the unavailable qtchooser program.
+            (substitute* "configure"
+              (("test -z \"QTCHOOSER\"")
+               "false")
+              (("qtchooser -run-tool=(.*) -qt=qt5" _ command)
+               command))
+            #t))
+        (add-after 'unpack 'fix-paths
+          (lambda _
+            (substitute* '("src/pics/Makefile.in"
+                           "src/translations/Makefile.in")
+              (("\\$\\(datadir\\)/qGo/")
+               "$(datadir)/q5go/"))
+            #t))
+        (add-after 'install 'install-desktop-file
+          (lambda* (#:key outputs #:allow-other-keys)
+            (let* ((out (assoc-ref outputs "out"))
+                   (apps (string-append out "/share/applications"))
+                   (pics (string-append out "/share/q5go/pics")))
+              (delete-file-recursively (string-append out "/share/applnk"))
+              (delete-file-recursively (string-append out "/share/mimelnk"))
+              (install-file "../source/src/pics/Bowl.ico" pics)
+              (mkdir-p apps)
+              (with-output-to-file (string-append apps "/q5go.desktop")
+                (lambda _
+                  (format #t
+                          "[Desktop Entry]~@
+                           Name=q5go~@
+                           Exec=~a/bin/q5go~@
+                           Icon=~a/Bowl.ico~@
+                           Categories=Game;~@
+                           Comment=Game of Go~@
+                           Comment[de]=Spiel des Go~@
+                           Comment[eo]=Goo~@
+                           Comment[es]=Juego de Go~@
+                           Comment[fr]=Jeu de Go~@
+                           Comment[ja]=囲碁~@
+                           Comment[ko]=바둑~@
+                           Comment[zh]=围棋~@
+                           Terminal=false~@
+                           Type=Application~%"
+                          out pics))))
+             #t)))))
+   (synopsis "Qt GUI to play the game of Go")
+   (description
+    "This a tool for Go players which performs the following functions:
+@itemize
+@item SGF editor,
+@item Analysis frontend for Leela Zero (or compatible engines),
+@item GTP interface (to play against an engine),
+@item IGS client (to play on the internet),
+@item Export games to a variety of formats.
+@end itemize")
+   (home-page "https://github.com/bernds/q5Go")
+   (license license:gpl2+)))
+
+(define-public ktuberling
+  (package
+    (name "ktuberling")
+    (version "19.08.3")
+    (source
+     (origin
+      (method url-fetch)
+      (uri (string-append "mirror://kde/stable/applications/" version
+                          "/src/ktuberling-" version ".tar.xz"))
+      (sha256
+       (base32 "1qdf4q6wjh1lnlqw5c8z4rpj9w5vbyjfri1dah6yjm3mwppbc12j"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("perl" ,perl)))
+    (inputs
+     `(("kcompletion" ,kcompletion)
+       ("kconfigwidgets" ,kconfigwidgets)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kdbusaddons" ,kdbusaddons)
+       ("kdelibs4support" ,kdelibs4support)
+       ("ki18n" ,ki18n)
+       ("kwidgetsaddons" ,kwidgetsaddons)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("qtbase" ,qtbase)
+       ("qtmultimedia" ,qtmultimedia)
+       ("qtdeclarative" ,qtdeclarative)
+       ("qtsvg" ,qtsvg)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Stamp drawing toy")
+    (description "KTuberling is a drawing toy intended for small children and
+adults who remain young at heart.  The game has no winner; the only purpose is
+to make the funniest faces you can.  Several activities are possible, e.g.:
+
+@itemize
+@item Give the potato a funny face, clothes, and other goodies
+@item Build a small town, complete with school, zoo, and fire department
+@item Create a fantastic moonscape with spaceships and aliens
+@item Top a pizza
+@end itemize
+
+KTuberling can speak the name of each the object in several languages,
+to assist in learning basic vocabulary.
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:fdl1.2+))))
+
+(define-public picmi
+  (package
+    (name "picmi")
+    (version "19.08.3")
+    (source
+     (origin
+      (method url-fetch)
+      (uri (string-append "mirror://kde/stable/applications/" version
+                          "/src/picmi-" version ".tar.xz"))
+      (sha256
+       (base32 "0z9mpmv49w914gqdx274brdzl6d1bz9j9nkvbwgmr3iq1ba49m3f"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kdbusaddons" ,kdbusaddons)
+       ("kdeclarative" ,kdeclarative)
+       ("ki18n" ,ki18n)
+       ("kio" ,kio)
+       ("knewstuff" ,knewstuff)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)
+       ("qtsvg" ,qtsvg)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Number logic game")
+    (description "Picmi is a number logic game in which cells in a grid have
+to be colored or left blank according to numbers given at the side of the
+grid.  The aim is to reveal a hidden picture.
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:fdl1.2+))))
+
+(define-public kolf
+  (package
+    (name "kolf")
+    (version "19.08.3")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "mirror://kde/stable/applications/" version
+                           "/src/kolf-" version ".tar.xz"))
+       (sha256
+        (base32 "06sfd0llr5cc3zf1vrpcxgw9bm009ky7y8822kynic9ipcd4z1hw"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("kcompletion" ,kcompletion)
+       ("kconfigwidgets" ,kconfigwidgets)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kdbusaddons" ,kdbusaddons)
+       ("ki18n" ,ki18n)
+       ("kio" ,kio)
+       ("kwidgetsaddons" ,kwidgetsaddons)
+       ("kxmlgui" ,kxmlgui)
+       ("ktextwidgets" ,ktextwidgets)
+       ("libkdegames" ,libkdegames)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Miniature golf game")
+    (description "Kolf is a miniature golf game for one to ten players.  The
+game is played from an overhead view, with a short bar representing the golf
+club.  Kolf features many different types of objects, such as water hazards,
+slopes, sand traps, and black holes (warps), among others.
+
+Features are:
+@itemize
+@item Single and Multi-player (up to ten players) modes
+@item High scores table
+@item Dynamic courses
+@item Third-party courses
+@item Course editor
+@end itemize
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:lgpl2.0+ license:fdl1.2+))))
+
+(define-public libkmahjongg
+  (package
+    (name "libkmahjongg")
+    (version "19.08.3")
+    (source
+     (origin
+      (method url-fetch)
+      (uri (string-append "mirror://kde/stable/applications/"
+                          version "/src/libkmahjongg-" version ".tar.xz"))
+      (sha256
+       (base32 "0rdimk11hrc8qrmiv26z0ddjzi1k6806c0rfskx4cwmildmh6zgx"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)))
+    (inputs
+     `(("kauth" ,kauth)
+       ("kcompletion" ,kcompletion)
+       ;("kconfig" ,kconfig)
+       ("kcodecs" ,kcodecs)
+       ("kconfigwidgets" ,kconfigwidgets)
+       ("kcoreaddons" ,kcoreaddons)
+       ("ki18n" ,ki18n)
+       ("kwidgetsaddons" ,kwidgetsaddons)
+       ("qtbase" ,qtbase)
+       ("qtsvg" ,qtsvg)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Shared library for kmahjongg and kshisen")
+    (description "Shared library and common files for kmahjongg, kshisen and
+other Mah Jongg like games.")
+    (license (list license:gpl2+ license:lgpl2.0+ license:fdl1.2+))))
+
+(define-public kmahjongg
+  (package
+    (name "kmahjongg")
+    (version "19.08.3")
+    (source
+     (origin
+      (method url-fetch)
+      (uri (string-append "mirror://kde/stable/applications/"
+                          version "/src/kmahjongg-" version ".tar.xz"))
+      (sha256
+       (base32 "08na845h0nhmfrszdmvfq5y1dy7kgbrlzjp0f5snvbbf7w44ci6p"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("kcompletion" ,kcompletion)
+       ("kcrash" ,kcrash)
+       ("kdbusaddons" ,kdbusaddons)
+       ("kdeclarative" ,kdeclarative)
+       ("ki18n" ,ki18n)
+       ("knewstuff" ,knewstuff)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("libkmahjongg" ,libkmahjongg)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)
+       ("qtsvg" ,qtsvg)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Tile laying patience")
+    (description "In KMahjongg the tiles are scrambled and staked on top of
+each other to resemble a certain shape.  The player is then expected to remove
+all the tiles off the game board by locating each tile's matching pair.
+
+A variety of tile layouts are included, as well as an editor to create new
+layouts.
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:lgpl2.0+ license:fdl1.2+))))
+
+(define-public kshisen
+  (package
+    (name "kshisen")
+    (version "19.08.3")
+    (source
+     (origin
+      (method url-fetch)
+      (uri (string-append "mirror://kde/stable/applications/"
+                          version "/src/kshisen-" version ".tar.xz"))
+      (sha256
+       (base32 "1bq5m48af4h5apfp3bfsp76nlpv6h5sc0gd544zv7cgpfznz1sds"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ;("perl" ,perl)
+       ;("pkg-config" ,pkg-config)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("kauth" ,kauth)
+       ("kcompletion" ,kcompletion)
+       ("kconfigwidgets" ,kconfigwidgets)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kdbusaddons" ,kdbusaddons)
+       ("ki18n" ,ki18n)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("libkmahjongg" ,libkmahjongg)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Shisen-Sho solitaire game")
+    (description "KShisen is a solitaire-like game played using the standard
+set of Mahjong tiles.  Unlike Mahjong however, KShisen has only one layer of
+scrambled tiles
+
+This package is part of the KDE games module.")
+    (license license:gpl2+)))
+
+(define-public kajongg
+  (package
+    (name "kajongg")
+    (version "19.08.3")
+    (source
+     (origin
+      (method url-fetch)
+      (uri (string-append "mirror://kde/stable/applications/"
+                          version "/src/kajongg-" version ".tar.xz"))
+      (sha256
+       (base32 "0ql6p5zifdpdf65r7ki9ml123azpwwk9x3x8r9ij6xhjnf7p7x6w"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ;("perl" ,perl)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("kconfig" ,kconfig)
+       ("kconfigwidgets" ,kconfigwidgets)
+       ("kcoreaddons" ,kcoreaddons)
+       ("ki18n" ,ki18n)
+       ("libkmahjongg" ,libkmahjongg)
+       ("python" ,python)
+       ("qtbase" ,qtbase)
+       ("qtsvg" ,qtsvg)))
+    (propagated-inputs
+     `(("python-twisted" ,python-twisted)
+       ("python-pyqt" ,python-pyqt)))
+    ;; FIXME: Need to wrap PYTHONPATH
+    (home-page "https://games.kde.org/")
+    (synopsis "Classical Mah Jongg game for 4 players")
+    (description "Kajongg is the ancient Chinese board game for 4 players.
+
+If you are looking for the Mah Jongg solitaire please use the application
+kmahjongg.
+
+Kajongg can be used in two different ways: Scoring a manual game where you
+play as always and use Kajongg for the computation of scores and for
+bookkeeping.  Or you can use Kajongg to play against any combination of other
+human players or computer players.
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:fdl1.2+))))
+
+(define-public kbreakout
+  (package
+    (name "kbreakout")
+    (version "19.08.3")
+    (source
+     (origin
+      (method url-fetch)
+      (uri (string-append "mirror://kde/stable/applications/" version
+                          "/src/kbreakout-" version ".tar.xz"))
+      (sha256
+       (base32 "0gwzx1z9mxrjlcjzglg8cxkyd6900whcar3b5j9laxxarc6xhj8w"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("kcompletion" ,kcompletion)
+       ("kconfig" ,kconfig)
+       ("kconfigwidgets" ,kconfigwidgets)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kdbusaddons" ,kdbusaddons)
+       ("ki18n" ,ki18n)
+       ("kwidgetsaddons" ,kwidgetsaddons)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Breakout like game")
+    (description "KBreakout is similar to the classics breakout and xboing,
+featuring a number of added graphical enhancements and effects.  You control a
+paddle at the bottom of the playing-field, and must destroy bricks at the top
+by bouncing balls against them.
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:fdl1.2+))))
+
+(define-public kmines
+  (package
+    (name "kmines")
+    (version "19.08.3")
+    (source
+     (origin
+      (method url-fetch)
+      (uri (string-append "mirror://kde/stable/applications/" version
+                          "/src/kmines-" version ".tar.xz"))
+      (sha256
+       (base32 "0ac3za36lh8hpx6mqfic9amwmzhzhzplm9hg3pw12gxl5a9mvfsf"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("kcompletion" ,kcompletion)
+       ("kconfig" ,kconfig)
+       ("kconfigwidgets" ,kconfigwidgets)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kdbusaddons" ,kdbusaddons)
+       ("ki18n" ,ki18n)
+       ("ktextwidgets" ,ktextwidgets)
+       ("kwidgetsaddons" ,kwidgetsaddons)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Classical mine sweeper game")
+    (description "KMines is a classic Minesweeper game.  The idea is to
+uncover all the squares without blowing up any mines.  When a mine is blown
+up, the game is over.
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:fdl1.2+))))
+
+(define-public konquest
+  (package
+    (name "konquest")
+    (version "19.08.3")
+    (source
+     (origin
+      (method url-fetch)
+      (uri (string-append "mirror://kde/stable/applications/"
+                          version "/src/konquest-" version ".tar.xz"))
+      (sha256
+       (base32 "02gjxskhi10a1sqh3skcild8zria7wncz1a4sbz7ax1p851q76k1"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("kcompletion" ,kcompletion)
+       ("kconfig" ,kconfig)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kdbusaddons" ,kdbusaddons)
+       ("kguiaddons" ,kguiaddons)
+       ("ki18n" ,ki18n)
+       ("kwidgetsaddons" ,kwidgetsaddons)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)
+       ("qtsvg" ,qtsvg)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Simple turn-based strategy game")
+    (description "Konquest is the KDE version of Gnu-Lactic Konquest.  Players
+conquer other planets by sending ships to them.  The goal is to build an
+interstellar empire and ultimately conquer all other player's planets.  The
+game can be played with up to nine empires, commanded either by the computer
+or by puny earthlings.
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:fdl1.2+))))
+
+(define-public kbounce
+  (package
+    (name "kbounce")
+    (version "19.08.3")
+    (source
+     (origin
+      (method url-fetch)
+      (uri (string-append "mirror://kde/stable/applications/"
+                          version "/src/kbounce-" version ".tar.xz"))
+      (sha256
+       (base32 "02rfv0qzz5cmyfx8f56a45hbm9gsp6m3dcy8ajwx88rw5wpbrr11"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("kcompletion" ,kcompletion)
+       ("kconfigwidgets" ,kconfigwidgets)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kdbusaddons" ,kdbusaddons)
+       ("ki18n" ,ki18n)
+       ("kio" ,kio)
+       ("kwidgetsaddons" ,kwidgetsaddons)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)
+       ("qtsvg" ,qtsvg)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Jezzball arcade game")
+    (description "KBounce is a single player arcade game with the elements of
+puzzle.  It is played on a field, surrounded by wall, with two or more balls
+bouncing around within the walls.  The object of the game is to build new
+walls to decrease the size of the active field.
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:lgpl2.0+ license:fdl1.2+))))
+
+(define-public kblocks
+  (package
+    (name "kblocks")
+    (version "19.08.3")
+    (source
+     (origin
+      (method url-fetch)
+      (uri (string-append "mirror://kde/stable/applications/"
+                          version "/src/kblocks-" version ".tar.xz"))
+      (sha256
+       (base32 "0qrm0dihzhkxsq9l49ndzms802x6jn92vvabb2zf2q9z593m69cx"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("kcompletion" ,kcompletion)
+       ("kconfig" ,kconfig)
+       ("kconfigwidgets" ,kconfigwidgets)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kdbusaddons" ,kdbusaddons)
+       ("ki18n" ,ki18n)
+       ("kwidgetsaddons" ,kwidgetsaddons)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)
+       ("qtsvg" ,qtsvg)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Single player falling blocks puzzle game")
+    (description "KBlocks is the classic Tetris-like falling blocks game.
+
+The idea is to stack the falling blocks to create horizontal lines without any
+gaps.  When a line is completed it is removed, and more space is available in
+the play area.  When there is not enough space for blocks to fall, the game is
+over.
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:fdl1.2+))))
+
+(define-public ksudoku
+  (package
+    (name "ksudoku")
+    (version "19.08.3")
+    (source
+     (origin
+      (method url-fetch)
+      (uri (string-append "mirror://kde/stable/applications/"
+                          version "/src/ksudoku-" version ".tar.xz"))
+      (sha256
+       (base32 "0rcscz91hilm7l3am5w02n0n8l7xhi4l0n4sskznh68kblw0ggw2"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("karchive", karchive)
+       ("kconfig" ,kconfig)
+       ("kconfigwidgets" ,kconfigwidgets)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kguiaddons" ,kguiaddons)
+       ("ki18n" ,ki18n)
+       ("kiconthemes" ,kiconthemes)
+       ("kio" ,kio)
+       ("kwidgetsaddons" ,kwidgetsaddons)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("glu" ,glu)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)
+       ("qtsvg" ,qtsvg)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Sudoku puzzle game and solver")
+    (description "KSudoku is a Sudoku game and solver, supporting a range of
+2D and 3D Sudoku variants.  In addition to playing Sudoku, it can print Sudoku
+puzzle sheets and find the solution to any Sudoku puzzle.
+
+The word Sudoku means \"single number in an allotted place\" in Japanese.
+These are the basic rules: Every Sudoku is a square divided into 3x3
+subsquares with 3x3 cells each.
+
+Some cells are filled with a number at the beginning.  The remaining ones are
+to be filled by the player using numbers from 1 to 9, without repeating a
+number twice on each column, row or subsquare (each of them must contain only
+one 1, one 2, one 3, and so on).  The game requires logic and patience.
+Solving takes usually 10 to 30 minutes, depending on puzzle level, your skill
+and experience.
+
+The numerals in Sudoku puzzles are used for convenience (for example in 16x16
+board we use letters): arithmetic relationships between numbers are
+irrelevant.
+
+This program supports also 16x16 games with numbers from 1 to 16 and 256
+cells with 16 cols, rows and subsquares!
+
+More information at http://en.wikipedia.org/wiki/Sudoku
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:fdl1.2+))))
+
+(define-public klines
+  (package
+    (name "klines")
+    (version "19.08.3")
+    (source
+     (origin
+      (method url-fetch)
+      (uri (string-append "mirror://kde/stable/applications/" version
+                          "/src/klines-" version ".tar.xz"))
+      (sha256
+       (base32 "1g1f46jp0rb8gpqkgcf915ydpsscn1sxk3gjvm8bcqgx9ddq59xa"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("kcompletion" ,kcompletion)
+       ("kconfigwidgets" ,kconfigwidgets)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kdbusaddons" ,kdbusaddons)
+       ("ki18n" ,ki18n)
+       ("kwidgetsaddons" ,kwidgetsaddons)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Place 5 equal pieces together, but wait, there are 3 new ones")
+    (description "KLines is a simple but highly addictive one player game.
+
+The player has to move the colored balls around the game board, gathering them
+into the lines of the same color by five.  Once the line is complete it is
+removed from the board, therefore freeing precious space.  In the same time
+the new balls keep arriving by three after each move, filling up the game
+board.
+
+KLines is a single-player game where the player removes colored balls from the
+board by arranging them into lines of five or more.  However, every time the
+player moves a ball, three more balls are added to the board.
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:fdl1.2+))))
+
+(define-public kgoldrunner
+  (package
+    (name "kgoldrunner")
+    (version "19.08.3")
+    (source
+     (origin
+      (method url-fetch)
+      (uri (string-append "mirror://kde/stable/applications/" version "/src/kgoldrunner-"
+                           version ".tar.xz"))
+      (sha256
+       (base32 "16rcvq796r3asz4v4ap75xvwnxd3dd2nsq5r9vxvzl6rrf1w9bj4"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("kcompletion" ,kcompletion)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kdbusaddons" ,kdbusaddons)
+       ("ki18n" ,ki18n)
+       ("kio" ,kio)
+       ("kwidgetsaddons" ,kwidgetsaddons)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Action and puzzle solving game")
+    (description "KGoldrunner is an action game where the hero runs through a
+maze, climbs stairs, dig holes and dodges enemies in order to collect all the
+gold nuggets and escape to the next level.  Your enemies are also after the
+gold.  Worse still, they are after you!.
+
+KGoldrunner is a fast-paced platform game where the player must navigate a
+maze while collecting gold nuggets and avoiding enemies.  A variety of level
+packs are included, as well as an editor to create new levels.
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:fdl1.2+))))
+
+(define-public kdiamond
+  (package
+    (name "kdiamond")
+    (version "19.08.3")
+    (source
+     (origin
+      (method url-fetch)
+      (uri (string-append "mirror://kde/stable/applications/" version
+                          "/src/kdiamond-" version ".tar.xz"))
+      (sha256
+       (base32 "1v5yb9hb26lk277zhw8d37ks829yfqr5anzx1qhms44gca5kqhva"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("kcompletion", kcompletion)
+       ("kconfig" ,kconfig)
+       ("kconfigwidgets" ,kconfigwidgets)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kdbusaddons" ,kdbusaddons)
+       ("ki18n" ,ki18n)
+       ("knotifications" ,knotifications)
+       ("knotifyconfig" ,knotifyconfig)
+       ("kwidgetsaddons" ,kwidgetsaddons)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Three-in-a-row game")
+    (description "KDiamond is a three-in-a-row game like Bejeweled.  It
+features unlimited fun with randomly generated games and five difficulty
+levels with varying number of diamond colors and board sizes.
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:fdl1.2+))))
+
+(define-public kfourinline
+  (package
+    (name "kfourinline")
+    (version "19.08.3")
+    (source
+     (origin
+      (method url-fetch)
+      (uri (string-append "mirror://kde/stable/applications/" version
+                          "/src/kfourinline-" version ".tar.xz"))
+      (sha256
+       (base32 "1vprs6dc1ccn3g6k594i9s94xy4b91vzlqjysyc6fqcq2fs54ny3"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("kcompletion" ,kcompletion)
+       ("kconfig" ,kconfig)
+       ("kconfigwidgets" ,kconfigwidgets)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kdelibs4support" ,kdelibs4support)
+       ("kdnssd" ,kdnssd)
+       ("ki18n" ,ki18n)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)
+       ("qtsvg" ,qtsvg)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Place 4 pieces in a row")
+    (description "KFourInLine is a board game for two players based on the
+Connect-Four game.
+
+KFourInLine is a game where two players take turns dropping pieces into a
+grid, the winner being the first to place four pieces in a line.
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:lgpl2.0+ license:fdl1.2+))))
+
+(define-public kblackbox
+  (package
+    (name "kblackbox")
+    (version "19.08.3")
+    (source
+     (origin
+      (method url-fetch)
+      (uri (string-append "mirror://kde/stable/applications/" version
+                          "/src/kblackbox-" version ".tar.xz"))
+      (sha256
+       (base32 "1x42sfpf75c6mavwkc7g7dm11y9s5dpj8igphly5kvm0pajqby0n"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("karchive" ,karchive)
+       ("kcompletion" ,kcompletion)
+       ("kconfig" ,kconfig)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kdbusaddons" ,kdbusaddons)
+       ("ki18n" ,ki18n)
+       ("ktextwidgets" ,ktextwidgets)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)
+       ("qtsvg" ,qtsvg)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Find atoms in a grid by shooting electrons")
+    (description "KBlackbox is a game of hide and seek played on a grid of
+boxes where the computer has hidden several balls.  The position of the hidden
+balls can be deduced by shooting beams into the box
+
+KBlackBox is a game of hide and seek played on an grid of boxes, where the
+player shoots rays into the grid to deduce the positions of hidden objects.
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:fdl1.2+))))
+
+(define-public knetwalk
+  (package
+    (name "knetwalk")
+    (version "19.08.3")
+    (source
+     (origin
+      (method url-fetch)
+      (uri (string-append "mirror://kde/stable/applications/" version
+                          "/src/knetwalk-" version ".tar.xz"))
+      (sha256
+       (base32 "1i340salzgqdw8y33wrrydmpgx3pvwf5wrbljlh67cjf6s4csx7d"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("kcompletion" ,kcompletion)
+       ("kconfig" ,kconfig)
+       ("kconfigwidgets" ,kconfigwidgets)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kdbusaddons" ,kdbusaddons)
+       ("ki18n" ,ki18n)
+       ("ktextwidgets" ,ktextwidgets)
+       ("kwidgetsaddons" ,kwidgetsaddons)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Turn the board pieces to get all computers connected")
+    (description "KNetWalk is a small game where you have to build up a
+computer network by rotating the wires to connect the terminals to the server.
+When the network is build, a highscore-list comes up where competitions can be
+fought out.
+
+KNetwalk is a puzzle game where the player arranges sections of wire to
+connect all the computers on the board.
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:fdl1.2+))))
+
+(define-public bomber
+  (package
+    (name "bomber")
+    (version "19.08.3")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "mirror://kde/stable/applications/" version
+                           "/src/bomber-" version ".tar.xz"))
+       (sha256
+        (base32 "1lvzd0mzgq25akvwvkm57l3plm65k731v2i1ahakn985bb5gc3is"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("kcompletiom" ,kcompletion)
+       ("kconfig" ,kconfig)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kdbusaddons" ,kdbusaddons)
+       ("ki18n" ,ki18n)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Arcade bombing game")
+    (description "Bomber is a single player arcade game.
+
+The player is invading various cities in a plane that is decreasing in height.
+The goal of the game is to destroy all the buildings and advance to the next
+level.  Each level gets a bit harder by increasing the speed of the plane and
+the height of the buildings.
+
+Bomber is a game where you fly a spaceship and attempt to bomb the buildings
+below you.  Each pass the spaceship makes, it gets lower and lower.  If you've
+not destroyed a building in your path, you will crash into it.
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:fdl1.2+))))
+
+(define-public granatier
+  (package
+    (name "granatier")
+    (version "19.08.3")
+    (source
+     (origin
+      (method url-fetch)
+      (uri (string-append "mirror://kde/stable/applications/" version
+                          "/src/granatier-" version ".tar.xz"))
+      (sha256
+       (base32 "141qmdinz7ikbbrs8dq6cap3nl22sl7pw62r80pf3xxwn2q4phpa"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("kcompletion" ,kcompletion)
+       ("kconfig" ,kconfig)
+       ("kconfigwidgets" ,kconfigwidgets)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kdbusaddons" ,kdbusaddons)
+       ("ki18n" ,ki18n)
+       ("knewstuff" ,knewstuff)
+       ("kwidgetsaddons" ,kwidgetsaddons)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)
+       ("qtsvg" ,qtsvg)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Bomberman clone")
+    (description "Granatier is a clone of the classic Bomberman game,
+inspired by the work of the Clanbomber clone.
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:fdl1.2+))))
+
+(define-public ksirk
+  (package
+    (name "ksirk")
+    (version "19.08.3")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "mirror://kde/stable/applications/" version
+                          "/src/ksirk-" version ".tar.xz"))
+       (sha256
+        (base32 "1b1wixs2hp5qnvdygfwa3kvy0kn94ysa4ifmx90q6r3yfr2lpfca"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("kcrash" ,kcrash)
+       ("ki18n" ,ki18n)
+       ("kiconthemes" ,kiconthemes)
+       ("kio" ,kio)
+       ("knewstuff" ,knewstuff)
+       ("kwallet" ,kwallet)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("phonon" ,phonon)
+       ("qca" ,qca)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)
+       ("qtsvg" ,qtsvg)
+       ("zlib" ,zlib)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Computerized version of the well known strategy board game
+'Risk'")
+    (description "KsirK is a multi-player network-enabled game.  The goal of
+the game is simply to conquer the world by attacking your neighbors with your
+armies.
+
+At the beginning of the game, countries are distributed to all the players.
+Each country contains one army represented by an infantryman.  Each player has
+some armies to distribute to his countries.  On each turn, each player can
+attack his neighbours, eventually conquering one or more countries.  At the
+end of each turn, some bonus armies are distributed to the players in function
+of the number of countries they own.  The winner is the player that conquered
+all the world.
+
+Features:
+@itemize
+@item Support for 1-6 human or computer players
+@item Multi-player gaming over a network
+@item You can easily create new skins with SVG graphics and the skin editor
+@item Hot New Stuff support.  You can easily download and install new skins
+@end itemize
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:lgpl2.0+ license:fdl1.2+))))
+
+(define-public palapeli
+  (package
+    (name "palapeli")
+    (version "19.08.3")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "mirror://kde/stable/applications/" version
+                           "/src/palapeli-" version ".tar.xz"))
+       (sha256
+        (base32 "1g91ydbc0x2y2gn3lcb5w03mn7k78l5bq4cb1s59kx6yjbflv3pw"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("karchive" ,karchive)
+       ("kcompletion" ,kcompletion)
+       ("kconfig" ,kconfig)
+       ("kconfigwidgets" ,kconfigwidgets)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kcrash" ,kcrash)
+       ("ki18n" ,ki18n)
+       ("ki18n" ,ki18n)
+       ("kio" ,kio)
+       ("kitemviews" ,kitemviews)
+       ("knotifications" ,knotifications)
+       ("kservice" ,kservice)
+       ("kwidgetsaddons" ,kwidgetsaddons)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)
+       ("qtsvg" ,qtsvg)
+       ("shared-mime-info" ,shared-mime-info)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Jigsaw puzzle game")
+    (description "Palapeli is a jigsaw puzzle game.  Unlike other games in
+that genre, you are not limited to aligning pieces on imaginary grids.  The
+pieces are freely moveable.  Also, Palapeli features real persistency, i.e.
+everything you do is saved on your disk immediately.
+
+Palapeli is the Finnish word for jigsaw puzzle.
+
+This package is part of the KDE games module.")
+    (license license:gpl2+)))
+
+(define-public kiriki
+  (package
+    (name "kiriki")
+    (version "19.08.3")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "mirror://kde/stable/applications/" version
+                           "/src/kiriki-" version ".tar.xz"))
+       (sha256
+        (base32 "1xg25dj95g81dc5l7k47am4j52abrwwfx4h73lvsbn4lc8lfmshw"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("kcompletion" ,kcompletion)
+       ("kconfig" ,kconfig)
+       ("kconfigwidgets" ,kconfigwidgets)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kdbusaddons" ,kdbusaddons)
+       ("ki18n" ,ki18n)
+       ("kiconthemes" ,kiconthemes)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Yahtzee dice game")
+    (description "Kiriki is an addictive and fun dice game, designed to be
+played by as many as six players.
+
+Participants have to collect points by rolling five dice for up to three times
+per single turn to make combinations with the highest score.
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:fdl1.2+))))
+
+(define-public kigo
+  (package
+    (name "kigo")
+    (version "19.08.3")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "mirror://kde/stable/applications/" version
+                           "/src/kigo-" version ".tar.xz"))
+       (sha256
+        (base32 "00l5gcbi8xyj9c1lngkrddka3a4m4cd78prfplrpq32ma9xq681f"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("kconfig" ,kconfig)
+       ("kconfigwidgets" ,kconfigwidgets)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kdbusaddons" ,kdbusaddons)
+       ("ki18n" ,ki18n)
+       ("kio" ,kio)
+       ("knewstuff", knewstuff)
+       ("ktextwidgets" ,ktextwidgets)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)
+       ("qtsvg" ,qtsvg)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Go board game")
+    (description "Kigo is an open-source implementation of the popular Go
+game.
+
+Go is a strategic board game for two players.  It is also known as
+igo (Japanese), weiqi or wei ch'i (Chinese) or baduk (Korean).  Go is noted
+for being rich in strategic complexity despite its simple rules.  The game is
+played by two players who alternately place black and white stones (playing
+pieces, now usually made of glass or plastic) on the vacant intersections of a
+grid of 19x19 lines (9x9 or 13x13 for easier games).
+
+You also need to install a go engine, e.g. @code{gnugo}.
+
+This package is part of the KDE games module.")
+    (license license:gpl3+)))
+
+(define-public kubrick
+  (package
+    (name "kubrick")
+    (version "19.08.3")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "mirror://kde/stable/applications/" version
+                           "/src/kubrick-" version ".tar.xz"))
+       (sha256
+        (base32 "0ma8wja4rqlsmsr8cyicfpkwlgqva4450ls4c0ql53p0kabf04gx"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("glu" ,glu)
+       ("kconfig" ,kconfig)
+       ("kconfigwidgets" ,kconfigwidgets)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("ki18n" ,ki18n)
+       ("kio" ,kio)
+       ("kwidgetsaddons" ,kwidgetsaddons)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)
+       ("qtsvg" ,qtsvg)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Game based on Rubik's Cube")
+    (description "Kubrick is a game based on the Rubik's Cube puzzle.
+
+The cube sizes range from 2x2x2 up to 6x6x6, or you can play with irregular
+\"bricks\" such as 5x3x2 or \"mats\" such as 6x4x1 or 2x2x1.  The game has a
+selection of puzzles at several levels of difficulty, as well as demos of
+pretty patterns and solution moves, or you can make up your own puzzles.  The
+game has unlimited undo, redo, save and reload capabilities.
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:fdl1.2+))))
+
+(define-public lskat
+  (package
+    (name "lskat")
+    (version "19.08.3")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "mirror://kde/stable/applications/" version
+                           "/src/lskat-" version ".tar.xz"))
+       (sha256
+        (base32 "1qk5hd27zb42pbcxq5wyzz62nj5f0qdmgy54r9rnk92pzzzk94s9"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("kcompletion" ,kcompletion)
+       ("kconfig" ,kconfig)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kguiaddons" ,kguiaddons)
+       ("ki18n" ,ki18n)
+       ("kwidgetsaddons" ,kwidgetsaddons)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)
+       ("qtsvg" ,qtsvg)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Lieutnant Skat card game")
+    (description "Lieutnant Skat (from German \"Offiziersskat\") is a fun and
+engaging card game for two players, where the second player is either live
+opponent, or a built in artificial intelligence.
+
+Lieutnant Skat is a simplified variant of the Skat card game for two players.
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:lgpl2.0+ license:fdl1.2+))))
+
+(define-public kapman
+  (package
+    (name "kapman")
+    (version "19.08.3")
+    (source
+     (origin
+      (method url-fetch)
+      (uri (string-append "mirror://kde/stable/applications/" version
+                          "/src/kapman-" version ".tar.xz"))
+      (sha256
+       (base32 "03pq38caam30q4bw14c045kayw2d87xq1yaa3s2jkrylylfq3p0f"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("kcompletion" ,kcompletion)
+       ("kconfig" ,kconfig)
+       ("kconfigwidgets" ,kconfigwidgets)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kdbusaddons" ,kdbusaddons)
+       ("ki18n" ,ki18n)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)
+       ("qtsvg" ,qtsvg)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Pac-Man clone")
+    (description "Kapman is a clone of the well known game Pac-Man.
+
+You must run through the maze to eat all pills without being captured by a
+ghost.  By eating an energizer, Kapman gets the ability to eat ghosts for a
+few seconds.  When a stage is cleared of pills and energizer the player is
+taken to the next stage with slightly increased game speed
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:fdl1.2+))))
+
+(define-public kspaceduel
+  (package
+    (name "kspaceduel")
+    (version "19.08.3")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "mirror://kde/stable/applications/" version
+                           "/src/kspaceduel-" version ".tar.xz"))
+       (sha256
+        (base32 "1hppni0ihs7psc0dly5rxyy2a38nzhlig9yfyhi3lkh36z05pql8"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("kcompletion" ,kcompletion)
+       ("kconfig" ,kconfig)
+       ("kconfigwidgets" ,kconfigwidgets)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kdbusaddons" ,kdbusaddons)
+       ("ki18n" ,ki18n)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)
+       ("qtsvg" ,qtsvg)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Two player game with shooting spaceships flying around a sun")
+    (description "KSpaceduel is a space battle game for one or two players,
+where two ships fly around a star in a struggle to be the only survivor.
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:fdl1.2+))))
+
+(define-public bovo
+  (package
+    (name "bovo")
+    (version "19.08.3")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "mirror://kde/stable/applications/" version
+                           "/src/bovo-" version ".tar.xz"))
+       (sha256
+        (base32 "0dbpng0w52nahmx7brsll66zw23ql1g6pcvn2k4g2lnvxch0i59g"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("kcompletion" ,kcompletion)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kdbusaddons" ,kdbusaddons)
+       ("ki18n" ,ki18n)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)
+       ("qtsvg" ,qtsvg)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Classic pen and paper game: five in a line")
+    (description "Bovo is a Gomoku (from Japanese 五目並べ - lit.  \"five
+points\") like game for two players, where the opponents alternate in placing
+their respective pictogram on the game board.  The winner is the first to
+complete a line of five markers.  (Also known as: Connect Five, Five in a row,
+X and O, Naughts and Crosses)
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:fdl1.2+))))
+
+(define-public killbots
+  (package
+    (name "killbots")
+    (version "19.08.3")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "mirror://kde/stable/applications/" version
+                           "/src/killbots-" version ".tar.xz"))
+       (sha256
+        (base32 "1qi86q7diw7glkp9v33yim9nhz2da4balbxa1hjrdgjdv8zdbxbm"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("kcompletion" ,kcompletion)
+       ("kconfig" ,kconfig)
+       ("kconfigwidgets" ,kconfigwidgets)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kdbusaddons" ,kdbusaddons)
+       ("ki18n" ,ki18n)
+       ("kwidgetsaddons" ,kwidgetsaddons)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Port of the classic BSD console game robots")
+    (description "Killbots is a simple game of evading killer robots.
+
+Who created the robots and why they have been programmed to destroy, no one
+knows.  All that is known is that the robots are numerous and their sole
+objective is to destroy you.  Fortunately for you, their creator has focused
+on quantity rather than quality and as a result the robots are severely
+lacking in intelligence.  Your superior wit and a fancy teleportation device
+are your only weapons against the never-ending stream of mindless automatons.
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:fdl1.2+))))
+
+(define-public ksnakeduel
+  (package
+    (name "ksnakeduel")
+    (version "19.08.3")
+    (source
+     (origin
+      (method url-fetch)
+      (uri (string-append "mirror://kde/stable/applications/" version
+                          "/src/ksnakeduel-" version ".tar.xz"))
+      (sha256
+       (base32 "0mprrnpax8pv7ab36zwhvdfj8id52w8g6x76nnj8qvkdlkjiqdnn"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("kcompletion" ,kcompletion)
+       ("kconfig" ,kconfig)
+       ("kconfigwidgets" ,kconfigwidgets)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kdbusaddons" ,kdbusaddons)
+       ("kguiaddons" ,kguiaddons)
+       ("ki18n" ,ki18n)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)
+       ("qtsvg" ,qtsvg)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Snake race played against the computer")
+    (description "KSnakeDuel is a fast action game where you steer a snake
+which has to eat food.  While eating the snake grows.  But once a player
+collides with the other snake or the wall the game is lost.  This becomes of
+course more and more difficult the longer the snakes grow.
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:fdl1.2+))))
+
+(define-public kollision
+  (package
+    (name "kollision")
+    (version "19.08.3")
+    (source
+     (origin
+      (method url-fetch)
+      (uri (string-append "mirror://kde/stable/applications/" version
+                          "/src/kollision-" version ".tar.xz"))
+      (sha256
+       (base32 "1p7qrn3d0ybpvc9k6k5wzj54dsrp1rqh39844maz0ay2fhvmch12"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("kcompletion" ,kcompletion)
+       ("kconfig" ,kconfig)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kdbusaddons" ,kdbusaddons)
+       ("ki18n" ,ki18n)
+       ("kwidgetsaddons" ,kwidgetsaddons)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Simple ball dodging game")
+    (description "In Kollision you use mouse to control a small blue ball in a
+closed space environment filled with small red balls, which move about
+chaotically.  Your goal is to avoid touching any of those red balls with your
+blue one, because the moment you do the game will be over.  The longer you can
+stay in game the higher will your score be.
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:fdl1.2+))))
+
+(define-public knavalbattle
+  (package
+    (name "knavalbattle")
+    (version "19.08.3")
+    (source
+     (origin
+      (method url-fetch)
+      (uri (string-append "mirror://kde/stable/applications/" version
+"/src/knavalbattle-" version ".tar.xz"))
+      (sha256
+       (base32 "0sdfjplqkb30x2mvh66pkzay6vn5px87779sh2s8lpl6fcw0v9g4"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("kauth" ,kauth)
+       ("kcompletion" ,kcompletion)
+       ("kconfig" ,kconfig)
+       ("kconfigwidgets" ,kconfigwidgets)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kdbusaddons" ,kdbusaddons)
+       ("kdnssd" ,kdnssd)
+       ("ki18n" ,ki18n)
+       ("ktextwidgets" ,ktextwidgets)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Battleship board game with built-in game server")
+    (description "KBattleship is a Battle Ship game for KDE.
+
+Ships are placed on a board which represents the sea.  Players try to hit each
+others ships in turns without knowing where they are placed.  The first player
+to destroy all ships wins the game.
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:fdl1.2+))))
+
+(define-public kreversi
+  (package
+    (name "kreversi")
+    (version "19.08.3")
+    (source
+     (origin
+      (method url-fetch)
+      (uri (string-append "mirror://kde/stable/applications/" version
+"/src/kreversi-" version ".tar.xz"))
+      (sha256
+       (base32 "0b6q8df2bawgnrswhq59z37axad0q3zpvvzxdds7sz1lw505xw9h"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("kconfig" ,kconfig)
+       ("kconfigwidgets" ,kconfigwidgets)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kdbusaddons" ,kdbusaddons)
+       ("kdeclarative" ,kdeclarative)
+       ("ki18n" ,ki18n)
+       ("kiconthemes" ,kiconthemes)
+       ("kio" ,kio)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)
+       ("qtsvg" ,qtsvg)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Old reversi board game, also known as othello")
+    (description "KReversi is a simple one player strategy game played
+against the computer.
+
+If a player's piece is captured by an opposing player, that piece is turned
+over to reveal the color of that player.  A winner is declared when one player
+has more pieces of his own color on the board and there are no more possible
+moves.
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:fdl1.2+))))
+
+(define-public ksquares
+  (package
+    (name "ksquares")
+    (version "19.08.3")
+    (source
+     (origin
+      (method url-fetch)
+      (uri (string-append "mirror://kde/stable/applications/" version
+                          "/src/ksquares-" version ".tar.xz"))
+      (sha256
+       (base32 "0hv8hls5s627lys08nnw72rfzsafj3dmp49mh2afzmh6lgk9h5vy"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("kcompletion" ,kcompletion)
+       ("kconfig" ,kconfig)
+       ("kconfigwidgets" ,kconfigwidgets)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kdbusaddons" ,kdbusaddons)
+       ("ki18n" ,ki18n)
+       ("kwidgetsaddons" ,kwidgetsaddons)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Dots and Boxes game")
+    (description "KSquares is an implementation of the popular paper based
+game Squares.  Two players take turns connecting dots on a grid to complete
+squares, the player with the most squares wins.
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:lgpl2.0+ license:fdl1.2+))))
+
+(define-public kjumpingcube
+  (package
+    (name "kjumpingcube")
+    (version "19.08.3")
+    (source
+     (origin
+      (method url-fetch)
+      (uri (string-append "mirror://kde/stable/applications/" version
+                          "/src/kjumpingcube-" version ".tar.xz"))
+      (sha256
+       (base32 "0d67zqkf2xffjkj671gl2n6nj6jajyn6rgqqj5i6gm500mqi9rm1"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("extra-cmake-modules" ,extra-cmake-modules)
+       ("kdoctools" ,kdoctools)))
+    (inputs
+     `(("kconfig" ,kconfig)
+       ("kconfigwidgets" ,kconfigwidgets)
+       ("kcoreaddons" ,kcoreaddons)
+       ("kcrash" ,kcrash)
+       ("kdbusaddons" ,kdbusaddons)
+       ("ki18n" ,ki18n)
+       ("kio" ,kio)
+       ("kwidgetsaddons" ,kwidgetsaddons)
+       ("kxmlgui" ,kxmlgui)
+       ("libkdegames" ,libkdegames)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)
+       ("qtsvg" ,qtsvg)))
+    (home-page "https://games.kde.org/")
+    (synopsis "Simple tactical game for number-crunchers")
+    (description "KJumpingcube is a simple tactical game for one or two
+players, played on a grid of numbered squares.  Each turn, players compete for
+control of the board by capturing or adding to one square.
+
+This package is part of the KDE games module.")
+    (license (list license:gpl2+ license:fdl1.2+))))
+
+(define-public xmoto
+  (package
+    (name "xmoto")
+    (version "0.6.1")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/xmoto/xmoto")
+             (commit version)))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "00f5ha79lfa2iiaz66wl0hl5dapa1l15qdr7m7knzi0ll7j6z66n"))
+       (modules '((guix build utils)
+                  (ice-9 ftw)
+                  (srfi srfi-1)))
+       ;; XXX: Remove some bundled libraries.  Guix provides Chipmunk, but
+       ;; it appears to be incompatible with the (older) one bundled.
+       (snippet
+        `(begin
+           (let ((keep '("chipmunk" "glad" "md5sum")))
+             (with-directory-excursion "vendor"
+               (for-each delete-file-recursively
+                         (lset-difference string=?
+                                          (scandir ".")
+                                          (cons* "." ".." keep))))
+             (substitute* "src/CMakeLists.txt"
+               (("add_subdirectory\\(.*?/vendor/(.+?)\".*" line library)
+                (if (member library keep) line ""))))
+           #t))))
+    (build-system cmake-build-system)
+    (arguments
+     `(#:tests? #f                      ;no test
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'fix-hard-coded-directory
+           (lambda* (#:key outputs #:allow-other-keys)
+             (substitute* "src/common/VFileIO.cpp"
+               (("/usr/share")
+                (string-append (assoc-ref outputs "out") "/share")))
+             #t))
+         (add-before 'build 'set-SDL
+           ;; Set correct environment for SDL.
+           (lambda* (#:key inputs #:allow-other-keys)
+             (setenv "CPATH"
+                     (string-append
+                      (assoc-ref inputs "sdl") "/include/SDL:"
+                      (or (getenv "CPATH") "")))
+             #t))
+         (add-after 'install 'unbundle-fonts
+           ;; Unbundle DejaVuSans TTF files.
+           (lambda* (#:key outputs inputs #:allow-other-keys)
+             (let ((font-dir (string-append (assoc-ref inputs "font-dejavu")
+                                            "/share/fonts/truetype/"))
+                   (target-dir (string-append (assoc-ref outputs "out")
+                                              "/share/xmoto/Textures/Fonts/")))
+               (for-each (lambda (f)
+                           (let ((font (string-append font-dir f))
+                                 (target (string-append target-dir f)))
+                             (delete-file target)
+                             (symlink font target)))
+                         '("DejaVuSans.ttf" "DejaVuSansMono.ttf"))
+               #t))))))
+    (native-inputs
+     `(("gettext" ,gettext-minimal)
+       ("pkg-config" ,pkg-config)))
+    (inputs
+     `(("bzip2" ,bzip2)
+       ("curl" ,curl)
+       ("font-dejavu" ,font-dejavu)
+       ("glu" ,glu)
+       ("libjpeg" ,libjpeg-turbo)
+       ("libpng" ,libpng)
+       ("libxdg-basedir" ,libxdg-basedir)
+       ("libxml2" ,libxml2)
+       ("lua" ,lua-5.1)
+       ("ode" ,ode)
+       ("sdl" ,(sdl-union (list sdl sdl-mixer sdl-net sdl-ttf)))
+       ("sqlite" ,sqlite)
+       ("zlib" ,zlib)))
+    (home-page "https://xmoto.tuxfamily.org/")
+    (synopsis "2D motocross platform game")
+    (description
+     "X-Moto is a challenging 2D motocross platform game, where
+physics play an all important role in the gameplay.  You need to
+control your bike to its limit, if you want to have a chance finishing
+the more difficult challenges.")
+    (license (list license:gpl2+        ;whole project
+                   license:bsd-3        ;vendor/md5sum
+                   license:lgpl2.1+
+                   license:expat))))
+
+(define-public eboard
+  (package
+    (name "eboard")
+    (version "1.1.3")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/fbergo/eboard")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "1z4pwpqyvxhlda99h6arh2rjk90fbms9q29fqizjblrdn01dlxn1"))))
+    (build-system gnu-build-system)
+    (native-inputs
+     `(("perl" ,perl)
+       ("pkg-config" ,pkg-config)))
+    (inputs
+     `(("gtk+" ,gtk+-2)
+       ("libpng" ,libpng)
+       ("gstreamer" ,gstreamer)))
+    (arguments
+     `(#:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (replace 'configure
+           (lambda* (#:key outputs #:allow-other-keys)
+             (make-file-writable "eboard-config")
+             (setenv "CC" "gcc")
+             (invoke "./configure"
+                     (string-append "--prefix=" (assoc-ref outputs "out")))
+             #t))
+         (add-before 'install 'make-required-directories
+           (lambda* (#:key outputs #:allow-other-keys)
+             (mkdir-p (string-append (assoc-ref outputs "out")
+                                     "/share/eboard"))
+             #t)))))
+    (synopsis "Graphical user interface to play chess")
+    (description
+     "Eboard is a chess board interface for ICS (Internet Chess Servers)
+and chess engines.")
+    (home-page "https://www.bergo.eng.br/eboard/")
+    (license license:gpl2+)))
+
+(define-public chessx
+  (package
+    (name "chessx")
+    (version "1.5.4")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "mirror://sourceforge/chessx/chessx/"
+                           version "/chessx-" version ".tgz"))
+       (sha256
+        (base32 "1a3541vl5hp6jllgx998w9kjh9kp3wrl80yfwkxmq1bc5bzsrnz2"))))
+    (build-system qt-build-system)
+    (native-inputs
+     `(("qttools" ,qttools)))
+    (inputs
+     `(("qtbase" ,qtbase)
+       ("qtmultimedia" ,qtmultimedia)
+       ("qtspeech" ,qtspeech)
+       ("qtsvg" ,qtsvg)
+       ("zlib" ,zlib)))
+    (arguments
+     `(#:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'fix-paths
+           (lambda* (#:key inputs #:allow-other-keys)
+             (substitute* "chessx.pro"
+               (("\\$\\$\\[QT_INSTALL_BINS\\]/lrelease")
+                (string-append (assoc-ref inputs "qttools") "/bin/lrelease"))
+               ;; Fix missing translations.
+               (("TRANSLATIONS = i18n/chessx_de.ts")
+                "TRANSLATIONS = i18n/chessx_de.ts i18n/chessx_da.ts \\
+i18n/chessx_fr.ts i18n/chessx_it.ts i18n/chessx_cz.ts i18n/chessx_ru.ts \\
+i18n/chessx_es.ts"))
+             #t))
+         (add-after 'fix-paths 'make-qt-deterministic
+           (lambda _
+             (setenv "QT_RCC_SOURCE_DATE_OVERRIDE" "1")
+             #t))
+         (replace 'configure
+           (lambda _
+             (invoke "qmake")
+             #t))
+         (replace 'install
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out")))
+               (install-file "release/chessx" (string-append out "/bin"))
+               (install-file "unix/chessx.desktop"
+                             (string-append out "/share/applications")))
+             #t)))))
+    (synopsis "Chess game database")
+    (description
+     "ChessX is a chess database.  With ChessX you can operate on your
+collection of chess games in many ways: browse, edit, add, organize, analyze,
+etc.  You can also play games on FICS or against an engine.")
+    (home-page "http://chessx.sourceforge.net/")
+    (license license:gpl2+)))
+
+(define-public stockfish
+  (package
+    (name "stockfish")
+    (version "11")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/official-stockfish/Stockfish")
+             (commit (string-append "sf_" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "12mppipinymj8s1ipq9a7is453vncly49c32ym9wvyklsgyxfzlk"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:tests? #f
+       #:make-flags (list "-C" "src"
+                          "build"
+                          (string-append "PREFIX="
+                                         (assoc-ref %outputs "out"))
+                          (string-append "ARCH="
+                                         ,(match (%current-system)
+                                            ("x86_64-linux" "x86-64")
+                                            ("i686-linux" "x86-32")
+                                            ("aarch64-linux" "general-64")
+                                            ("armhf-linux" "armv7")
+                                            ("mips64el-linux" "general-64")
+                                            (_ "general-32"))))
+       #:phases (modify-phases %standard-phases
+                  (delete 'configure))))
+    (synopsis "Strong chess engine")
+    (description
+     "Stockfish is a very strong chess engines.  It is much stronger than the
+best human chess grandmasters.  It can be used with UCI-compatible GUIs like
+ChessX.")
+    (home-page "https://stockfishchess.org/")
+    (license license:gpl3+)))
+
+(define-public barrage
+  (package
+    (name "barrage")
+    (version "1.0.5")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "mirror://sourceforge/lgames/barrage/"
+                           "barrage-" version ".tar.gz"))
+       (sha256
+        (base32 "0139wxyrir10cbkvkjn548xgmp84wax8mfwk80yxbxlcdamrg257"))))
+    (build-system gnu-build-system)
+    (inputs
+     `(("hicolor-icon-theme" ,hicolor-icon-theme)
+       ("sdl" ,sdl)
+       ("sdl-mixer" ,sdl-mixer)))
+    (arguments
+     `(#:configure-flags
+       (list
+        (string-append "CFLAGS="
+                       "-I" (assoc-ref %build-inputs "sdl-mixer")
+                       "/include/SDL"))))
+    (home-page "http://lgames.sourceforge.net/Barrage/")
+    (synopsis "Violent point-and-click shooting game with nice effects")
+    (description
+     "Barrage is a rather destructive action game that puts you on a shooting
+range with the objective to hit as many dummy targets as possible within
+3 minutes.  You control a gun that may either fire small or large grenades at
+soldiers, jeeps and tanks.  The gameplay is simple but it is not that easy to
+get high scores.")
+    (license license:gpl2+)))
+
+(define-public burgerspace
+  (package
+    (name "burgerspace")
+    (version "1.9.3")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "http://perso.b2b2c.ca/~sarrazip/dev/"
+                           "burgerspace-" version ".tar.gz"))
+       (sha256
+        (base32 "1005a04rbn4lzjrpfg0m394k2mfaji63fm2qhdqdsxila8a6kjbv"))))
+    (build-system gnu-build-system)
+    (native-inputs
+     `(("pkg-config" ,pkg-config)))
+    (inputs
+     `(("flatzebra" ,flatzebra)))
+    (home-page "http://perso.b2b2c.ca/~sarrazip/dev/burgerspace.html")
+    (synopsis "Avoid evil foodstuffs and make burgers")
+    (description
+     "This is a clone of the classic game BurgerTime.  In it, you play
+the part of a chef who must create burgers by stepping repeatedly on
+the ingredients until they fall into place.  And to make things more
+complicated, you also must avoid evil animate food items while
+performing this task, with nothing but your trusty pepper shaker to
+protect you.")
+    (license license:gpl2+)))
+
+(define-public 7kaa
+  (package
+    (name "7kaa")
+    (version "2.15.4p1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "https://github.com/the3dfxdude/7kaa/"
+                           "releases/download/v" version "/"
+                           "7kaa-" version ".tar.xz"))
+       (sha256
+        (base32 "1y7v0jhp3apb619p7asikqr1dnwb2yxbh40wbx1ppmr5f03mq9ph"))))
+    (build-system gnu-build-system)
+    (native-inputs
+     `(("gettext" ,gettext-minimal)
+       ("pkg-config" ,pkg-config)))
+    (inputs
+     `(("curl" ,curl)
+       ("enet" ,enet)
+       ("openal" ,openal)
+       ("sdl2" ,sdl2)))
+    (home-page "https://7kfans.com/")
+    (synopsis "Seven Kingdoms Ancient Adversaries: real-time strategy game")
+    (description
+     "Seven Kingdoms, designed by Trevor Chan, brings a blend of Real-Time
+Strategy with the addition of trade, diplomacy, and espionage.  The game
+enables players to compete against up to six other kingdoms allowing players
+to conquer opponents by defeating them in war (with troops or machines),
+capturing their buildings with spies, or offering opponents money for their
+kingdom.")
+    (license license:gpl2+)))
+
+(define-public neverball
+  ;; Git version is 6-years younger than latest release.
+  (let ((commit "760a25d32a5fb0661b99426d4ddcb9ac9f3d1644")
+        (revision "1"))
+    (package
+      (name "neverball")
+      (version (git-version "1.6.0" revision commit))
+      (source
+       (origin
+         (method git-fetch)
+         (uri (git-reference
+               (url "https://github.com/Neverball/neverball")
+               (commit commit)))
+         (sha256
+          (base32
+           "0bwh67df3lyf33bv710y25l3frjdd34j9b7gsjadwxviz6r1vpj5"))
+         (file-name (git-file-name name version))
+         (modules '((guix build utils)))
+         (snippet
+          '(begin
+             ;; Octocat seems to be non-free.  Oddly, Debian doesn't strip it.
+             (delete-file-recursively "data/ball/octocat")
+             #t))))
+      (build-system copy-build-system)
+      (arguments
+       `(#:install-plan
+         '(("neverball" "bin/")
+           ("neverputt" "bin/")
+           ("mapc" "bin/")
+           ("data" "share/games/neverball/")
+           ("locale" "share/")
+           ("dist/" "share/games/neverball" #:include ("neverball_replay.png"
+                                                       "neverlogos.svg"
+                                                       "svg readme.txt"))
+           ("dist/" "share/applications" #:include ("neverball.desktop"
+                                                    "neverputt.desktop"))
+           ("dist/neverball_16.png"
+            "/share/icons/hicolor/16x16/apps/neverball.png")
+           ("dist/neverball_24.png"
+            "/share/icons/hicolor/24x24/apps/neverball.png")
+           ("dist/neverball_32.png"
+            "/share/icons/hicolor/32x32/apps/neverball.png")
+           ("dist/neverball_48.png"
+            "/share/icons/hicolor/48x48/apps/neverball.png")
+           ("dist/neverball_64.png"
+            "/share/icons/hicolor/64x64/apps/neverball.png")
+           ("dist/neverball_128.png"
+            "/share/icons/hicolor/128x128/apps/neverball.png")
+           ("dist/neverball_256.png"
+            "/share/icons/hicolor/256x256/apps/neverball.png")
+           ("dist/neverball_512.png"
+            "/share/icons/hicolor/512x512/apps/neverball.png")
+           ("dist/neverputt_16.png"
+            "/share/icons/hicolor/16x16/apps/neverputt.png")
+           ("dist/neverputt_24.png"
+            "/share/icons/hicolor/24x24/apps/neverputt.png")
+           ("dist/neverputt_32.png"
+            "/share/icons/hicolor/32x32/apps/neverputt.png")
+           ("dist/neverputt_48.png"
+            "/share/icons/hicolor/48x48/apps/neverputt.png")
+           ("dist/neverputt_64.png"
+            "/share/icons/hicolor/64x64/apps/neverputt.png")
+           ("dist/neverputt_128.png"
+            "/share/icons/hicolor/128x128/apps/neverputt.png")
+           ("dist/neverputt_256.png"
+            "/share/icons/hicolor/256x256/apps/neverputt.png")
+           ("dist/neverputt_512.png"
+            "/share/icons/hicolor/512x512/apps/neverputt.png")
+           ("dist/" "share/man/man1" #:include ("mapc.1"))
+           ("dist/" "share/man/man6" #:include ("neverball.6" "neverputt.6"))
+           ("doc/" "share/doc/neverball")
+           ("README.md" "share/doc/neverball/"))
+         #:phases
+         (modify-phases %standard-phases
+           (add-before 'install 'build
+             (lambda* (#:key inputs outputs #:allow-other-keys)
+               (let* ((out (assoc-ref outputs "out"))
+                      (sdl (assoc-ref inputs "sdl")))
+                 (invoke "make" "-j" (number->string (parallel-job-count))
+                         "--environment-overrides"
+                         "CC=gcc" "BUILD=release"
+                         (string-append "DATADIR="
+                                        out
+                                        "/share/games/neverball/data")
+                         (string-append "LOCALEDIR=" out "/share/locale")
+                         (string-append "SDL_CPPFLAGS=-I"
+                                        sdl
+                                        "/include/SDL2/")))
+               #t))
+           (add-after 'install 'fix-some-broken-fonts
+             (lambda* (#:key outputs #:allow-other-keys)
+               (let* ((out (assoc-ref outputs "out")))
+                 (wrap-program (string-append out "/bin/neverball")
+                   `("LANG" = ("en_US.utf8")))
+                 (wrap-program (string-append out "/bin/neverputt")
+                   `("LANG" = ("en_US.utf8"))))
+               #t)))))
+      (native-inputs
+       `(("gettext" ,gettext-minimal))) ;for msgfmt
+      (inputs
+       `(("libjpeg" ,libjpeg-turbo)
+         ("libpng" ,libpng)
+         ("libvorbis" ,libvorbis)
+         ("physfs" ,physfs)
+         ("sdl" ,(sdl-union (list sdl2 sdl2-ttf)))))
+      (home-page "https://neverball.org/")
+      (synopsis "3D floor-tilting game")
+      (description
+       "In the grand tradition of Marble Madness and Super Monkey Ball,
+Neverball has you guide a rolling ball through dangerous territory.  Balance
+on narrow bridges, navigate mazes, ride moving platforms, and dodge pushers
+and shovers to get to the goal.  Race against the clock to collect coins to
+earn extra balls.  Also included is Neverputt, which is a 3D miniature golf
+game.")  ;thanks to Debian for description
+      (license license:gpl2+))))
+
+(define-public pokerth
+  (package
+    (name "pokerth")
+    (version "1.1.2")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "mirror://sourceforge/pokerth/pokerth/"
+                           version "/pokerth-" version ".tar.gz"))
+       (sha256
+        (base32 "0yi9bj3k8yc1gkwmaf14zbbvvn13n54n1dli8k6j1pkph3p3vjq2"))
+       (modules '((guix build utils)))
+       (snippet
+        '(begin
+           ;; Remove bundled websocketpp.
+           (delete-file-recursively "src/third_party/websocketpp")
+           (substitute* "pokerth_lib.pro"
+             (("src/third_party/websocketpp")
+              ""))
+           #t))))
+    (build-system qt-build-system)
+    (inputs
+     `(("boost" ,boost)
+       ("curl" ,curl)
+       ("gsasl" ,gsasl)
+       ("libgcrypt" ,libgcrypt)
+       ("libircclient" ,libircclient)
+       ("protobuf" ,protobuf-2)
+       ("qtbase" ,qtbase)
+       ("sdl" ,(sdl-union (list sdl sdl-mixer)))
+       ("sqlite" ,sqlite)
+       ("tinyxml" ,tinyxml)
+       ("websocketpp" ,websocketpp)
+       ("zlib" ,zlib)))
+    (arguments
+     `(#:tests? #f ; No test suite
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'fix-paths
+           (lambda* (#:key inputs #:allow-other-keys)
+             (substitute* (find-files "." "\\.pro$")
+               (("/opt/gsasl")
+                (assoc-ref inputs "gsasl"))
+               (("\\$\\$\\{PREFIX\\}/include/libircclient")
+                (string-append (assoc-ref inputs "libircclient")
+                               "/include/libircclient"))
+               (("LIB_DIRS =")
+                (string-append "LIB_DIRS = "
+                               (assoc-ref inputs "boost") "/lib")))
+             #t))
+         (add-after 'unpack 'fix-build
+           (lambda _
+             ;; Fixes for Boost versions >= 1.66.
+             (substitute* '("src/net/common/clientthread.cpp"
+                            "src/net/serveraccepthelper.h")
+               (("boost::asio::socket_base::non_blocking_io command\\(true\\);")
+                "")
+               (("newSock->io_control\\(command\\);")
+                "newSock->non_blocking(true);")
+               (("acceptedSocket->io_control\\(command\\);")
+                "acceptedSocket->non_blocking(true);"))
+             #t))
+         (replace 'configure
+           (lambda* (#:key outputs #:allow-other-keys)
+             (invoke "qmake" "pokerth.pro" "CONFIG+=client"
+                     (string-append "PREFIX=" (assoc-ref outputs "out"))))))))
+    (home-page "https://www.pokerth.net")
+    (synopsis "Texas holdem poker game")
+    (description
+     "With PokerTH you can play the Texas holdem poker game, either against
+computer opponents or against real players online.")
+    (license license:agpl3+)))
+
+(define-public azimuth
+  (package
+    (name "azimuth")
+    ;; Not marked as latest release, but it fixes a compiling issue
+    ;; and adds the install target.
+    (version "1.0.3")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/mdsteele/azimuth")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32
+         "1znfvpmqiixd977jv748glk5zc4cmhw5813zp81waj07r9b0828r"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:test-target "test"
+       #:phases
+       (modify-phases %standard-phases
+         (delete 'configure)            ; no configure script
+         ;; Build release version instead of debug version.
+         (add-after 'unpack 'set-release
+           (lambda _
+             (setenv "BUILDTYPE" "release") #t))
+         (add-after 'unpack 'fix-install ; set install directory
+           (lambda* (#:key outputs #:allow-other-keys)
+             (substitute* "Makefile" (("/usr") (assoc-ref outputs "out"))) #t)))))
+    (inputs `(("sdl" ,sdl)))
+    (home-page "https://mdsteele.games/azimuth/")
+    (synopsis "Metroidvania game with vector graphics")
+    (description
+     "Pilot your ship inside a planet to find and rescue the colonists trapped
+inside the Zenith Colony.")
+    (license license:gpl3+)))

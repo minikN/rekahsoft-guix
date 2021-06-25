@@ -1,6 +1,7 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2016 Matthew Jordan <matthewjordandevops@yandex.com>
 ;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2019 Efraim Flashner <efraim@flashner.co.il>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -32,14 +33,14 @@
     (version "1.7.2")
     (source
      (origin
-       (method url-fetch)
-       (uri
-        (string-append "https://github.com/rails/spring/archive/v"
-                           version ".tar.gz"))
-       (file-name (string-append name "-" version ".tar.gz"))
+       (method git-fetch)
+       (uri (git-reference
+              (url "https://github.com/rails/spring")
+              (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
        (sha256
         (base32
-         "1dd58y0cpsm2izj74yscn0ybfygmgcbbfdw1891g7cq41aai4b35"))))
+         "0smwrndjmnr7g7jjskw05zin3gh6kx5db6yrkiqi6i9wl5mrn9n5"))))
     (build-system ruby-build-system)
     (arguments
      `(#:test-target "test:unit"
@@ -289,7 +290,7 @@ directly.")
     (origin
       (method git-fetch)
       (uri (git-reference
-            (url "https://github.com/rails/rails-dom-testing.git")
+            (url "https://github.com/rails/rails-dom-testing")
             (commit (string-append "v" version))))
       (file-name (git-file-name name version))
       (sha256
@@ -532,7 +533,7 @@ application bootup, plugins, generators, and Rake tasks.")
        ;; Download from GitHub as test files are not provided in the gem.
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/rails/web-console.git")
+             (url "https://github.com/rails/web-console")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
@@ -554,12 +555,6 @@ application bootup, plugins, generators, and Rake tasks.")
                ;; tzinfo-data is propagated by ruby-activesupport, but it
                ;; needs to be in the Gemfile to become available.
                (("group :test do") "group :test do\n  gem 'tzinfo-data'"))
-             #t))
-         (add-after 'unpack 'fix-mocha-minitest-require
-           (lambda _
-             (substitute* "test/test_helper.rb"
-               ;; This chanegd in recent versions of Mocha
-               (("mocha/minitest") "mocha/mini_test"))
              #t)))))
     (propagated-inputs
      `(("ruby-actionview" ,ruby-actionview)

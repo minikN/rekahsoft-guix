@@ -1,6 +1,6 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2017 Thomas Danckaert <post@thomasdanckaert.be>
-;;; Copyright © 2017 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2017, 2020 Marius Bakke <marius@gnu.org>
 ;;; Copyright © 2018 Chris Marusich <cmmarusich@gmail.com>
 ;;; Copyright © 2018 Arun Isaac <arunisaac@systemreboot.net>
 ;;;
@@ -174,12 +174,15 @@ port 7, and a dict service on port 2628."
                          (respawn? #f)))))
 
 (define %openvswitch-os
-  (simple-operating-system
-   (static-networking-service "ovs0" "10.1.1.1"
-                              #:netmask "255.255.255.252"
-                              #:requirement '(openvswitch-configuration))
-   (service openvswitch-service-type)
-   openvswitch-configuration-service))
+  (operating-system
+    (inherit (simple-operating-system
+              (static-networking-service "ovs0" "10.1.1.1"
+                                         #:netmask "255.255.255.252"
+                                         #:requirement '(openvswitch-configuration))
+              (service openvswitch-service-type)
+              openvswitch-configuration-service))
+    ;; Ensure the interface name does not change depending on the driver.
+    (kernel-arguments (cons "net.ifnames=0" %default-kernel-arguments))))
 
 (define (run-openvswitch-test)
   (define os
@@ -205,7 +208,8 @@ port 7, and a dict service on port 2628."
           ;; Make sure the bridge is created.
           (test-assert "br0 exists"
             (marionette-eval
-             '(zero? (system* "ovs-vsctl" "br-exists" "br0"))
+             '(zero? (system* #$(file-append openvswitch "/bin/ovs-vsctl")
+                              "br-exists" "br0"))
              marionette))
 
           ;; Make sure eth0 is connected to the bridge.
@@ -270,11 +274,11 @@ subnet 192.168.1.0 netmask 255.255.255.0 {
   (dhcpd-configuration
    (config-file minimal-dhcpd-v4-config-file)
    (version "4")
-   (interfaces '("eth0"))))
+   (interfaces '("ens3"))))
 
 (define %dhcpd-os
   (simple-operating-system
-   (static-networking-service "eth0" "192.168.1.4"
+   (static-networking-service "ens3" "192.168.1.4"
                               #:netmask "255.255.255.0"
                               #:gateway "192.168.1.1"
                               #:name-servers '("192.168.1.2" "192.168.1.3"))

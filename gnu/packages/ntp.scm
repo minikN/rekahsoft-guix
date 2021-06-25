@@ -4,7 +4,7 @@
 ;;; Copyright © 2015 Taylan Ulrich Bayırlı/Kammer <taylanbayirli@gmail.com>
 ;;; Copyright © 2015, 2018 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2016, 2017, 2018 Efraim Flashner <efraim@flashner.co.il>
-;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2019 Maxim Cournoyer <maxim.cournoyer@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
@@ -24,37 +24,103 @@
 
 (define-module (gnu packages ntp)
   #:use-module (gnu packages)
-  #:use-module (gnu packages base)
-  #:use-module (gnu packages linux)
   #:use-module (gnu packages autotools)
-  #:use-module (gnu packages pkg-config)
-  #:use-module (gnu packages tls)
+  #:use-module (gnu packages base)
   #:use-module (gnu packages libevent)
+  #:use-module (gnu packages linux)
+  #:use-module (gnu packages nettle)
+  #:use-module (gnu packages pkg-config)
+  #:use-module (gnu packages readline)
+  #:use-module (gnu packages tls)
+  #:use-module (guix build-system gnu)
+  #:use-module (guix download)
+  #:use-module (guix git-download)
   #:use-module ((guix licenses) #:prefix l:)
   #:use-module (guix packages)
   #:use-module (guix utils)
-  #:use-module (guix download)
-  #:use-module (guix git-download)
-  #:use-module (guix build-system gnu)
   #:use-module (srfi srfi-1))
+
+(define-public chrony
+  (package
+    (name "chrony")
+    (version "3.5")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "https://download.tuxfamily.org/chrony/"
+                           "chrony-" version ".tar.gz"))
+       (sha256
+        (base32 "1d9r2dhslll4kzdmxrj0qfgwq1b30d4l3s5cwr8yr93029dpj0jf"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:modules ((srfi srfi-26)
+                  (guix build utils)
+                  (guix build gnu-build-system))
+       #:configure-flags
+       (list "--enable-scfilter"
+             "--with-sendmail=sendmail"
+             "--with-user=chrony")
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'stay-inside-out
+           ;; Simply setting CHRONYVARDIR to something nonsensical at install
+           ;; time would result in nonsense file names in man pages.
+           (lambda _
+             (substitute* "Makefile.in"
+               (("mkdir -p \\$\\(DESTDIR\\)\\$\\(CHRONYVARDIR\\)") ":"))
+             #t))
+         (add-after 'install 'install-more-documentation
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (doc (string-append out "/share/doc/" ,name "-" ,version)))
+               (for-each (cut install-file <> doc)
+                         (list "README" "FAQ"))
+               (copy-recursively "examples" (string-append doc "/examples"))
+               #t))))))
+    (native-inputs
+     `(("pkg-config" ,pkg-config)))
+    (inputs
+     `(("libcap" ,libcap)
+       ("libseccomp" ,libseccomp)
+       ("nettle" ,nettle)))
+    (home-page "https://chrony.tuxfamily.org/")
+    (synopsis "System clock synchronisation service that speaks NTP")
+    (description
+     "Chrony keeps your system time accurate.  It synchronises your computer's
+clock with @acronym{NTP, Network Time Protocol} servers, reference clocks such
+as GPS receivers, or even manual input of the correct time from a wristwatch.
+
+Chrony will determine the rate at which the computer gains or loses time, and
+compensate for it.  It can also operate as an NTPv4 (RFC 5905) server and peer
+to tell time to other computers on the network.
+
+It's designed to perform well even under adverse conditions: congested
+networks, unreliable clocks drifting with changes in temperature, and devices
+or virtual machines that are frequently turned off and connect to the Internet
+for only a few minutes at a time.
+
+Typical accuracy when synchronised over the Internet is several milliseconds.
+On a local network this can reach tens of microseconds.  With hardware
+time-stamping or reference clock, sub-microsecond accuracy is possible.")
+    (license l:gpl2)))
 
 (define-public ntp
   (package
    (name "ntp")
-   (version "4.2.8p13")
+   (version "4.2.8p15")
    (source
      (origin
        (method url-fetch)
        (uri (list (string-append
-                    "http://archive.ntp.org/ntp4/ntp-"
-                    (version-major+minor version)
-                    "/ntp-" version ".tar.gz")
+                   "https://www.eecis.udel.edu/~ntp/ntp_spool/ntp4/ntp-"
+                   (version-major+minor version)
+                   "/ntp-" version ".tar.gz")
                   (string-append
-                    "https://www.eecis.udel.edu/~ntp/ntp_spool/ntp4/ntp-"
-                    (version-major+minor version)
-                    "/ntp-" version ".tar.gz")))
+                   "http://archive.ntp.org/ntp4/ntp-"
+                   (version-major+minor version)
+                   "/ntp-" version ".tar.gz")))
        (sha256
-        (base32 "0f1a4fya7v5s0426nim8ydvvlcashb8hicgs9xlm76ndrz7751r8"))
+        (base32 "06cwhimm71safmwvp6nhxp6hvxsg62whnbgbgiflsqb8mgg40n7n"))
        (modules '((guix build utils)))
        (snippet
         '(begin
@@ -92,9 +158,9 @@
    (description "NTP is a system designed to synchronize the clocks of
 computers over a network.")
    (license (l:x11-style
-             "http://www.eecis.udel.edu/~mills/ntp/html/copyright.html"
+             "https://www.eecis.udel.edu/~mills/ntp/html/copyright.html"
              "A non-copyleft free licence from the University of Delaware"))
-   (home-page "http://www.ntp.org")))
+   (home-page "https://www.ntp.org")))
 
 (define-public openntpd
   (package
@@ -103,7 +169,7 @@ computers over a network.")
     (source (origin
               (method url-fetch)
               (uri (string-append
-                    "mirror://openbsd/OpenNTPD/" name "-" version ".tar.gz"))
+                    "mirror://openbsd/OpenNTPD/openntpd-" version ".tar.gz"))
               (sha256
                (base32
                 "0fn12i4kzsi0zkr4qp3dp9bycmirnfapajqvdfx02zhr4hanj0kv"))))
@@ -169,7 +235,7 @@ minimalist than ntpd.")
                       ;; received from servers.
                       (setenv "COMPILE_DATE" (number->string 1530144000))
                       (invoke "sh" "autogen.sh"))))))
-    (inputs `(("openssl" ,openssl)
+    (inputs `(("openssl" ,openssl-1.0)
               ("libevent" ,libevent)))
     (native-inputs `(("pkg-config" ,pkg-config)
                      ("autoconf" ,autoconf)

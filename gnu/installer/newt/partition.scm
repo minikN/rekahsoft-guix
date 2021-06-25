@@ -1,6 +1,7 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2018 Mathieu Othacehe <m.othacehe@gmail.com>
-;;; Copyright © 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2018, 2019 Mathieu Othacehe <m.othacehe@gmail.com>
+;;; Copyright © 2019, 2020 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -120,7 +121,7 @@ Be careful, all data on the disk will be lost.")
   (run-listbox-selection-page
    #:info-text (G_ "Please select the file-system type for this partition.")
    #:title (G_ "File-system type")
-   #:listbox-items '(ext4 btrfs fat16 fat32 swap)
+   #:listbox-items '(ext4 btrfs fat16 fat32 jfs ntfs swap)
    #:listbox-item->text user-fs-type-name
    #:sort-listbox-items? #f
    #:button-text (G_ "Exit")
@@ -159,14 +160,14 @@ USER-PARTITIONS list. Return this list with password fields filled-in."
                     (format #f (G_ "Please enter the password for the \
 encryption of partition ~a (label: ~a).") file-name crypt-label)
                     (G_ "Password required")
-                    #:input-hide-checkbox? #t)))
+                    #:input-visibility-checkbox? #t)))
                 (password-confirm-page
                  (lambda ()
                    (run-input-page
                     (format #f (G_ "Please confirm the password for the \
 encryption of partition ~a (label: ~a).") file-name crypt-label)
                     (G_ "Password confirmation required")
-                    #:input-hide-checkbox? #t))))
+                    #:input-visibility-checkbox? #t))))
            (if crypt-label
                (let loop ()
                  (let ((password (password-page))
@@ -587,7 +588,6 @@ edit it."
                                           disks))
                      (new-user-partitions
                       (remove-user-partition-by-disk user-partitions item)))
-                (disk-destroy item)
                 `((disks . ,(cons new-disk other-disks))
                   (user-partitions . ,new-user-partitions)))
               `((disks . ,disks)
@@ -625,7 +625,7 @@ edit it."
                                       info-text)))
           (case result
             ((1)
-             (disk-delete-all item)
+             (disk-remove-all-partitions item)
              `((disks . ,disks)
                (user-partitions
                 . ,(remove-user-partition-by-disk user-partitions item))))
@@ -649,7 +649,7 @@ edit it."
                  (let ((new-user-partitions
                         (remove-user-partition-by-partition user-partitions
                                                             item)))
-                   (disk-delete-partition disk item)
+                   (disk-remove-partition* disk item)
                    `((disks . ,disks)
                      (user-partitions . ,new-user-partitions))))
                 (else
@@ -682,6 +682,12 @@ by pressing the Exit button.~%~%")))
           #:allow-delete? #t
           #:button-text (G_ "OK")
           #:button-callback-procedure button-ok-action
+
+          ;; Consider client replies equivalent to hitting the "OK" button.
+          ;; XXX: In practice this means that clients cannot do anything but
+          ;; approve the predefined list of partitions.
+          #:client-callback-procedure (lambda (_) (button-ok-action))
+
           #:button2-text (G_ "Exit")
           #:button2-callback-procedure button-exit-action
           #:listbox-callback-procedure listbox-action
@@ -696,9 +702,7 @@ by pressing the Exit button.~%~%")))
                        #f))
                  (check-user-partitions user-partitions))))
           (if user-partitions-ok?
-              (begin
-                (for-each (cut disk-destroy <>) disks)
-                user-partitions)
+              user-partitions
               (run-disk-page disks user-partitions
                              #:guided? guided?)))
         (let* ((result-disks (assoc-ref result 'disks))

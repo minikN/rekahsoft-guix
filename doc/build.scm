@@ -1,5 +1,6 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2019, 2020 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2020 Björn Höfling <bjoern.hoefling@bjoernhoefling.de>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -51,8 +52,17 @@
 (define info-manual
   (@@ (guix self) info-manual))
 
+(define %manual
+  ;; The manual to build--i.e., the base name of a .texi file, such as "guix"
+  ;; or "guix-cookbook".
+  (or (getenv "GUIX_MANUAL")
+      "guix"))
+
 (define %languages
-  '("de" "en" "es" "fr" "ru" "zh_CN"))
+  ;; The cookbook is currently only translated into German.
+  (if (string=? %manual "guix-cookbook")
+      '("de" "en")
+      '("de" "en" "es" "fr" "ru" "zh_CN")))
 
 (define (texinfo-manual-images source)
   "Return a directory containing all the images used by the user manual, taken
@@ -131,12 +141,12 @@ as well as images, OS examples, and translations."
                             (date->string date "~B ~Y")
                             version version))))))
 
-          (install-file #$(file-append* documentation "/htmlxref.cnf")
+          (install-file #$(file-append documentation "/htmlxref.cnf")
                         #$output)
 
           (for-each (lambda (texi)
                       (install-file texi #$output))
-                    (append (find-files #$documentation "\\.(texi|scm)$")
+                    (append (find-files #$documentation "\\.(texi|scm|json)$")
                             (find-files #$(translated-texi-manuals source)
                                         "\\.texi$")))
 
@@ -164,36 +174,35 @@ as well as images, OS examples, and translations."
 
 (define %makeinfo-html-options
   ;; Options passed to 'makeinfo --html'.
-  '("--css-ref=https://www.gnu.org/software/gnulib/manual.css"))
+  '("--css-ref=https://www.gnu.org/software/gnulib/manual.css"
+    "-c" "EXTRA_HEAD=<meta name=\"viewport\" \
+content=\"width=device-width, initial-scale=1\" />"))
 
 (define guile-lib/htmlprag-fixed
   ;; Guile-Lib with a hotfix for (htmlprag).
   (package
     (inherit guile-lib)
-    (source (origin
-              (inherit (package-source guile-lib))
-              (modules '(( guix build utils)))
-              (snippet
-               '(begin
-                  ;; When parsing
-                  ;; "<body><blockquote><p>foo</p>\n</blockquote></body>",
-                  ;; 'html->shtml' would mistakenly close 'blockquote' right
-                  ;; before <p>.  This patch removes 'p' from the
-                  ;; 'parent-constraints' alist to fix that.
-                  (substitute* "src/htmlprag.scm"
-                    (("^[[:blank:]]*\\(p[[:blank:]]+\\. \\(body td th\\)\\).*")
-                     ""))
-                  #t))))
     (arguments
      (substitute-keyword-arguments (package-arguments guile-lib)
        ((#:phases phases '%standard-phases)
         `(modify-phases ,phases
-          (add-before 'check 'skip-known-failure
-            (lambda _
-              ;; XXX: The above change causes one test failure among
-              ;; the htmlprag tests.
-              (setenv "XFAIL_TESTS" "htmlprag.scm")
-              #t))))))))
+           (add-before 'build 'fix-htmlprag
+             (lambda _
+               ;; When parsing
+               ;; "<body><blockquote><p>foo</p>\n</blockquote></body>",
+               ;; 'html->shtml' would mistakenly close 'blockquote' right
+               ;; before <p>.  This patch removes 'p' from the
+               ;; 'parent-constraints' alist to fix that.
+               (substitute* "src/htmlprag.scm"
+                 (("^[[:blank:]]*\\(p[[:blank:]]+\\. \\(body td th\\)\\).*")
+                  ""))
+               #t))
+           (add-before 'check 'skip-known-failure
+             (lambda _
+               ;; XXX: The above change causes one test failure among
+               ;; the htmlprag tests.
+               (setenv "XFAIL_TESTS" "htmlprag.scm")
+               #t))))))))
 
 (define* (syntax-highlighted-html input
                                   #:key
@@ -212,12 +221,77 @@ its <pre class=\"lisp\"> blocks (as produced by 'makeinfo --html')."
                          (syntax-highlight scheme)
                          (syntax-highlight lexers)
                          (guix build utils)
+                         (srfi srfi-1)
+                         (srfi srfi-26)
                          (ice-9 match)
-                         (ice-9 threads))
+                         (ice-9 threads)
+                         (ice-9 vlist))
+
+            (define (pair-open/close lst)
+              ;; Pair 'open' and 'close' tags produced by 'highlights' and
+              ;; produce nested 'paren' tags instead.
+              (let loop ((lst lst)
+                         (level 0)
+                         (result '()))
+                (match lst
+                  ((('open open) rest ...)
+                   (call-with-values
+                       (lambda ()
+                         (loop rest (+ 1 level) '()))
+                     (lambda (inner close rest)
+                       (loop rest level
+                             (cons `(paren ,level ,open ,inner ,close)
+                                   result)))))
+                  ((('close str) rest ...)
+                   (if (> level 0)
+                       (values (reverse result) str rest)
+                       (begin
+                         (format (current-error-port)
+                                 "warning: extra closing paren; context:~% ~y~%"
+                                 (reverse result))
+                         (loop rest 0 (cons `(close ,str) result)))))
+                  ((item rest ...)
+                   (loop rest level (cons item result)))
+                  (()
+                   (when (> level 0)
+                     (format (current-error-port)
+                             "warning: missing ~a closing parens; context:~% ~y%"
+                             level (reverse result)))
+                   (values (reverse result) "" '())))))
+
+            (define (highlights->sxml* highlights anchors)
+              ;; Like 'highlights->sxml', but handle nested 'paren tags.  This
+              ;; allows for paren matching highlights via appropriate CSS
+              ;; "hover" properties.  When a symbol is encountered, look it up
+              ;; in ANCHORS, a vhash, and emit the corresponding href, if any.
+              (define (tag->class tag)
+                (string-append "syntax-" (symbol->string tag)))
+
+              (map (match-lambda
+                     ((? string? str) str)
+                     (('paren level open (body ...) close)
+                      `(span (@ (class ,(string-append "syntax-paren"
+                                                       (number->string level))))
+                             ,open
+                             (span (@ (class "syntax-symbol"))
+                                   ,@(highlights->sxml* body anchors))
+                             ,close))
+                     (('symbol text)
+                      ;; Check whether we can emit a hyperlink for TEXT.
+                      (match (vhash-assoc text anchors)
+                        (#f
+                         `(span (@ (class ,(tag->class 'symbol))) ,text))
+                        ((_ . target)
+                         `(a (@ (class ,(tag->class 'symbol)) (href ,target))
+                             ,text))))
+                     ((tag text)
+                      `(span (@ (class ,(tag->class tag))) ,text)))
+                   highlights))
 
             (define entity->string
               (match-lambda
                 ("rArr"   "⇒")
+                ("rarr"   "→")
                 ("hellip" "…")
                 ("rsquo"  "’")
                 (e (pk 'unknown-entity e) (primitive-exit 2))))
@@ -240,34 +314,109 @@ its <pre class=\"lisp\"> blocks (as produced by 'makeinfo --html')."
                    (pk 'unsupported-code-snippet something)
                    (primitive-exit 1)))))
 
-            (define (syntax-highlight sxml)
+            (define (syntax-highlight sxml anchors)
               ;; Recurse over SXML and syntax-highlight code snippets.
-              (match sxml
-                (('*TOP* decl body ...)
-                 `(*TOP* ,decl ,@(map syntax-highlight body)))
-                (('head things ...)
-                 `(head ,@things
-                        (link (@ (rel "stylesheet")
-                                 (type "text/css")
-                                 (href #$syntax-css-url)))))
-                (('pre ('@ ('class "lisp")) code-snippet ...)
-                 `(pre (@ (class "lisp"))
-                       ,(highlights->sxml
-                         (highlight lex-scheme
-                                    (concatenate-snippets code-snippet)))))
-                ((tag ('@ attributes ...) body ...)
-                 `(,tag (@ ,@attributes) ,@(map syntax-highlight body)))
-                ((tag body ...)
-                 `(,tag ,@(map syntax-highlight body)))
-                ((? string? str)
-                 str)))
+              (let loop ((sxml sxml))
+                (match sxml
+                  (('*TOP* decl body ...)
+                   `(*TOP* ,decl ,@(map loop body)))
+                  (('head things ...)
+                   `(head ,@things
+                          (link (@ (rel "stylesheet")
+                                   (type "text/css")
+                                   (href #$syntax-css-url)))))
+                  (('pre ('@ ('class "lisp")) code-snippet ...)
+                   `(pre (@ (class "lisp"))
+                         ,@(highlights->sxml*
+                            (pair-open/close
+                             (highlight lex-scheme
+                                        (concatenate-snippets code-snippet)))
+                            anchors)))
+                  ((tag ('@ attributes ...) body ...)
+                   `(,tag (@ ,@attributes) ,@(map loop body)))
+                  ((tag body ...)
+                   `(,tag ,@(map loop body)))
+                  ((? string? str)
+                   str))))
 
-            (define (process-html file)
+            (define (underscore-decode str)
+              ;; Decode STR, an "underscore-encoded" string as produced by
+              ;; makeinfo for indexes, such as "_0025base_002dservices" for
+              ;; "%base-services".
+              (let loop ((str str)
+                         (result '()))
+                (match (string-index str #\_)
+                  (#f
+                   (string-concatenate-reverse (cons str result)))
+                  (index
+                   (let ((char (string->number
+                                (substring str (+ index 1) (+ index 5))
+                                16)))
+                     (loop (string-drop str (+ index 5))
+                           (append (list (string (integer->char char))
+                                         (string-take str index))
+                                   result)))))))
+
+            (define (anchor-id->key id)
+              ;; Convert ID, an anchor ID such as
+              ;; "index-pam_002dlimits_002dservice" to the corresponding key,
+              ;; "pam-limits-service" in this example.  Drop the suffix of
+              ;; duplicate anchor IDs like "operating_002dsystem-1".
+              (let ((id (if (any (cut string-suffix? <> id)
+                                 '("-1" "-2" "-3" "-4" "-5"))
+                            (string-drop-right id 2)
+                            id)))
+                (underscore-decode
+                 (string-drop id (string-length "index-")))))
+
+            (define* (collect-anchors file #:optional (vhash vlist-null))
+              ;; Collect the anchors that appear in FILE, a makeinfo-generated
+              ;; file.  Grab those from <dt> tags, which corresponds to
+              ;; Texinfo @deftp, @defvr, etc.  Return VHASH augmented with
+              ;; more name/reference pairs.
+              (define string-or-entity?
+                (match-lambda
+                  ((? string?) #t)
+                  (('*ENTITY* _ ...) #t)
+                  (_ #f)))
+
+              (define (worthy-entry? lst)
+                ;; Attempt to match:
+                ;;   Scheme Variable: <strong>x</strong>
+                ;; but not:
+                ;;   <code>cups-configuration</code> parameter: …
+                (let loop ((lst lst))
+                  (match lst
+                    (((? string-or-entity?) rest ...)
+                     (loop rest))
+                    ((('strong _ ...) _ ...)
+                     #t)
+                    (_ #f))))
+
+              (let ((shtml (call-with-input-file file html->shtml)))
+                (let loop ((shtml shtml)
+                           (vhash vhash))
+                  (match shtml
+                    (('dt ('@ ('id id)) rest ...)
+                     (if (and (string-prefix? "index-" id)
+                              (worthy-entry? rest))
+                         (vhash-cons (anchor-id->key id)
+                                     (string-append (basename file)
+                                                    "#" id)
+                                     vhash)
+                         vhash))
+                    ((tag ('@ _ ...) body ...)
+                     (fold loop vhash body))
+                    ((tag body ...)
+                     (fold loop vhash body))
+                    (_ vhash)))))
+
+            (define (process-html file anchors)
               ;; Parse FILE and perform syntax highlighting for its Scheme
               ;; snippets.  Install the result to #$output.
               (format (current-error-port) "processing ~a...~%" file)
               (let* ((shtml        (call-with-input-file file html->shtml))
-                     (highlighted  (syntax-highlight shtml))
+                     (highlighted  (syntax-highlight shtml anchors))
                      (base         (string-drop file (string-length #$input)))
                      (target       (string-append #$output base)))
                 (mkdir-p (dirname target))
@@ -290,23 +439,51 @@ its <pre class=\"lisp\"> blocks (as produced by 'makeinfo --html')."
                       (pk 'error-link file target (strerror errno))
                       (primitive-exit 3))))))
 
+            (define (html? file stat)
+              (string-suffix? ".html" file))
+
             ;; Install a UTF-8 locale so we can process UTF-8 files.
             (setenv "GUIX_LOCPATH"
                     #+(file-append glibc-utf8-locales "/lib/locale"))
             (setlocale LC_ALL "en_US.utf8")
 
+            ;; First process the mono-node 'guix.html' files.
             (n-par-for-each (parallel-job-count)
-                            (lambda (file)
-                              (if (string-suffix? ".html" file)
-                                  (process-html file)
-                                  (copy-as-is file)))
-                            (find-files #$input))))))
+                            (lambda (mono)
+                              (let ((anchors (collect-anchors mono)))
+                                (process-html mono anchors)))
+                            (find-files
+                             #$input
+                             "^guix(-cookbook|)(\\.[a-zA-Z_-]+)?\\.html$"))
+
+            ;; Next process the multi-node HTML files in two phases: (1)
+            ;; collect the list of anchors, and (2) perform
+            ;; syntax-highlighting.
+            (let* ((multi   (find-files #$input "^html_node$"
+                                        #:directories? #t))
+                   (anchors (n-par-map (parallel-job-count)
+                                       (lambda (multi)
+                                         (cons multi
+                                               (fold collect-anchors vlist-null
+                                                     (find-files multi html?))))
+                                       multi)))
+              (n-par-for-each (parallel-job-count)
+                              (lambda (file)
+                                (let ((anchors (assoc-ref anchors (dirname file))))
+                                  (process-html file anchors)))
+                              (append-map (lambda (multi)
+                                            (find-files multi html?))
+                                          multi)))
+
+            ;; Last, copy non-HTML files as is.
+            (for-each copy-as-is
+                      (find-files #$input (negate html?)))))))
 
   (computed-file name build))
 
 (define* (html-manual source #:key (languages %languages)
                       (version "0.0")
-                      (manual "guix")
+                      (manual %manual)
                       (date 1)
                       (options %makeinfo-html-options))
   "Return the HTML manuals built from SOURCE for all LANGUAGES, with the given
@@ -333,6 +510,13 @@ makeinfo OPTIONS."
                           (chr chr))
                         (string-downcase language)))
 
+          (define (language->texi-file-name language)
+            (if (string=? language "en")
+                (string-append #$manual-source "/"
+                               #$manual ".texi")
+                (string-append #$manual-source "/"
+                               #$manual "." language ".texi")))
+
           ;; Install a UTF-8 locale so that 'makeinfo' is at ease.
           (setenv "GUIX_LOCPATH"
                   #+(file-append glibc-utf8-locales "/lib/locale"))
@@ -341,16 +525,18 @@ makeinfo OPTIONS."
           (setvbuf (current-output-port) 'line)
           (setvbuf (current-error-port) 'line)
 
+          ;; 'makeinfo' looks for "htmlxref.cnf" in the current directory, so
+          ;; copy it right here.
+          (copy-file (string-append #$manual-source "/htmlxref.cnf")
+                     "htmlxref.cnf")
+
           (for-each (lambda (language)
-                      (let ((opts `("--html"
-                                    "-c" ,(string-append "TOP_NODE_UP_URL=/manual/"
+                      (let* ((texi (language->texi-file-name language))
+                             (opts `("--html"
+                                     "-c" ,(string-append "TOP_NODE_UP_URL=/manual/"
                                                          language)
-                                    #$@options
-                                    ,(if (string=? language "en")
-                                         (string-append #$manual-source "/"
-                                                        #$manual ".texi")
-                                         (string-append #$manual-source "/"
-                                                        #$manual "." language ".texi")))))
+                                     #$@options
+                                     ,texi)))
                         (format #t "building HTML manual for language '~a'...~%"
                                 language)
                         (mkdir-p (string-append #$output "/"
@@ -380,7 +566,8 @@ makeinfo OPTIONS."
                         (symlink #$images
                                  (string-append #$output "/" (normalize language)
                                                 "/html_node/images"))))
-                    '#$languages))))
+                    (filter (compose file-exists? language->texi-file-name)
+                            '#$languages)))))
 
   (let* ((name   (string-append manual "-html-manual"))
          (manual (computed-file name build)))
@@ -389,7 +576,7 @@ makeinfo OPTIONS."
 
 (define* (pdf-manual source #:key (languages %languages)
                      (version "0.0")
-                     (manual "guix")
+                     (manual %manual)
                      (date 1)
                      (options '()))
   "Return the HTML manuals built from SOURCE for all LANGUAGES, with the given
@@ -517,7 +704,10 @@ from SOURCE."
 (define* (html-manual-indexes source
                               #:key (languages %languages)
                               (version "0.0")
-                              (manual "guix")
+                              (manual %manual)
+                              (title (if (string=? "guix" manual)
+                                         "GNU Guix Reference Manual"
+                                         "GNU Guix Cookbook"))
                               (date 1))
   (define build
     (with-extensions (list guile-json-3)
@@ -621,7 +811,7 @@ from SOURCE."
 
             (define (language-index language)
               (define title
-                (translate "GNU Guix Reference Manual" language))
+                (translate #$title language))
 
               (sxml-index
                language title
@@ -679,8 +869,7 @@ from SOURCE."
                     %iso639-languages)))
 
             (define (top-level-index languages)
-              (define title
-                "GNU Guix Reference Manual")
+              (define title #$title)
               (sxml-index
                "en" title
                `(main
@@ -688,7 +877,7 @@ from SOURCE."
                   (@ (class "page centered-block limit-width"))
                   (h2 ,title)
                   (div
-                   "The GNU Guix Reference Manual is available in the following
+                   "This document is available in the following
 languages:\n"
                    (ul
                     ,@(map (lambda (language)
@@ -729,7 +918,7 @@ languages:\n"
                           #:key (languages %languages)
                           (version "0.0")
                           (date (time-second (current-time time-utc)))
-                          (manual "guix"))
+                          (manual %manual))
   "Return the union of the HTML and PDF manuals, as well as the indexes."
   (directory-union (string-append manual "-manual")
                    (map (lambda (proc)

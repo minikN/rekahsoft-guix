@@ -62,8 +62,12 @@ line syntax.")
     (version "1.16")
     (source (origin
              (method url-fetch)
-             (uri (string-append "http://rpm5.org/files/popt/popt-"
-                                 version ".tar.gz"))
+             ;; The original rpm5.org domain is not accessible since
+             ;; 2019-06-13, so use Debians copy of the tarball.
+             (uri (string-append "https://deb.debian.org/debian/pool/main"
+                                 "/p/popt/popt_" version ".orig.tar.gz"))
+             ;; Ensure the file name stays the same to prevent rebuilds.
+             (file-name (string-append "popt-" version ".tar.gz"))
              (sha256
               (base32
                "1j2c61nn2n351nhj4d25mnf3vpiddcykq005w2h6kw79dwlysa77"))))
@@ -103,7 +107,7 @@ similar to getopt(3), it contains a number of enhancements, including:
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/gflags/gflags.git")
+             (url "https://github.com/gflags/gflags")
              (commit (string-append "v" version))))
        (sha256
         (base32 "147i3md3nxkjlrccqg4mq1kyzc7yrhvqv5902iibc7znkvzdvlp0"))

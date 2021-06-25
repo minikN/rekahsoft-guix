@@ -26,6 +26,7 @@
   #:use-module (srfi srfi-11)
   #:use-module (srfi srfi-26)
   #:use-module (srfi srfi-34)
+  #:use-module (ice-9 format)
   #:use-module (ice-9 regex)
   #:use-module (ice-9 match)
   #:export (service-type->recutils
@@ -65,9 +66,12 @@ provided TYPE has a default value."
 
 (define* (service-type->recutils type port
                                  #:optional (width (%text-width))
-                                 #:key (extra-fields '()))
+                                 #:key
+                                 (extra-fields '())
+                                 (hyperlinks? (supports-hyperlinks? port)))
   "Write to PORT a recutils record of TYPE, arranging to fit within WIDTH
-columns."
+columns.  When HYPERLINKS? is true, emit hyperlink escape sequences when
+appropriate."
   (define width*
     ;; The available number of columns once we've taken into account space for
     ;; the initial "+ " prefix.
@@ -84,7 +88,8 @@ columns."
   ;; Note: Don't i18n field names so that people can post-process it.
   (format port "name: ~a~%" (service-type-name type))
   (format port "location: ~a~%"
-          (or (and=> (service-type-location type) location->string)
+          (or (and=> (service-type-location type)
+                     (if hyperlinks? location->hyperlink location->string))
               (G_ "unknown")))
 
   (format port "extends: ~a~%"

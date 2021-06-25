@@ -2,7 +2,7 @@
 ;;; Copyright © 2014 John Darrington <jmd@gnu.org>
 ;;; Copyright © 2015 Andy Wingo <wingo@igalia.com>
 ;;; Copyright © 2016 Andy Patterson <ajpatter@uwaterloo.ca>
-;;; Copyright © 2017, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2017, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018 Efraim Flashner <efraim@flashner.co.il>
 ;;;
 ;;; This file is part of GNU Guix.
@@ -21,11 +21,16 @@
 ;;; along with GNU Guix.  If not, see <http://www.gnu.org/licenses/>.
 
 (define-module (gnu packages scanner)
+  #:use-module (gnu packages)
+  #:use-module (gnu packages freedesktop)
+  #:use-module (gnu packages ghostscript)
+  #:use-module (gnu packages gtk)
   #:use-module (gnu packages image)
   #:use-module (gnu packages libusb)
   #:use-module (gnu packages pkg-config)
   #:use-module (guix build-system gnu)
   #:use-module (guix download)
+  #:use-module (guix git-download)
   #:use-module ((guix licenses)
                 #:prefix licence:)
   #:use-module (guix packages)
@@ -34,16 +39,16 @@
 (define-public sane-backends-minimal
   (package
     (name "sane-backends-minimal")
-    (version "1.0.28")
+    (version "1.0.30")
     (source (origin
              (method url-fetch)
              (uri (string-append
                    "https://gitlab.com/sane-project/backends/uploads/"
-                   "9e718daff347826f4cfe21126c8d5091/"
+                   "c3dd60c9e054b5dee1e7b01a7edc98b0/"
                    "sane-backends-" version ".tar.gz"))
              (sha256
               (base32
-               "00yy8q9hqdf0zjxxl4d8njr9zf0hhi3a9ib23ikc2anqf8zhy9ii"))
+               "18vryaycps3zpjzxh0wjgg8nv2f4pdvcfxxmdfj28qbzqjlrcp9z"))
              (modules '((guix build utils)))
              (snippet
               ;; Generated HTML files and udev rules normally embed a
@@ -118,7 +123,7 @@ package contains the library, but no drivers.")
     (name "sane-backends")
     (inputs
      `(("hplip" ,(@ (gnu packages cups) hplip-minimal))
-       ("libjpeg" ,libjpeg)             ; wanted by pixma, epsonds, others
+       ("libjpeg" ,libjpeg-turbo)       ; wanted by pixma, epsonds, others
        ("libpng" ,libpng)               ; support ‘scanimage --format=png’
        ,@(package-inputs sane-backends-minimal)))
     (arguments
@@ -126,6 +131,13 @@ package contains the library, but no drivers.")
        ((#:phases phases)
         `(modify-phases ,phases
            (delete 'disable-backends)
+           (add-after 'disable-failing-tests 'disable-failing-backend-tests
+             (lambda _
+               ;; Disable test that fails on i686:
+               ;;   <https://bugs.gnu.org/39449>
+               (substitute* "testsuite/backend/genesys/Makefile.in"
+                 ((" genesys_unit_tests\\$\\(EXEEXT\\)") ""))
+               #t))
            (add-after 'unpack 'add-backends
              (lambda _
                (substitute* "backend/dll.conf.in"
@@ -148,3 +160,87 @@ package contains the library, but no drivers.")
 proving access to any raster image scanner hardware (flatbed scanner,
 hand-held scanner, video- and still-cameras, frame-grabbers, etc.).  The
 package contains the library and drivers.")))
+
+(define-public xsane
+  (package
+    (name "xsane")
+    (version "0.999")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://gitlab.com/sane-project/frontend/xsane.git")
+             (commit version)))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "08zvxj7i1s88ckrsqldmsrikc3g62a6p3s3i5b5x4krcfpi3vs50"))
+       ;; Apply some important-looking fixes.  There are many more unreleased
+       ;; commits upstream.  A 1.0 release is planned.
+       (patches (search-patches "xsane-fix-memory-leak.patch"
+                                "xsane-fix-pdf-floats.patch"
+                                "xsane-fix-snprintf-buffer-length.patch"
+                                "xsane-support-ipv6.patch"
+                                "xsane-tighten-default-umask.patch"))
+       (modules '((guix build utils)))
+       (snippet
+        '(begin
+           ;; Remove ancient bundled lprng code under a non-free licence.  See
+           ;; <https://trisquel.info/en/issues/10713>, which solves the problem
+           ;; by replacing it with a newer (free) copy.  We let the build fall
+           ;; back to the system version instead, which appears to work fine.
+           (delete-file "lib/snprintf.c")
+           (substitute* "lib/Makefile.in"
+             (("snprintf\\.o ") ""))
+           #t))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:make-flags
+       (list (string-append "xsanedocdir=" (assoc-ref %outputs "out")
+                            "/share/doc/" ,name "-" ,version))
+       #:tests? #f                      ; no test suite
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'patch-invalid-dereference
+           ;; Fix the following compilation error with libpng:
+           ;;   xsane-save.c: In function ‘xsane_save_png’:
+           ;;   xsane-save.c:4913:21: error: dereferencing pointer to
+           ;;   incomplete type ‘png_struct {aka struct png_struct_def}’
+           ;;       if (setjmp(png_ptr->jmpbuf))
+           ;;                         ^
+           (lambda _
+             (substitute* "src/xsane-save.c"
+               (("png_ptr->jmpbuf") "png_jmpbuf(png_ptr)"))
+             #t))
+         (add-after 'unpack 'use-sane-help-browser
+           (lambda _
+             (substitute* "src/xsane.h"
+               (("netscape") (which "xdg-open")))
+             #t))
+         (add-after 'install 'delete-empty-/sbin
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out")))
+               (rmdir (string-append out "/sbin"))
+               #t))))))
+    (native-inputs
+     `(("pkg-config" ,pkg-config)))
+    (inputs
+     `(("gtk+" ,gtk+-2)
+       ("lcms" ,lcms)
+       ("libjpeg" ,libjpeg-turbo)
+       ("libtiff" ,libtiff)
+       ("sane-backends" ,sane-backends)
+
+       ;; To open the manual from the Help menu.
+       ("xdg-utils" ,xdg-utils)))
+    (home-page "https://gitlab.com/sane-project/frontend/xsane")
+    (synopsis "Featureful graphical interface for document and image scanners")
+    (description
+     "XSane is a graphical interface for controlling a scanner and acquiring
+images from it.  You can photocopy multi-page documents and save, fax, print,
+or e-mail your scanned images.  It is highly configurable and exposes all
+device settings, letting you fine-tune the final result.  It can also be used
+as a GIMP plugin to acquire images directly from a scanner.
+
+XSane talks to scanners through the @acronym{SANE, Scanner Access Now Easy}
+back-end library, which supports almost all existing scanners.")
+    (license licence:gpl2+)))

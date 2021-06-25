@@ -1,6 +1,7 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2018 Pierre Neidhardt <mail@ambrevar.xyz>
-;;; Copyright © 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2019, 2020 Martin Becze <mjbecze@riseup.net>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -36,7 +37,7 @@
         (origin
           (method git-fetch)
           (uri (git-reference
-                 (url "https://github.com/ipfs/go-ipfs-cmdkit.git")
+                 (url "https://github.com/ipfs/go-ipfs-cmdkit")
                  (commit commit)))
           (file-name (git-file-name name version))
           (sha256
@@ -64,7 +65,7 @@ that are shared between @command{go-ipfs/commands} and its rewrite
        (origin
          (method git-fetch)
          (uri (git-reference
-               (url "https://github.com/ipfs/go-ipfs-api.git")
+               (url "https://github.com/ipfs/go-ipfs-api")
                (commit commit)))
          (file-name (git-file-name name version))
          (sha256
@@ -86,14 +87,12 @@ that are shared between @command{go-ipfs/commands} and its rewrite
          ("go-github-com-multiformats-go-multiaddr" ,go-github-com-multiformats-go-multiaddr)
          ("go-github-com-multiformats-go-multiaddr-net" ,go-github-com-multiformats-go-multiaddr-net)
          ("go-github-com-btcsuite-btcd-btcec" ,go-github-com-btcsuite-btcd-btcec)
-         ("go-github-com-gogo-protobuf-proto" ,go-github-com-gogo-protobuf-proto)
+         ("go-github-com-gogo-protobuf" ,go-github-com-gogo-protobuf)
          ("go-github-com-minio-blake2b-simd" ,go-github-com-minio-blake2b-simd)
          ("go-github-com-minio-sha256-simd" ,go-github-com-minio-sha256-simd)
          ("go-github-com-mr-tron-base58" ,go-github-com-mr-tron-base58)
          ("go-github-com-multiformats-go-multihash" ,go-github-com-multiformats-go-multihash)
-         ("go-golang-org-x-crypto-blake2s" ,go-golang-org-x-crypto-blake2s)
-         ("go-golang-org-x-crypto-ed25519" ,go-golang-org-x-crypto-ed25519)
-         ("go-golang-org-x-crypto-sha3" ,go-golang-org-x-crypto-sha3)
+         ("go-golang-org-x-crypto" ,go-golang-org-x-crypto)
          ("go-github-com-spaolacci-murmur3" ,go-github-com-spaolacci-murmur3)
          ("go-github-com-gxed-hashland-keccakpg" ,go-github-com-gxed-hashland-keccakpg)
          ("go-github-com-whyrusleeping-tar-utils" ,go-github-com-whyrusleeping-tar-utils)
@@ -106,17 +105,16 @@ that are shared between @command{go-ipfs/commands} and its rewrite
 (define-public gx
   (package
     (name "gx")
-    (version "0.14.1")
+    (version "0.14.3")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/whyrusleeping/gx.git")
+             (url "https://github.com/whyrusleeping/gx")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
-        (base32
-         "0pfx2p59xdbmqzfbgaf8xvlnzh8m05hkg596glq5kvl8ib65i4ha"))))
+        (base32 "1sk20kv3rfsnizgwmcmmr69jb1b2iwzqh9wwwd6wg6x0pnqm8swc"))))
     (build-system go-build-system)
     (arguments
      '(#:import-path "github.com/whyrusleeping/gx"))
@@ -140,15 +138,13 @@ that are shared between @command{go-ipfs/commands} and its rewrite
        ("go-github-com-spaolacci-murmur3" ,go-github-com-spaolacci-murmur3)
        ("go-github-com-whyrusleeping-tar-utils" ,go-github-com-whyrusleeping-tar-utils)
        ("go-github-com-btcsuite-btcd-btcec" ,go-github-com-btcsuite-btcd-btcec)
-       ("go-github-com-gogo-protobuf-proto" ,go-github-com-gogo-protobuf-proto)
+       ("go-github-com-gogo-protobuf" ,go-github-com-gogo-protobuf)
        ("go-github-com-sabhiram-go-gitignore" ,go-github-com-sabhiram-go-gitignore)
        ("go-github-com-urfave-cli" ,go-github-com-urfave-cli)
        ("go-github-com-whyrusleeping-json-filter" ,go-github-com-whyrusleeping-json-filter)
        ("go-github-com-whyrusleeping-progmeter" ,go-github-com-whyrusleeping-progmeter)
        ("go-github-com-whyrusleeping-stump" ,go-github-com-whyrusleeping-stump)
-       ("go-golang-org-x-crypto-blake2s" ,go-golang-org-x-crypto-blake2s)
-       ("go-golang-org-x-crypto-ed25519" ,go-golang-org-x-crypto-ed25519)
-       ("go-golang-org-x-crypto-sha3" ,go-golang-org-x-crypto-sha3)))
+       ("go-golang-org-x-crypto" ,go-golang-org-x-crypto)))
     (home-page "https://github.com/whyrusleeping/gx")
     (synopsis "Package management tool using IPFS")
     (description "@command{gx} is a packaging tool built around the
@@ -202,14 +198,12 @@ powerful and simple.")
        ("go-github-com-spaolacci-murmur3" ,go-github-com-spaolacci-murmur3)
        ("go-github-com-whyrusleeping-tar-utils" ,go-github-com-whyrusleeping-tar-utils)
        ("go-github-com-btcsuite-btcd-btcec" ,go-github-com-btcsuite-btcd-btcec)
-       ("go-github-com-gogo-protobuf-proto" ,go-github-com-gogo-protobuf-proto)
+       ("go-github-com-gogo-protobuf" ,go-github-com-gogo-protobuf)
        ("go-github-com-sabhiram-go-gitignore" ,go-github-com-sabhiram-go-gitignore)
        ("go-github-com-urfave-cli" ,go-github-com-urfave-cli)
        ("go-github-com-whyrusleeping-progmeter" ,go-github-com-whyrusleeping-progmeter)
        ("go-github-com-whyrusleeping-stump" ,go-github-com-whyrusleeping-stump)
-       ("go-golang-org-x-crypto-blake2s" ,go-golang-org-x-crypto-blake2s)
-       ("go-golang-org-x-crypto-ed25519" ,go-golang-org-x-crypto-ed25519)
-       ("go-golang-org-x-crypto-sha3" ,go-golang-org-x-crypto-sha3)))
+       ("go-golang-org-x-crypto" ,go-golang-org-x-crypto)))
     (home-page "https://github.com/whyrusleeping/gx-go")
     (synopsis "Golang subtool for the @command{gx} package manager")
     (description "A subtool for the @command{gx} package manager for packages
@@ -219,7 +213,7 @@ written in Go.")
 (define-public go-ipfs
   (package
     (name "go-ipfs")
-    (version "0.4.22")
+    (version "0.5.1")
     (source
      (origin
        (method url-fetch/tarbomb)
@@ -227,7 +221,7 @@ written in Go.")
              "https://dist.ipfs.io/go-ipfs/v" version
              "/go-ipfs-source.tar.gz"))
        (sha256
-        (base32 "1gyz9yqb4y7p6vdjbcm66nvm6gjs4mdrjygdn79z3misv1pb5nkg"))
+        (base32 "0lpilycjbc1g9adp4d5kryfprixj18hg3235fnivakmv7fy2akkm"))
        (file-name (string-append name "-" version "-source"))))
     (build-system go-build-system)
     (arguments

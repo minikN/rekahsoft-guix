@@ -1,6 +1,7 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2015, 2016, 2019 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2015 Mathieu Lirzin <mthl@gnu.org>
+;;; Copyright © 2020 Simon Tournier <zimon.toutoune@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -20,6 +21,7 @@
 (define-module (guix scripts edit)
   #:use-module (guix ui)
   #:use-module (guix scripts)
+  #:use-module ((guix scripts build) #:select (%standard-build-options))
   #:use-module (guix utils)
   #:use-module (gnu packages)
   #:use-module (srfi srfi-1)
@@ -28,7 +30,10 @@
             guix-edit))
 
 (define %options
-  (list (option '(#\h "help") #f #f
+  (list (find (lambda (option)
+                (member "load-path" (option-names option)))
+              %standard-build-options)
+        (option '(#\h "help") #f #f
                 (lambda args
                   (show-help)
                   (exit 0)))
@@ -41,6 +46,9 @@
 Start $VISUAL or $EDITOR to edit the definitions of PACKAGE...\n"))
   (newline)
   (display (G_ "
+  -L, --load-path=DIR    prepend DIR to the package module search path"))
+  (newline)
+  (display (G_ "
   -h, --help             display this help and exit"))
   (display (G_ "
   -V, --version          display version information and exit"))
@@ -48,10 +56,9 @@ Start $VISUAL or $EDITOR to edit the definitions of PACKAGE...\n"))
   (show-bug-report-information))
 
 (define %editor
-  ;; XXX: It would be better to default to something more likely to be
-  ;; pre-installed on an average GNU system.  Since Nano is not suited for
-  ;; editing Scheme, Emacs is used instead.
-  (make-parameter (or (getenv "VISUAL") (getenv "EDITOR") "emacs")))
+  ;; Nano is sensible default, as it is installed by base system.
+  ;; For development, user can set custom value for $EDITOR.
+  (make-parameter (or (getenv "VISUAL") (getenv "EDITOR") "nano")))
 
 (define (search-path* path file)
   "Like 'search-path' but exit if FILE is not found."

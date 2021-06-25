@@ -1,8 +1,8 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2012, 2013, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2012, 2013, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2016 Jelle Licht <jlicht@fsfe.org>
 ;;; Copyright © 2016 David Craven <david@craven.ch>
-;;; Copyright © 2017, 2019 Ricardo Wurmus <rekado@elephly.net>
+;;; Copyright © 2017, 2019, 2020 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2018 Oleg Pykhalov <go.wigust@gmail.com>
 ;;; Copyright © 2019 Robert Vollmert <rob@vllmrt.net>
 ;;;
@@ -24,7 +24,7 @@
 (define-module (guix import utils)
   #:use-module (guix base32)
   #:use-module ((guix build download) #:prefix build:)
-  #:use-module (gcrypt hash)
+  #:use-module ((gcrypt hash) #:hide (sha256))
   #:use-module (guix http-client)
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (guix utils)
@@ -34,19 +34,19 @@
   #:use-module (guix gexp)
   #:use-module (guix store)
   #:use-module (guix download)
+  #:use-module (guix sets)
   #:use-module (gnu packages)
   #:use-module (ice-9 match)
   #:use-module (ice-9 rdelim)
   #:use-module (ice-9 receive)
   #:use-module (ice-9 regex)
   #:use-module (srfi srfi-1)
+  #:use-module (srfi srfi-9)
   #:use-module (srfi srfi-11)
   #:use-module (srfi srfi-26)
-  #:use-module (srfi srfi-41)
   #:export (factorize-uri
 
             flatten
-            assoc-ref*
 
             url-fetch
             guix-hash-url
@@ -108,13 +108,6 @@ of the string VERSION is replaced by the symbol 'version."
     ((elem memo)
      (cons elem memo)))
    '() lst))
-
-(define (assoc-ref* alist key . rest)
-  "Return the value for KEY from ALIST.  For each additional key specified,
-recursively apply the procedure to the sub-list."
-  (if (null? rest)
-      (assoc-ref alist key)
-      (apply assoc-ref* (assoc-ref alist key) rest)))
 
 (define (url-fetch url file-name)
   "Save the contents of URL to FILE-NAME.  Return #f on failure."
@@ -212,10 +205,19 @@ with dashes."
 (define (beautify-description description)
   "Improve the package DESCRIPTION by turning a beginning sentence fragment
 into a proper sentence and by using two spaces between sentences."
-  (let ((cleaned (if (string-prefix? "A " description)
-                     (string-append "This package provides a"
-                                    (substring description 1))
-                     description)))
+  (let ((cleaned (cond
+                  ((string-prefix? "A " description)
+                   (string-append "This package provides a"
+                                  (substring description 1)))
+                  ((string-prefix? "Provides " description)
+                   (string-append "This package provides"
+                                  (substring description
+                                             (string-length "Provides"))))
+                  ((string-prefix? "Functions " description)
+                   (string-append "This package provides functions"
+                                  (substring description
+                                             (string-length "Functions"))))
+                  (else description))))
     ;; Use double spacing between sentences
     (regexp-substitute/global #f "\\. \\b"
                               cleaned 'pre ".  " 'post)))
@@ -308,7 +310,23 @@ the expected fields of an <origin> object."
               (uri (assoc-ref orig "uri"))
               (sha256 sha))))))
 
-(define (alist->package meta)
+(define* (alist->package meta #:optional (known-inputs '()))
+  "Return a package value generated from the alist META.  If the list of
+strings KNOWN-INPUTS is provided, do not treat the mentioned inputs as
+specifications to look up and replace them with plain symbols instead."
+  (define (process-inputs which)
+    (let-values (((regular known)
+                  (lset-diff+intersection
+                   string=?
+                   (vector->list (or (assoc-ref meta which) #()))
+                   known-inputs)))
+      (append (specs->package-lists regular)
+              (map string->symbol known))))
+  (define (process-arguments arguments)
+    (append-map (match-lambda
+                  ((key . value)
+                   (list (symbol->keyword (string->symbol key)) value)))
+                arguments))
   (package
     (name (assoc-ref meta "name"))
     (version (assoc-ref meta "version"))
@@ -316,15 +334,13 @@ the expected fields of an <origin> object."
     (build-system
       (lookup-build-system-by-name
        (string->symbol (assoc-ref meta "build-system"))))
-    (native-inputs
-     (specs->package-lists
-      (vector->list (or (assoc-ref meta "native-inputs") '#()))))
-    (inputs
-     (specs->package-lists
-      (vector->list (or (assoc-ref meta "inputs") '#()))))
-    (propagated-inputs
-     (specs->package-lists
-      (vector->list (or (assoc-ref meta "propagated-inputs") '#()))))
+    (arguments
+     (or (and=> (assoc-ref meta "arguments")
+                process-arguments)
+         '()))
+    (native-inputs (process-inputs "native-inputs"))
+    (inputs (process-inputs "inputs"))
+    (propagated-inputs (process-inputs "propagated-inputs"))
     (home-page
      (assoc-ref meta "home-page"))
     (synopsis
@@ -368,40 +384,53 @@ separated by PRED."
                                       (chr (char-downcase chr)))
                                     name)))
 
+(define (topological-sort nodes
+                          node-dependencies
+                          node-name)
+  "Perform a breadth-first traversal of the graph rooted at NODES, a list of
+nodes, and return the list of nodes sorted in topological order.  Call
+NODE-DEPENDENCIES to obtain the dependencies of a node, and NODE-NAME to
+obtain a node's uniquely identifying \"key\"."
+  (let loop ((nodes nodes)
+             (result '())
+             (visited (set)))
+    (match nodes
+      (()
+       result)
+      ((head . tail)
+       (if (set-contains? visited (node-name head))
+           (loop tail result visited)
+           (let ((dependencies (node-dependencies head)))
+             (loop (append dependencies tail)
+                   (cons head result)
+                   (set-insert (node-name head) visited))))))))
+
 (define* (recursive-import package-name repo
                            #:key repo->guix-package guix-name
                            #:allow-other-keys)
-  "Generate a stream of package expressions for PACKAGE-NAME and all its
-dependencies."
-  (define (exists? dependency)
-    (not (null? (find-packages-by-name (guix-name dependency)))))
-  (define initial-state (list #f (list package-name) (list)))
-  (define (step state)
-    (match state
-      ((prev (next . rest) done)
-       (define (handle? dep)
-         (and
-           (not (equal? dep next))
-           (not (member dep done))
-           (not (exists? dep))))
-       (receive (package . dependencies) (repo->guix-package next repo)
-         (list
-           (if package package '()) ;; default #f on failure would interrupt
-           (if package
-             (lset-union equal? rest (filter handle? (car dependencies)))
-             rest)
-           (cons next done))))
-      ((prev '() done)
-       (list #f '() done))))
+  "Return a list of package expressions for PACKAGE-NAME and all its
+dependencies, sorted in topological order.  For each package,
+call (REPO->GUIX-PACKAGE NAME REPO), which should return a package expression
+and a list of dependencies; call (GUIX-NAME NAME) to obtain the Guix package
+name corresponding to the upstream name."
+  (define-record-type <node>
+    (make-node name package dependencies)
+    node?
+    (name         node-name)
+    (package      node-package)
+    (dependencies node-dependencies))
 
-  ;; Generate a lazy stream of package expressions for all unknown
-  ;; dependencies in the graph.
-  (stream-unfold
-    ;; map: produce a stream element
-    (match-lambda ((latest queue done) latest))
-    ;; predicate
-    (match-lambda ((latest queue done) latest))
-    ;; generator: update the queue
-    step
-    ;; initial state
-    (step initial-state)))
+  (define (exists? name)
+    (not (null? (find-packages-by-name (guix-name name)))))
+
+  (define (lookup-node name)
+    (receive (package dependencies) (repo->guix-package name repo)
+      (make-node name package dependencies)))
+
+  (map node-package
+       (topological-sort (list (lookup-node package-name))
+                         (lambda (node)
+                           (map lookup-node
+                                (remove exists?
+                                        (node-dependencies node))))
+                         node-name)))

@@ -2,8 +2,8 @@
 ;;; Copyright © 2015 Eric Bavier <bavier@member.fsf.org>
 ;;; Copyright © 2016 Jan Nieuwenhuizen <janneke@gnu.org>
 ;;; Copyright © 2016, 2017 Mathieu Lirzin <mthl@gnu.org>
-;;; Copyright © 2017 Mathieu Othacehe <m.othacehe@gmail.com>
-;;; Copyright © 2017 Ricardo Wurmus <rekado@elephly.net>
+;;; Copyright © 2017, 2020 Mathieu Othacehe <m.othacehe@gmail.com>
+;;; Copyright © 2017, 2019, 2020 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2018 Clément Lassieur <clement@lassieur.org>
 ;;;
 ;;; This file is part of GNU Guix.
@@ -47,26 +47,28 @@
   #:use-module (guix build-system gnu))
 
 (define-public cuirass
-  (let ((commit "1cd2f9334dde13542732c22753c4ebde61bc95e0")
-        (revision "23"))
+  (let ((commit "153b49c952eb0238329355590fc7d965ceb504e8")
+        (revision "40"))
     (package
       (name "cuirass")
-      (version (string-append "0.0.1-" revision "." (string-take commit 7)))
+      (version (git-version "0.0.1" revision commit))
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
                       (url "https://git.savannah.gnu.org/git/guix/guix-cuirass.git")
                       (commit commit)))
-                (file-name (string-append name "-" version))
+                (file-name (git-file-name name version))
                 (sha256
                  (base32
-                  "0r3x8gv0v89brjqi8r31p6c0mblbaf2kdk2fz99jiab4pir16w87"))))
+                  "1fx21jfikb5n7x73ibw0ya2bi4zzmgbv08vymv8qlc0r8h721ssy"))))
       (build-system gnu-build-system)
       (arguments
        '(#:modules ((guix build utils)
                     (guix build gnu-build-system)
                     (ice-9 rdelim)
                     (ice-9 popen))
+
+         #:configure-flags '("--localstatedir=/var") ;for /var/log/cuirass
 
          #:phases
          (modify-phases %standard-phases
@@ -118,10 +120,10 @@
                    `("GUILE_LOAD_COMPILED_PATH" ":" prefix (,objs)))
                  #t))))))
       (inputs
-       `(("guile" ,guile-2.2)
+       `(("guile" ,@(assoc-ref (package-native-inputs guix) "guile"))
          ("guile-fibers" ,guile-fibers)
          ("guile-gcrypt" ,guile-gcrypt)
-         ("guile-json" ,guile-json-3)
+         ("guile-json" ,guile-json-4)
          ("guile-sqlite3" ,guile-sqlite3)
          ("guile-git" ,guile-git)
          ;; FIXME: this is propagated by "guile-git", but it needs to be among

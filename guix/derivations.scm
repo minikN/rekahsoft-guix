@@ -1,5 +1,5 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2016, 2017 Mathieu Lirzin <mthl@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
@@ -86,6 +86,7 @@
             fixed-output-derivation?
             offloadable-derivation?
             substitutable-derivation?
+            derivation-input-fold
             substitution-oracle
             derivation-hash
             derivation-properties
@@ -239,6 +240,13 @@ the store."
   "Return a list of inputs, such that when INPUTS contains the same DRV twice,
 they are coalesced, with their sub-derivations merged.  This is needed because
 Nix itself keeps only one of them."
+  (define (find pred lst)                         ;inlinable copy of 'find'
+    (let loop ((lst lst))
+      (match lst
+        (() #f)
+        ((head . tail)
+         (if (pred head) head (loop tail))))))
+
   (fold (lambda (input result)
           (match input
             (($ <derivation-input> (= derivation-file-name path) sub-drvs)
@@ -303,6 +311,29 @@ result is the set of prerequisites of DRV not already in valid."
             (derivation-output-path (assoc-ref outputs sub-drv)))
           sub-drvs))))
 
+(define* (derivation-input-fold proc seed inputs
+                                #:key (cut? (const #f)))
+  "Perform a breadth-first traversal of INPUTS, calling PROC on each input
+with the current result, starting from SEED.  Skip recursion on inputs that
+match CUT?."
+  (let loop ((inputs inputs)
+             (result seed)
+             (visited (set)))
+    (match inputs
+      (()
+       result)
+      ((input rest ...)
+       (let ((key (derivation-input-key input)))
+         (cond ((set-contains? visited key)
+                (loop rest result visited))
+               ((cut? input)
+                (loop rest result (set-insert key visited)))
+               (else
+                (let ((drv (derivation-input-derivation input)))
+                  (loop (append (derivation-inputs drv) rest)
+                        (proc input result)
+                        (set-insert key visited))))))))))
+
 (define* (substitution-oracle store inputs-or-drv
                               #:key (mode (build-mode normal)))
   "Return a one-argument procedure that, when passed a store file name,
@@ -322,25 +353,15 @@ substituter many times."
     (cut valid-derivation-input? store <>))
 
   (define (closure inputs)
-    (let loop ((inputs inputs)
-               (closure '())
-               (visited (set)))
-      (match inputs
-        (()
-         (reverse closure))
-        ((input rest ...)
-         (let ((key (derivation-input-key input)))
-           (cond ((set-contains? visited key)
-                  (loop rest closure visited))
-                 ((valid-input? input)
-                  (loop rest closure (set-insert key visited)))
-                 (else
-                  (let ((drv (derivation-input-derivation input)))
-                    (loop (append (derivation-inputs drv) rest)
-                          (if (substitutable-derivation? drv)
-                              (cons input closure)
-                              closure)
-                          (set-insert key visited))))))))))
+    (reverse
+     (derivation-input-fold (lambda (input closure)
+                              (let ((drv (derivation-input-derivation input)))
+                                (if (substitutable-derivation? drv)
+                                    (cons input closure)
+                                    closure)))
+                            '()
+                            inputs
+                            #:cut? valid-input?)))
 
   (let* ((inputs (closure (map (match-lambda
                                  ((? derivation-input? input)
@@ -622,7 +643,7 @@ that form."
      (display ")" port))))
 
 (define derivation->bytevector
-  (mlambda (drv)
+  (lambda (drv)
     "Return the external representation of DRV as a UTF-8-encoded string."
     (with-fluids ((%default-port-encoding "UTF-8"))
       (call-with-values open-bytevector-output-port
@@ -919,7 +940,6 @@ derivation.  It is kept as-is, uninterpreted, in the derivation."
 long-running processes that know what they're doing.  Use with care!"
   ;; Typically this is meant to be used by Cuirass and Hydra, which can clear
   ;; caches when they start evaluating packages for another architecture.
-  (invalidate-memoization! derivation->bytevector)
   (invalidate-memoization! derivation-base16-hash)
 
   ;; FIXME: Comment out to work around <https://bugs.gnu.org/36487>.
@@ -1085,39 +1105,13 @@ recursively."
                    (string-tokenize (dirname file-name) not-slash))))))
 
 (define* (imported-files store files              ;deprecated
-                         #:key (name "file-import")
-                         (system (%current-system))
-                         (guile (%guile-for-build)))
-  "Return a derivation that imports FILES into STORE.  FILES must be a list
+                         #:key (name "file-import"))
+  "Return a store item that contains FILES.  FILES must be a list
 of (FINAL-PATH . FILE-NAME) pairs; each FILE-NAME is read from the file
 system, imported, and appears under FINAL-PATH in the resulting store path."
-  (let* ((files   (map (match-lambda
-                        ((final-path . file-name)
-                         (list final-path
-                               (add-to-store store (basename final-path) #f
-                                             "sha256" file-name))))
-                       files))
-         (builder
-          `(begin
-             (mkdir %output) (chdir %output)
-             ,@(append-map (match-lambda
-                            ((final-path store-path)
-                             (append (match (parent-directories final-path)
-                                       (() '())
-                                       ((head ... tail)
-                                        (append (map (lambda (d)
-                                                       `(false-if-exception
-                                                         (mkdir ,d)))
-                                                     head)
-                                                `((or (file-exists? ,tail)
-                                                      (mkdir ,tail))))))
-                                     `((symlink ,store-path ,final-path)))))
-                           files))))
-    (build-expression->derivation store name builder
-                                  #:system system
-                                  #:inputs files
-                                  #:guile-for-build guile
-                                  #:local-build? #t)))
+  (add-file-tree-to-store store
+                          `(,name directory
+                                  ,@(file-mapping->tree files))))
 
 ;; The "file not found" error condition.
 (define-condition-type &file-search-error &error
@@ -1144,10 +1138,8 @@ of symbols.)"
 
 (define* (%imported-modules store modules         ;deprecated
                             #:key (name "module-import")
-                            (system (%current-system))
-                            (guile (%guile-for-build))
                             (module-path %load-path))
-  "Return a derivation that contains the source files of MODULES, a list of
+  "Return a store item that contains the source files of MODULES, a list of
 module names such as `(ice-9 q)'.  All of MODULES must be in the MODULE-PATH
 search path."
   ;; TODO: Determine the closure of MODULES, build the `.go' files,
@@ -1156,8 +1148,7 @@ search path."
                       (let ((f (module->source-file-name m)))
                         (cons f (search-path* module-path f))))
                     modules)))
-    (imported-files store files #:name name #:system system
-                    #:guile guile)))
+    (imported-files store files #:name name)))
 
 (define* (%compiled-modules store modules         ;deprecated
                             #:key (name "module-import-compiled")
@@ -1167,11 +1158,8 @@ search path."
   "Return a derivation that builds a tree containing the `.go' files
 corresponding to MODULES.  All the MODULES are built in a context where
 they can refer to each other."
-  (let* ((module-drv (%imported-modules store modules
-                                        #:system system
-                                        #:guile guile
+  (let* ((module-dir (%imported-modules store modules
                                         #:module-path module-path))
-         (module-dir (derivation->output-path module-drv))
          (files      (map (lambda (m)
                             (let ((f (string-join (map symbol->string m)
                                                   "/")))
@@ -1202,10 +1190,29 @@ they can refer to each other."
                 files)))
 
     (build-expression->derivation store name builder
-                                  #:inputs `(("modules" ,module-drv))
+                                  #:inputs `(("modules" ,module-dir))
                                   #:system system
                                   #:guile-for-build guile
                                   #:local-build? #t)))
+
+(define %module-cache
+  ;; Map a list of modules to its 'imported+compiled-modules' result.
+  (make-hash-table))
+
+(define* (imported+compiled-modules store modules #:key
+                                    (system (%current-system))
+                                    (guile (%guile-for-build)))
+  "Return a pair containing the derivation to import MODULES and that where
+MODULES are compiled."
+  (define key
+    (list modules (derivation-file-name guile) system))
+
+  (or (hash-ref %module-cache key)
+      (let ((result (cons (%imported-modules store modules)
+                          (%compiled-modules store modules
+                                             #:system system #:guile guile))))
+        (hash-set! %module-cache key result)
+        result)))
 
 (define* (build-expression->derivation store name exp ;deprecated
                                        #:key
@@ -1330,16 +1337,13 @@ and PROPERTIES."
                                       ;; fixed-output.
                                       (filter-map source-path inputs)))
 
-         (mod-drv  (and (pair? modules)
-                        (%imported-modules store modules
-                                           #:guile guile-drv
-                                           #:system system)))
-         (mod-dir  (and mod-drv
-                        (derivation->output-path mod-drv)))
-         (go-drv   (and (pair? modules)
-                        (%compiled-modules store modules
-                                           #:guile guile-drv
-                                           #:system system)))
+         (mod+go-drv  (if (pair? modules)
+                          (imported+compiled-modules store modules
+                                                     #:guile guile-drv
+                                                     #:system system)
+                          '(#f . #f)))
+         (mod-dir  (car mod+go-drv))
+         (go-drv   (cdr mod+go-drv))
          (go-dir   (and go-drv
                         (derivation->output-path go-drv))))
     (derivation store name guile
@@ -1356,7 +1360,7 @@ and PROPERTIES."
                 #:inputs `((,(or guile-for-build (%guile-for-build)))
                            (,builder)
                            ,@(map cdr inputs)
-                           ,@(if mod-drv `((,mod-drv) (,go-drv)) '()))
+                           ,@(if mod-dir `((,mod-dir) (,go-drv)) '()))
 
                 ;; When MODULES is non-empty, shamelessly clobber
                 ;; $GUILE_LOAD_COMPILED_PATH.

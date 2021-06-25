@@ -3,6 +3,9 @@
 ;;; Copyright © 2014 Mark H Weaver <mhw@netris.org>
 ;;; Copyright © 2016 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2017 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2019 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2019 Eric Bavier <bavier@member.fsf.org>
+;;; Copyright © 2019 Mathieu Othacehe <m.othacehe@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -36,14 +39,13 @@
 (define-public groff
   (package
    (name "groff")
-   (version "1.22.3")
+   (version "1.22.4")
    (source (origin
             (method url-fetch)
             (uri (string-append "mirror://gnu/groff/groff-" version
                                 ".tar.gz"))
             (sha256 (base32
-                     "1998v2kcs288d3y7kfxpvl369nqi06zbbvjzafyvyl3pr7bajj1s"))
-            (patches (search-patches "groff-source-date-epoch.patch"))))
+                     "14q2mldnr1vx0l9lqp9v2f6iww24gj28iyh4j2211hyynx67p3p7"))))
    (build-system gnu-build-system)
    (outputs '("out"
               "doc"))                    ;12MiB of PS, PDF, HTML, and examples
@@ -54,17 +56,61 @@
    ;; from 'inputs'.
 
    (inputs `(("ghostscript" ,ghostscript)))
-   (native-inputs `(("bison" ,bison)
+
+   ;; When cross-compiling, this package depends upon a native install of
+   ;; itself.
+   (native-inputs `(,@(if (%current-target-system)
+                          `(("self" ,this-package))
+                          '())
+                    ("bison" ,bison)
                     ("perl" ,perl)
                     ("psutils" ,psutils)
                     ("texinfo" ,texinfo)))
    (arguments
     `(#:parallel-build? #f   ; parallel build fails
+      ,@(if (%current-target-system)
+            `(#:make-flags
+              ;; In groff-minimal package, that inherits from this package,
+              ;; we'll need to locate "groff" instead of "self".
+              (let ((groff (or (assoc-ref %build-host-inputs "groff")
+                               (assoc-ref %build-host-inputs "self"))))
+                (list
+                 (string-append "GROFF_BIN_PATH=" groff)
+                 (string-append "GROFFBIN=" groff "/bin/groff"))))
+            '())
       #:phases
       (modify-phases %standard-phases
+        (add-after 'unpack 'disable-relocatability
+          (lambda _
+            ;; Groff contains a Rube Goldberg-esque relocator for the file
+            ;; "charset.alias".  It tries to find the current executable
+            ;; using realpath, a do-it-yourself search in $PATH and so on.
+            ;; Furthermore, the routine that does the search is buggy
+            ;; in that it doesn't handle error cases when they arise.
+            ;; This causes preconv to segfault when trying to look up
+            ;; the file "charset.alias" in the NULL location.
+            ;; The "charset.alias" parser is a copy of gnulib's, and a
+            ;; non-broken version of gnulib's "charset.alias" parser is
+            ;; part of glibc's libcharset.
+            ;; However, groff unconditionally uses their own
+            ;; "charset.alias" parser, but then DOES NOT INSTALL the
+            ;; file "charset.alias" when glibc is too new.
+            ;; In Guix, our file "charset.alias" only contains an obscure
+            ;; alias for ASCII and nothing else.  So just disable relocation
+            ;; and make the entire "charset.alias" lookup fail.
+            ;; See <https://debbugs.gnu.org/cgi/bugreport.cgi?bug=30785> for
+            ;; details.
+            (substitute* "Makefile.in"
+              (("-DENABLE_RELOCATABLE=1") ""))
+            #t))
         (add-after 'unpack 'setenv
           (lambda _
             (setenv "GS_GENERATE_UUIDS" "0")
+            #t))
+        (add-after 'unpack 'fix-docdir
+          (lambda _         ;see https://savannah.gnu.org/bugs/index.php?55461
+            (substitute* "Makefile.in"
+              (("^docdir =.*") "docdir = @docdir@\n"))
             #t)))))
    (synopsis "Typesetting from plain text mixed with formatting commands")
    (description
@@ -86,46 +132,17 @@ is usually the formatter of \"man\" documentation pages.")
     ;; Omit the DVI, PS, PDF, and HTML backends.
     (inputs '())
     (native-inputs `(("bison" ,bison)
-                     ("perl" ,perl)))
+                     ("perl" ,perl)
+                     ("groff" ,groff)))
 
     (arguments
      `(#:disallowed-references (,perl)
 
-       #:configure-flags '("--docdir=/tmp/trash/doc")
+       #:configure-flags '("--with-doc=no")
 
        ,@(substitute-keyword-arguments (package-arguments groff)
            ((#:phases phases)
             `(modify-phases ,phases
-               (add-after 'unpack 'disable-relocatability
-                 (lambda _
-                   ;; Groff contains a Rube Goldberg-esque relocator for the
-                   ;; file "charset.alias".
-                   ;; It tries to find the current executable using realpath,
-                   ;; a do-it-yourself search in $PATH and so on.
-                   ;; Furthermore, the routine that does the search is buggy
-                   ;; in that it doesn't handle error cases when they arise.
-                   ;; This causes preconv to segfault when trying to look up
-                   ;; the file "charset.alias" in the NULL location.
-                   ;; The "charset.alias" parser is a copy of gnulib's, and a
-                   ;; non-broken version of gnulib's "charset.alias" parser
-                   ;; is part of glibc's libcharset.
-                   ;; However, groff unconditionally uses their own
-                   ;; "charset.alias" parser, but then DOES NOT INSTALL the
-                   ;; file "charset.alias" when glibc is too new.
-                   ;; In Guix, our file "charset.alias" only contains an
-                   ;; obscure alias for ASCII and nothing else.
-                   ;; So just disable relocation and make the entire
-                   ;; "charset.alias" lookup fail.
-                   ;; See <https://debbugs.gnu.org/cgi/bugreport.cgi?bug=30785>
-                   ;; for details.
-                   (substitute* "src/libs/libgroff/Makefile.sub"
-                    (("-DENABLE_RELOCATABLE=1") ""))
-                   ;; That file contains a crash bug--so make sure that
-                   ;; its contents are not there.
-                   (call-with-output-file "src/libs/libgroff/relocate.cpp"
-                     (lambda (port)
-                       #t))
-                   #t))
                (add-after 'install 'remove-non-essential-programs
                  (lambda* (#:key outputs #:allow-other-keys)
                    ;; Keep only the programs that man-db needs at run time,
@@ -160,7 +177,7 @@ is usually the formatter of \"man\" documentation pages.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/bagder/roffit.git")
+                      (url "https://github.com/bagder/roffit")
                       (commit commit)))
                 (file-name (string-append "roffit-" commit "-checkout"))
                 (sha256

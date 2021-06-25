@@ -1,6 +1,6 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2015 David Thompson <davet@gnu.org>
-;;; Copyright © 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -51,7 +51,9 @@
   #:use-module (guix store)
   #:use-module ((guix serialization) #:select (write-file))
   #:use-module (guix zlib)
-  #:autoload   (guix lzlib) (lzlib-available?)
+  #:autoload   (guix lzlib) (lzlib-available?
+                             call-with-lzip-output-port
+                             make-lzip-output-port)
   #:use-module (guix cache)
   #:use-module (guix ui)
   #:use-module (guix scripts)
@@ -62,6 +64,7 @@
   #:use-module ((guix build syscalls) #:select (set-thread-name))
   #:export (%public-key
             %private-key
+            signed-string
 
             guix-publish))
 
@@ -235,7 +238,8 @@ if ITEM is already compressed."
     ("Priority" . 100)))
 
 (define (signed-string s)
-  "Sign the hash of the string S with the daemon's key."
+  "Sign the hash of the string S with the daemon's key.  Return a canonical
+sexp for the signature."
   (let* ((public-key (%public-key))
          (hash (bytevector->hash-data (sha256 (string->utf8 s))
                                       #:key-type (key-type public-key))))
@@ -847,6 +851,7 @@ blocking."
                                                                          size)
                                                     client))
                           (output   (response-port response)))
+                     (setsockopt client SOL_SOCKET SO_SNDBUF (* 128 1024))
                      (if (file-port? output)
                          (sendfile output input size)
                          (dump-port input output))

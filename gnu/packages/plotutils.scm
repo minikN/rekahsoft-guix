@@ -1,8 +1,9 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2013, 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2015 Eric Bavier <bavier@member.fsf.org>
-;;; Copyright © 2016, 2017, 2019 Nicolas Goaziou <mail@nicolasgoaziou.fr>
+;;; Copyright © 2016, 2017, 2019, 2020 Nicolas Goaziou <mail@nicolasgoaziou.fr>
 ;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2020 Maxim Cournoyer <maxim.cournoyer@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -37,7 +38,9 @@
   #:use-module (gnu packages perl)
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages python)
+  #:use-module (gnu packages python-xyz)
   #:use-module (gnu packages readline)
+  #:use-module (gnu packages qt)
   #:use-module (gnu packages texinfo)
   #:use-module (gnu packages tex)
   #:use-module (gnu packages compression)
@@ -54,7 +57,6 @@
              (sha256
               (base32
                "1arkyizn5wbgvbh53aziv3s6lmd3wm9lqzkhxb3hijlp1y124hjg"))
-             (patches (search-patches "plotutils-libpng-jmpbuf.patch"))
              (modules '((guix build utils)))
              (snippet
               ;; Force the use of libXaw7 instead of libXaw.  When not doing
@@ -65,22 +67,33 @@
                  (substitute* "configure"
                    (("-lXaw")
                     "-lXaw7"))
-                 #t))))
+                 ;; Use the `png_jmpbuf' accessor, as recommended since libpng
+                 ;; 1.4.0 (see:
+                 ;; http://www.libpng.org/pub/png/src/libpng-1.2.x-to-1.4.x-summary.txt).
+                 (substitute* "libplot/z_write.c"
+                   (("png_ptr->jmpbuf")
+                    "png_jmpbuf (png_ptr)"))
+                 #t))
+             (patches
+              ;; The test suite fails on some architectures such as i686 (see:
+              ;; https://lists.gnu.org/archive/html/bug-plotutils/2016-04/msg00002.html).
+              ;; The following Debian patch works around it.
+              (search-patches "plotutils-spline-test.patch"))))
     (build-system gnu-build-system)
+    (arguments
+     `(#:configure-flags (list "--enable-libplotter")))
     (inputs `(("libpng" ,libpng)
               ("libx11" ,libx11)
               ("libxt" ,libxt)
               ("libxaw" ,libxaw)))
-
-    (home-page
-     "http://www.gnu.org/software/plotutils/")
+    (home-page "https://www.gnu.org/software/plotutils/")
     (synopsis "Plotting utilities and library")
     (description
-     "GNU Plotutils is a package for plotting and working with 2D graphics. 
-It includes a library, \"libplot\", for C and C++ for exporting 2D vector
-graphics in many file formats.  It also has support for 2D vector graphics
-animations.  The package also contains command-line programs for plotting
-scientific data.")
+     "GNU Plotutils is a package for plotting and working with 2D graphics.
+It includes the C library @code{libplot} and the C++ @code{libplotter} library
+for exporting 2D vector graphics in many file formats.  It also has support
+for 2D vector graphics animations.  The package also contains command-line
+programs for plotting scientific data.")
     (license license:gpl2+)))
 
 (define-public guile-charting
@@ -97,6 +110,11 @@ scientific data.")
               (modules '((guix build utils)))
               (snippet
                '(begin
+                  ;; Allow builds with Guile 3.0.
+                  (substitute* "configure"
+                    (("2\\.2 2\\.0")
+                     "3.0 2.2 2.0"))
+
                   ;; By default, .go files would be installed to
                   ;; $libdir/…/ccache instead of $libdir/…/site-ccache.  Fix
                   ;; that.
@@ -105,7 +123,7 @@ scientific data.")
                   #t))))
     (build-system gnu-build-system)
     (native-inputs `(("pkg-config" ,pkg-config)))
-    (inputs `(("guile" ,guile-2.2)))
+    (inputs `(("guile" ,guile-3.0)))
     (propagated-inputs `(("guile-cairo" ,guile-cairo)))
     (home-page "http://wingolog.org/software/guile-charting/")
     (synopsis "Create charts and graphs in Guile")
@@ -113,6 +131,16 @@ scientific data.")
      "Guile-Charting is a Guile Scheme library to create bar charts and graphs
 using the Cairo drawing library.")
     (license license:lgpl2.1+)))
+
+(define-public guile2.2-charting
+  (package
+    (inherit guile-charting)
+    (name "guile2.2-charting")
+    (inputs `(("guile" ,guile-2.2)))
+    (propagated-inputs `(("guile-cairo" ,guile2.2-cairo)))))
+
+(define-public guile3.0-charting
+  (deprecated-package "guile3.0-charting" guile-charting))
 
 (define-public ploticus
   (package
@@ -180,14 +208,14 @@ colors, styles, options and details.")
 (define-public asymptote
   (package
     (name "asymptote")
-    (version "2.49")
-    (source (origin
-              (method url-fetch)
-              (uri (string-append "mirror://sourceforge/asymptote/"
-                                  version "/asymptote-" version ".src.tgz"))
-              (sha256
-               (base32
-                "1vljhq68gyc2503l9fj76rk1q4a4db9a1sp3fdfagqqmirnmybp5"))))
+    (version "2.66")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "mirror://sourceforge/asymptote/"
+                           version "/asymptote-" version ".src.tgz"))
+       (sha256
+        (base32 "1l2cv238fjqjkm4gam1aaxri0p3yxfmn067mhixziwybr3g5nq52"))))
     (build-system gnu-build-system)
     ;; Note: The 'asy' binary retains a reference to docdir for use with its
     ;; "help" command in interactive mode, so adding a "doc" output is not
@@ -196,9 +224,12 @@ colors, styles, options and details.")
      `(("emacs" ,emacs-minimal)
        ("gs" ,ghostscript)              ;For tests
        ("perl" ,perl)
-       ("texinfo" ,texinfo)           ;For generating documentation
+       ("texinfo" ,texinfo)             ;For generating documentation
        ;; For the manual and the tests.
        ("texlive" ,(texlive-union (list texlive-amsfonts
+                                        texlive-epsf
+                                        texlive-etoolbox
+                                        texlive-latex-base
                                         texlive-latex-geometry
                                         texlive-latex-graphics
                                         texlive-latex-oberdiek ; for ifluatex
@@ -212,6 +243,9 @@ colors, styles, options and details.")
        ("gsl" ,gsl)
        ("libgc" ,libgc)
        ("python" ,python)
+       ("python-cson" ,python-cson)
+       ("python-numpy" ,python-numpy)
+       ("python-pyqt" ,python-pyqt)
        ("readline" ,readline)
        ("zlib" ,zlib)))
     (arguments
@@ -239,7 +273,7 @@ colors, styles, options and details.")
                (("#include <primitives.h>") "#include \"primitives.h\""))
              (invoke "touch" "prc/config.h")))
          (add-after 'unpack 'move-info-location
-           ;; Build process install info file in the unusual
+           ;; Build process installs info file in the unusual
            ;; "%out/share/info/asymptote/" location.  Move it to
            ;; "%out/share/info/" so it appears in the top-level directory.
            (lambda _
@@ -269,6 +303,14 @@ colors, styles, options and details.")
                (for-each (cut install-file <> lisp-dir)
                          (find-files "." "\\.el$"))
                (emacs-generate-autoloads ,name lisp-dir))
+             #t))
+         (add-after 'install-Emacs-data 'wrap-python-script
+           (lambda* (#:key inputs outputs #:allow-other-keys)
+             ;; Make sure 'xasy' runs with the correct PYTHONPATH.
+             (let* ((out (assoc-ref outputs "out"))
+                    (path (getenv "PYTHONPATH")))
+               (wrap-program (string-append out "/share/asymptote/GUI/xasy.py")
+                 `("PYTHONPATH" ":" prefix (,path))))
              #t)))))
     (home-page "http://asymptote.sourceforge.net")
     (synopsis "Script-based vector graphics language")

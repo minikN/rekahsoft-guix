@@ -1,8 +1,10 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2016 ng0 <ng0@n0.is>
+;;; Copyright © 2016 Nikita <nikita@n0.is>
 ;;; Copyright © 2016 Sou Bunnbu <iyzsong@member.fsf.org>
 ;;; Copyright © 2017, 2018 Clément Lassieur <clement@lassieur.org>
 ;;; Copyright © 2019 Julien Lepiller <julien@lepiller.eu>
+;;; Copyright © 2020 Jack Hill <jackhill@jackhill.us>
+;;; Copyright © 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -70,6 +72,8 @@
   (certificates        certbot-configuration-certificates
                        (default '()))
   (email               certbot-configuration-email)
+  (server              certbot-configuration-server
+                       (default #f))
   (rsa-key-size        certbot-configuration-rsa-key-size
                        (default #f))
   (default-location    certbot-configuration-default-location
@@ -82,7 +86,7 @@
 (define certbot-command
   (match-lambda
     (($ <certbot-configuration> package webroot certificates email
-                                rsa-key-size default-location)
+                                server rsa-key-size default-location)
      (let* ((certbot (file-append package "/bin/certbot"))
             (rsa-key-size (and rsa-key-size (number->string rsa-key-size)))
             (commands
@@ -99,7 +103,9 @@
                             "--manual"
                             (string-append "--preferred-challenges=" challenge)
                             "--cert-name" name
+                            "--manual-public-ip-logging-ok"
                             "-d" (string-join domains ","))
+                      (if server `("--server" ,server) '())
                       (if rsa-key-size `("--rsa-key-size" ,rsa-key-size) '())
                       (if authentication-hook
                           `("--manual-auth-hook" ,authentication-hook)
@@ -112,6 +118,7 @@
                             "--webroot" "-w" webroot
                             "--cert-name" name
                             "-d" (string-join domains ","))
+                      (if server `("--server" ,server) '())
                       (if rsa-key-size `("--rsa-key-size" ,rsa-key-size) '())
                       (if deploy-hook `("--deploy-hook" ,deploy-hook) '()))))))
               certificates)))
@@ -141,7 +148,7 @@
          (message (format #f (G_ "~a may need to be run~%") script)))
     (match config
       (($ <certbot-configuration> package webroot certificates email
-                                  rsa-key-size default-location)
+                                  server rsa-key-size default-location)
        (with-imported-modules '((guix build utils))
          #~(begin
              (use-modules (guix build utils))
@@ -153,7 +160,7 @@
 (define certbot-nginx-server-configurations
   (match-lambda
     (($ <certbot-configuration> package webroot certificates email
-                                rsa-key-size default-location)
+                                server rsa-key-size default-location)
      (list
       (nginx-server-configuration
        (listen '("80" "[::]:80"))

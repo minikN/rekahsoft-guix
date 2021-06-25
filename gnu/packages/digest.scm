@@ -1,5 +1,5 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2017 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2017, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -20,29 +20,34 @@
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (guix packages)
   #:use-module (guix git-download)
-  #:use-module (guix build-system gnu))
+  #:use-module (guix build-system gnu)
+  #:use-module (guix utils)
+  #:use-module (ice-9 match))
 
 (define-public xxhash
   (package
     (name "xxhash")
-    (version "0.6.5")
+    (version "0.8.0")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
              (url "https://github.com/Cyan4973/xxHash")
              (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
        (sha256
-        (base32 "137hifc3f3cb4ib64rd6y83arc9hmbyncgrij2v8m94mx66g2aks"))))
+        (base32 "0hpbzdd6kfki5f61g103vp7pfczqkdj0js63avl0ss552jfb8h96"))))
     (build-system gnu-build-system)
     (arguments
      `(#:make-flags
-       (list "CC=gcc"
+       (list ,(string-append "CC=" (cc-for-target))
+             ,(match (or (%current-target-system)
+                         (%current-system))
+                ;; Detect vector instruction set at run time.
+                ((or "i686-linux" "x86_64-linux") "DISPATCH=1")
+                (_ "DISPATCH=0"))
              "XXH_FORCE_MEMORY_ACCESS=1" ; improved performance with GCC
              (string-append "prefix=" (assoc-ref %outputs "out")))
-       #:test-target "test"
-       ;; Parallel testing tries to run ‘xxhsum’ before it's been built.
-       #:parallel-tests? #f
        #:phases
        (modify-phases %standard-phases
          (delete 'configure))))         ; no configure script

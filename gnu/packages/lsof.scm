@@ -2,7 +2,7 @@
 ;;; Copyright © 2013 Andreas Enge <andreas@enge.fr>
 ;;; Copyright © 2017 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
-;;; Copyright © 2018 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2018, 2019 Ludovic Courtès <ludo@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -47,7 +47,7 @@
 
                 ;; Add mirrors because the canonical FTP server at purdue.edu
                 ;; bails out when it cannot do a reverse DNS lookup, as noted
-                ;; at <http://people.freebsd.org/~abe/>.
+                ;; at <https://people.freebsd.org/~abe/>.
                 "ftp://ftp.fu-berlin.de/pub/unix/tools/lsof/"
                 (string-append "http://www.mirrorservice.org/sites/"
                                "lsof.itap.purdue.edu/pub/tools/unix/lsof")
@@ -69,6 +69,13 @@
           (lambda _
             (setenv "LSOF_CC" "gcc")
             (setenv "LSOF_MAKE" "make")
+
+            ;; By default, the makefile captures the output of 'uname -a'.
+            ;; Provide a fixed output instead to make builds reproducible.
+            (setenv "LSOF_SYSINFO"
+                    (string-append "GNU/" (utsname:sysname (uname))
+                                   " (GNU Guix)"))
+
             (invoke "./Configure" "linux")
             #t))
         (add-after 'configure 'patch-timestamps
@@ -114,4 +121,4 @@ on the system.")
    (license (license:fsf-free
              "file://00FAQ"
              "License inspired by zlib, see point 1.9 of 00FAQ in the distribution."))
-   (home-page "http://people.freebsd.org/~abe/")))
+   (home-page "https://people.freebsd.org/~abe/")))

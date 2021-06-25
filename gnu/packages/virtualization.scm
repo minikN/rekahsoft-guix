@@ -1,16 +1,20 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2013, 2014, 2015, 2016, 2017 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2013, 2014, 2015, 2016, 2017, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2015, 2016, 2017, 2018 Mark H Weaver <mhw@netris.org>
-;;; Copyright © 2016, 2017, 2018. 2019 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2016, 2017, 2018. 2019, 2020 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2016, 2017 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2017 Alex Vong <alexvong1995@gmail.com>
 ;;; Copyright © 2017 Andy Patterson <ajpatter@uwaterloo.ca>
 ;;; Copyright © 2017, 2018, 2019 Rutger Helling <rhelling@mykolab.com>
-;;; Copyright © 2017, 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2017, 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018 Danny Milosavljevic <dannym@scratchpost.org>
 ;;; Copyright © 2018 Sou Bunnbu <iyzsong@member.fsf.org>
 ;;; Copyright © 2018 Julien Lepiller <julien@lepiller.eu>
 ;;; Copyright © 2019 Guy Fleury Iteriteka <hoonandon@gmail.com>
+;;; Copyright © 2020 Jakub Kądziołka <kuba@kadziolka.net>
+;;; Copyright © 2020 Brice Waegeneire <brice@waegenei.re>
+;;; Copyright © 2020 Mathieu Othacehe <m.othacehe@gmail.com>
+;;; Copyright © 2020 Marius Bakke <mbakke@fastmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -33,6 +37,8 @@
   #:use-module (gnu packages assembly)
   #:use-module (gnu packages attr)
   #:use-module (gnu packages autotools)
+  #:use-module (gnu packages backup)
+  #:use-module (gnu packages base)
   #:use-module (gnu packages bison)
   #:use-module (gnu packages check)
   #:use-module (gnu packages cmake)
@@ -40,6 +46,7 @@
   #:use-module (gnu packages cross-base)
   #:use-module (gnu packages curl)
   #:use-module (gnu packages cyrus-sasl)
+  #:use-module (gnu packages debian)
   #:use-module (gnu packages disk)
   #:use-module (gnu packages dns)
   #:use-module (gnu packages docbook)
@@ -55,28 +62,42 @@
   #:use-module (gnu packages gnome)
   #:use-module (gnu packages gnupg)
   #:use-module (gnu packages golang)
+  #:use-module (gnu packages graphviz)
   #:use-module (gnu packages gtk)
+  #:use-module (gnu packages haskell)
+  #:use-module (gnu packages haskell-apps)
+  #:use-module (gnu packages haskell-check)
+  #:use-module (gnu packages haskell-crypto)
+  #:use-module (gnu packages haskell-web)
+  #:use-module (gnu packages haskell-xyz)
   #:use-module (gnu packages image)
+  #:use-module (gnu packages libbsd)
   #:use-module (gnu packages libusb)
   #:use-module (gnu packages linux)
+  #:use-module (gnu packages m4)
   #:use-module (gnu packages ncurses)
   #:use-module (gnu packages nettle)
   #:use-module (gnu packages networking)
+  #:use-module (gnu packages onc-rpc)
   #:use-module (gnu packages package-management)
   #:use-module (gnu packages perl)
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages polkit)
   #:use-module (gnu packages protobuf)
   #:use-module (gnu packages python)
+  #:use-module (gnu packages python-crypto)
   #:use-module (gnu packages python-web)
   #:use-module (gnu packages python-xyz)
   #:use-module (gnu packages pulseaudio)
   #:use-module (gnu packages selinux)
   #:use-module (gnu packages sdl)
+  #:use-module (gnu packages sphinx)
   #:use-module (gnu packages spice)
+  #:use-module (gnu packages ssh)
   #:use-module (gnu packages texinfo)
   #:use-module (gnu packages textutils)
   #:use-module (gnu packages tls)
+  #:use-module (gnu packages version-control)
   #:use-module (gnu packages web)
   #:use-module (gnu packages wget)
   #:use-module (gnu packages xdisorg)
@@ -85,51 +106,343 @@
   #:use-module (guix build-system cmake)
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system go)
+  #:use-module (guix build-system meson)
   #:use-module (guix build-system python)
+  #:use-module (guix build-system trivial)
   #:use-module (guix download)
   #:use-module (guix git-download)
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (guix packages)
   #:use-module (guix utils)
-  #:use-module (srfi srfi-1))
+  #:use-module (srfi srfi-1)
+  #:use-module (ice-9 match))
 
-(define (qemu-patch commit file-name sha256)
+(define-public libpod
+  (package
+    (name "libpod")
+    (version "1.4.0")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/containers/libpod.git")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "05xbxldhm3cgdjysidzpc8wnq17mgd84mq60jmbq6zcc9jl21axh"))))
+    (build-system go-build-system)
+    (native-inputs
+     `(("gpgme" ,gpgme)
+       ("pkg-config" ,pkg-config)
+       ("libassuan" ,libassuan)
+       ("libseccomp" ,libseccomp)
+       ("go-md2man" ,go-md2man)))
+    (propagated-inputs
+     `(("runc" ,runc)
+       ("conmon" ,conmon)
+       ("slirp4netns" ,slirp4netns)))
+    (arguments
+     '(#:import-path "github.com/containers/libpod"
+       #:phases (modify-phases %standard-phases
+                  (replace 'build
+                    (lambda _
+                      (with-directory-excursion "src/github.com/containers/libpod"
+                        (setenv "HOME" "/tmp")
+                        (invoke "make" "all"
+                                "GIT_COMMIT=NONE"
+                                "GIT_BRANCH=NONE"))))
+                  ;; FIXME: tests currently require docker
+                  ;; (replace 'check
+                  ;;   (lambda _
+                  ;;     (with-directory-excursion "src/github.com/containers/libpod"
+                  ;;       (setenv "HOME" "/tmp")
+                  ;;       (invoke "make" "test"))))
+                  (delete 'check)
+                  (replace 'install
+                    (lambda* (#:key outputs #:allow-other-keys)
+                      (let ((out (assoc-ref outputs "out")))
+                        (with-directory-excursion "src/github.com/containers/libpod"
+                          (invoke "make" "install"
+                                  (string-append "PREFIX=" out)
+                                  (string-append "DESTDIR=" out)))))))))
+    (synopsis "Library used to create containers pods and home of Podman")
+    (description
+     "Libpod provides a library for applications looking to use the container
+pod concept, popularized by kubernets.  Libpod also contains the pod manager
+tool Podman.  Podman manages pods, containers, container images, and container
+volumes.")
+    (home-page "https://github.com/containers/libpod")
+    (license license:asl2.0)))
+
+(define-public conmon
+  (package
+    (name "conmon")
+    (version "0.3.0")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/containers/conmon.git")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0s23gm0cq4mylv882dr1n8bqql42674vny3z58yy77lwzmifc6id"))))
+    (build-system go-build-system)
+    (native-inputs
+     `(("pkg-config" ,pkg-config)
+       ("glib" ,glib)))
+    (arguments
+     '(#:import-path "github.com/containers/conmon"
+       #:phases (modify-phases %standard-phases
+                  (replace 'build
+                    (lambda _
+                      (with-directory-excursion "src/github.com/containers/conmon"
+                        (setenv "HOME" "/tmp")
+                        (invoke "make" "all"
+                                "CC=gcc"
+                                "GIT_COMMIT=NONE"
+                                "GIT_BRANCH=NONE"))))
+                  (delete 'check)
+                  (replace 'install
+                    (lambda* (#:key outputs #:allow-other-keys)
+                      (let ((out (assoc-ref outputs "out")))
+                        (with-directory-excursion "src/github.com/containers/conmon"
+                          (invoke "make" "install"
+                                  (string-append "PREFIX=" out)))))))))
+    (synopsis "OCI container runtime monitor. ")
+    (description
+     "Conmon is a monitoring program and communication tool between a container
+manager (like podman or CRI-O) and an OCI runtime (like runc or crun) for a single
+container.")
+    (home-page "https://github.com/containers/conmon")
+    (license license:asl2.0)))
+
+(define-public buildah
+  (package
+    (name "buildah")
+    (version "1.9.0")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/containers/buildah.git")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "19yf93pq4vw24h76kl32c6ryvg5fp5mixakw9c6sqydf7m74z9i8"))))
+    (build-system go-build-system)
+    (inputs
+     `(("git" ,git)))
+    (propagated-inputs
+     `(("runc" ,runc)
+       ("cni-plugins" ,cni-plugins)))
+    (native-inputs
+     `(("gpgme" ,gpgme)
+       ("pkg-config" ,pkg-config)
+       ("libassuan" ,libassuan)
+       ("libseccomp" ,libseccomp)
+       ("lvm2" ,lvm2)
+       ("eudev" ,eudev)
+       ("glib" ,glib)
+       ("btrfs-progs" ,btrfs-progs)
+       ("libostree" ,libostree)
+       ("libselinux" ,libselinux)
+       ("go-md2man" ,go-md2man)))
+    (arguments
+     '(#:import-path "github.com/containers/buildah"
+       #:install-source? #f
+       #:phases
+       (modify-phases %standard-phases
+         (replace 'build
+           (lambda _
+             (with-directory-excursion "src/github.com/containers/buildah"
+               (setenv "HOME" "/tmp")
+               (invoke "make" "binary" "docs" "GIT_COMMIT=NONE"))))
+         (replace 'install
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out")))
+               (with-directory-excursion "src/github.com/containers/buildah"
+                 (invoke "make" "install"
+                         "GIT_COMMIT=NONE"
+                         (string-append "PREFIX=" out)))
+               #t))))))
+    (synopsis "Tool that facilitates building OCI images")
+    (description
+     "Buildah provides a command line tool for creating and manipulating OCI
+container images.")
+    (home-page "https://github.com/containers/buildah")
+    (license license:asl2.0)))
+
+(define-public go-md2man
+  (package
+    (name "go-md2man")
+    (version "1.0.10")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/cpuguy83/go-md2man.git")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "1bqkf2bvy1dns9zd24k81mh2p1zxsx2nhq5cj8dz2vgkv1xkh60i"))))
+    (build-system go-build-system)
+    (arguments
+     '(#:import-path "github.com/cpuguy83/go-md2man"
+       #:install-source? #f
+       #:phases %standard-phases))
+    (synopsis "Converts markdown into roff (man pages)")
+    (description
+     "Uses blackfriday to process markdown into man pages.")
+    (home-page "https://github.com/cpuguy83/go-md2man")
+    (license license:expat)))
+
+(define-public cni-plugins
+  (package
+    (name "cni-plugins")
+    (version "0.8.1")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/containernetworking/plugins.git")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "07d8knnabfjipzvcqbq7h8gd940lln934xp57nf5x31d3hpmvzws"))))
+    (build-system go-build-system)
+    (arguments
+     '(#:import-path "github.com/containernetworking/plugins"
+       #:install-source? #f
+       #:phases
+       (modify-phases %standard-phases
+         (replace 'build
+           (lambda _
+             (with-directory-excursion "src/github.com/containernetworking/plugins"
+               (setenv "HOME" "/tmp")
+               (invoke "./build_linux.sh"))))
+         (delete 'check) ;; Tests currently use sudo
+         (replace 'install
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out")))
+               (copy-recursively
+                "src/github.com/containernetworking/plugins/bin"
+                (string-append out "/usr/lib/cni"))
+               #t))))))
+         ;; FIXME: Enable tests
+         ;; (replace 'check
+         ;;   (lambda _
+         ;;     (with-directory-excursion "src/github.com/containernetworking/plugins"
+         ;;       (invoke "./test_linux.sh"))))
+    (synopsis "Some standard networking plugins, maintained by the CNI team")
+    (description
+     "A collection of CNI networking plugins.")
+    (home-page "https://github.com/containernetworking/plugins")
+    (license license:asl2.0)))
+
+(define-public slirp4netns
+  (package
+    (name "slirp4netns")
+    (version "0.4.1")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/rootless-containers/slirp4netns.git")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0jai403d51w1ym7y12hq2k0hrysnc0d5kkzq8wcx7g00jk1rhkff"))))
+    (build-system gnu-build-system)
+    (arguments
+     ;; TODO: Tests currently fail
+     '(#:tests? #f))
+    (inputs
+     `(("glib" ,glib)
+       ("libcap" ,libcap)
+       ("libseccomp" ,libseccomp)))
+    (native-inputs
+     `(("pkg-config" ,pkg-config)
+       ("autoconf" ,autoconf)
+       ("automake" ,automake)))
+    (synopsis "User-mode networking for unprivileged network namespaces")
+    (description
+     "slirp4netns allows connecting a network namespace to the Internet in a
+completely unprivileged way, by connecting a TAP device in a network namespace
+to the usermode TCP/IP stack (\"slirp\").")
+    (home-page "https://github.com/rootless-containers/slirp4netns")
+    (license license:gpl2+)))
+
+(define (qemu-patch commit file-name sha256-bv)
   "Return an origin for COMMIT."
   (origin
     (method url-fetch)
     (uri (string-append
           "http://git.qemu.org/?p=qemu.git;a=commitdiff_plain;h="
           commit))
-    (sha256 sha256)
+    (hash (content-hash sha256-bv sha256))
     (file-name file-name)))
 
 (define-public qemu
   (package
     (name "qemu")
-    (version "3.1.0")
+    (version "5.0.0")
     (source (origin
              (method url-fetch)
              (uri (string-append "https://download.qemu.org/qemu-"
                                  version ".tar.xz"))
-             (patches (search-patches "qemu-CVE-2018-16872.patch"
-                                      "qemu-CVE-2019-6778.patch"))
              (sha256
               (base32
-               "1z5bd5nfyjvhfi1s95labc82y4hjdjjkdabw931362ls0zghh1ba"))))
+               "1dlcwyshdp94fwd30pddxf9bn2q8dfw5jsvry2gvdj551wmaj4rg"))))
     (build-system gnu-build-system)
     (arguments
-     '(;; Running tests in parallel can occasionally lead to failures, like:
+     `(;; Running tests in parallel can occasionally lead to failures, like:
        ;; boot_sector_test: assertion failed (signature == SIGNATURE): (0x00000000 == 0x0000dead)
        #:parallel-tests? #f
+
+       ;; FIXME: Disable tests on i686 to work around
+       ;; <https://bugs.gnu.org/40527>.
+       #:tests? ,(or (%current-target-system)
+                     (not (string=? "i686-linux" (%current-system))))
+
        #:configure-flags (list "--enable-usb-redir" "--enable-opengl"
+                               "--enable-docs"
                                (string-append "--smbd="
                                               (assoc-ref %outputs "out")
                                               "/libexec/samba-wrapper")
                                "--audio-drv-list=alsa,pa,sdl")
        ;; Make build and test output verbose to facilitate investigation upon failure.
        #:make-flags '("V=1")
+       #:modules ((srfi srfi-1)
+                  (ice-9 match)
+                  ,@%gnu-build-system-modules)
        #:phases
        (modify-phases %standard-phases
+         (add-after 'set-paths 'hide-glibc
+           (lambda* (#:key inputs #:allow-other-keys)
+             ;; Work around https://issues.guix.info/issue/36882.  We need to
+             ;; remove glibc from C_INCLUDE_PATH so that the one hardcoded in GCC,
+             ;; at the bottom of GCC include search-path is used.
+             (let* ((filters '("libc"))
+                    (input-directories
+                     (filter-map (lambda (input)
+                                   (match input
+                                     ((name . dir)
+                                      (and (not (member name filters))
+                                           dir))))
+                                 inputs)))
+               (set-path-environment-variable "C_INCLUDE_PATH"
+                                              '("include")
+                                              input-directories)
+               #t)))
+         (add-after 'patch-source-shebangs 'patch-/bin/sh-references
+           (lambda _
+             ;; Ensure the executables created by these source files reference
+             ;; /bin/sh from the store so they work inside the build container.
+             (substitute* '("block/cloop.c" "migration/exec.c"
+                            "net/tap.c" "tests/qtest/libqtest.c")
+               (("/bin/sh") (which "sh")))
+             #t))
          (replace 'configure
            (lambda* (#:key inputs outputs (configure-flags '())
                            #:allow-other-keys)
@@ -139,8 +452,16 @@
                (setenv "SHELL" (which "bash"))
 
                ;; While we're at it, patch for tests.
-               (substitute* "tests/libqtest.c"
-                 (("/bin/sh") (which "sh")))
+               (substitute* "tests/qemu-iotests/check"
+                 (("#!/usr/bin/env python3")
+                  (string-append "#!" (which "python3"))))
+
+               ;; Ensure config.status gets the correct shebang off the bat.
+               ;; The build system gets confused if we change it later and
+               ;; attempts to re-run the whole configury, and fails.
+               (substitute* "configure"
+                 (("#!/bin/sh")
+                  (string-append "#!" (which "sh"))))
 
                ;; The binaries need to be linked against -lrt.
                (setenv "LDFLAGS" "-lrt")
@@ -179,12 +500,17 @@ exec smbd $@")))
                (chmod "samba-wrapper" #o755)
                (install-file "samba-wrapper" libexec))
              #t))
-         (add-before 'check 'disable-test-qga
-           (lambda _
+         (add-before 'check 'disable-unusable-tests
+           (lambda* (#:key inputs outputs #:allow-other-keys)
              (substitute* "tests/Makefile.include"
                ;; Comment out the test-qga test, which needs /sys and
                ;; fails within the build environment.
                (("check-unit-.* tests/test-qga" all)
+                (string-append "# " all)))
+             (substitute* "tests/Makefile.include"
+               ;; Comment out the test-char test, which needs networking and
+               ;; fails within the build environment.
+               (("check-unit-.* tests/test-char" all)
                 (string-append "# " all)))
              #t)))))
     (inputs                                       ; TODO: Add optional inputs.
@@ -194,7 +520,8 @@ exec smbd $@")))
        ("gtk+" ,gtk+)
        ("libaio" ,libaio)
        ("libattr" ,attr)
-       ("libcap" ,libcap)           ; virtfs support requires libcap & libattr
+       ("libcacard" ,libcacard)     ; smartcard support
+       ("libcap-ng" ,libcap-ng)     ; virtfs support requires libcap-ng & libattr
        ("libdrm" ,libdrm)
        ("libepoxy" ,libepoxy)
        ("libjpeg" ,libjpeg-turbo)
@@ -210,7 +537,7 @@ exec smbd $@")))
        ("spice" ,spice)
        ("usbredir" ,usbredir)
        ("util-linux" ,util-linux)
-       ;; ("vde2" ,vde2)
+       ("vde2" ,vde2)
        ("virglrenderer" ,virglrenderer)
        ("zlib" ,zlib)))
     (native-inputs `(("gettext" ,gettext-minimal)
@@ -220,6 +547,7 @@ exec smbd $@")))
                      ("bison" ,bison)
                      ("pkg-config" ,pkg-config)
                      ("python-wrapper" ,python-wrapper)
+                     ("python-sphinx" ,python-sphinx)
                      ("texinfo" ,texinfo)))
     (home-page "https://www.qemu.org")
     (synopsis "Machine emulator and virtualizer")
@@ -240,75 +568,598 @@ server and embedded PowerPC, and S390 guests.")
     (license license:gpl2)
 
     ;; Several tests fail on MIPS; see <http://hydra.gnu.org/build/117914>.
-    (supported-systems (delete "mips64el-linux" %supported-systems))))
+    (supported-systems (fold delete %supported-systems
+                             '("mips64el-linux" "i586-gnu")))))
 
 (define-public qemu-minimal
-  ;; QEMU without GUI support.
+  ;; QEMU without GUI support, only supporting the host's architecture
   (package (inherit qemu)
     (name "qemu-minimal")
-    (synopsis "Machine emulator and virtualizer (without GUI)")
+    (synopsis
+     "Machine emulator and virtualizer (without GUI) for the host architecture")
     (arguments
      (substitute-keyword-arguments (package-arguments qemu)
        ((#:configure-flags _ '(list))
-        ;; Restrict to the targets supported by Guix.
-        ''("--target-list=i386-softmmu,x86_64-softmmu,mips64el-softmmu,arm-softmmu,aarch64-softmmu"))))
+        ;; Restrict to the host's architecture.
+        (match (car (string-split (or (%current-target-system)
+                                      (%current-system))
+                                  #\-))
+          ("i686"
+           '(list "--target-list=i386-softmmu"))
+          ("x86_64"
+           '(list "--target-list=i386-softmmu,x86_64-softmmu"))
+          ("mips64"
+           '(list (string-append "--target-list=mips-softmmu,mipsel-softmmu,"
+                                 "mips64-softmmu,mips64el-softmmu")))
+          ("mips"
+           '(list "--target-list=mips-softmmu,mipsel-softmmu"))
+          ("aarch64"
+           '(list "--target-list=arm-softmmu,aarch64-softmmu"))
+          ("arm"
+           '(list "--target-list=arm-softmmu"))
+          ("alpha"
+           '(list "--target-list=alpha-softmmu"))
+          ("powerpc64"
+           '(list "--target-list=ppc-softmmu,ppc64-softmmu"))
+          ("powerpc"
+           '(list "--target-list=ppc-softmmu"))
+          ("s390"
+           '(list "--target-list=s390x-softmmu"))
+          ("riscv"
+           '(list "--target-list=riscv32-softmmu,riscv64-softmmu"))
+          (else   ; An empty list actually builds all the targets.
+            ''())))))
 
     ;; Remove dependencies on optional libraries, notably GUI libraries.
     (native-inputs (fold alist-delete (package-native-inputs qemu)
                   '("gettext")))
     (inputs (fold alist-delete (package-inputs qemu)
                   '("libusb" "mesa" "sdl2" "spice" "virglrenderer" "gtk+"
-                    "usbredir" "libdrm" "libepoxy" "pulseaudio")))))
+                    "usbredir" "libdrm" "libepoxy" "pulseaudio" "vde2"
+                    "libcacard")))))
 
-;; The GRUB test suite fails with later versions of Qemu, so we
-;; keep it at 2.10 for now.  See
-;; <https://lists.gnu.org/archive/html/bug-grub/2018-02/msg00004.html>.
-;; This package is hidden since we do not backport updates to it.
-(define-public qemu-minimal-2.10
-  (hidden-package
-   (package
-    (inherit qemu-minimal)
-    (version "2.10.2")
+(define (system->qemu-target system)
+  (cond
+   ((string-prefix? "i686" system)
+    "qemu-system-i386")
+   ((string-prefix? "arm" system)
+    "qemu-system-arm")
+   (else
+    (string-append "qemu-system-" (match (string-split system #\-)
+                                    ((arch kernel) arch)
+                                    (_ system))))))
+
+(define-public ganeti
+  (package
+    (name "ganeti")
+    ;; Note: we use a pre-release for Python 3 compatibility as well as many
+    ;; other fixes.
+    (version "3.0.0beta1-24-g024cc9fa2")
     (source (origin
-             (method url-fetch)
-             (uri (string-append "https://download.qemu.org/qemu-"
-                                 version ".tar.xz"))
-             (sha256
-              (base32
-               "17w21spvaxaidi2am5lpsln8yjpyp2zi3s3gc6nsxj5arlgamzgw"))
-             (patches
-              (search-patches "qemu-glibc-2.27.patch"))))
-    ;; qemu-minimal-2.10 needs Python 2. Remove below once no longer necessary.
-    (native-inputs `(("python-2" ,python-2)
-                     ,@(fold alist-delete (package-native-inputs qemu)
-                             '("python-wrapper")))))))
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/ganeti/ganeti")
+                    (commit (string-append "v" version))))
+              (sha256
+               (base32 "1ll34qd2mifni3bhg7cnir3xfnkafig8ch33qndqwrsby0y5ssia"))
+              (file-name (git-file-name name version))
+              (patches (search-patches "ganeti-shepherd-support.patch"
+                                       "ganeti-shepherd-master-failover.patch"
+                                       "ganeti-deterministic-manual.patch"
+                                       "ganeti-drbd-compat.patch"
+                                       "ganeti-os-disk-size.patch"
+                                       "ganeti-haskell-pythondir.patch"
+                                       "ganeti-disable-version-symlinks.patch"
+                                       "ganeti-preserve-PYTHONPATH.patch"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:imported-modules (,@%gnu-build-system-modules
+                           (guix build haskell-build-system)
+                           (guix build python-build-system))
+       #:modules (,@%gnu-build-system-modules
+                  ((guix build haskell-build-system) #:prefix haskell:)
+                  ((guix build python-build-system) #:select (python-version))
+                  (ice-9 rdelim))
+
+       ;; The default test target includes a lot of checks that are only really
+       ;; relevant for developers such as NEWS file checking, line lengths, etc.
+       ;; We are only interested in the "py-tests" and "hs-tests" targets: this
+       ;; is the closest we've got even though it includes a little more.
+       #:test-target "check-TESTS"
+
+       #:configure-flags
+       (list "--localstatedir=/var"
+             "--sharedstatedir=/var"
+             "--sysconfdir=/etc"
+             "--enable-haskell-tests"
+
+             ;; By default, the build system installs everything to versioned
+             ;; directories such as $libdir/3.0 and relies on a $libdir/default
+             ;; symlink pointed from /etc/ganeti/{lib,share} to actually function.
+             ;; This is done to accommodate installing multiple versions in
+             ;; parallel, but is of little use to us as Guix users can just
+             ;; roll back and forth.  Thus, disable it for simplicity.
+             "--disable-version-links"
+
+             ;; Ganeti can optionally take control over SSH host keys and
+             ;; distribute them to nodes as they are added, and also rotate keys
+             ;; with 'gnt-cluster renew-crypto --new-ssh-keys'.  Thus it needs to
+             ;; know how to restart the SSH daemon.
+             "--with-sshd-restart-command='herd restart ssh-daemon'"
+
+             ;; Look for OS definitions in this directory by default.  It can
+             ;; be changed in the cluster configuration.
+             "--with-os-search-path=/run/current-system/profile/share/ganeti/os"
+
+             ;; The default QEMU executable to use.  We don't use the package
+             ;; here because this entry is stored in the cluster configuration.
+             (string-append "--with-kvm-path=/run/current-system/profile/bin/"
+                            ,(system->qemu-target (%current-system))))
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'create-vcs-version
+           (lambda _
+             ;; If we are building from a git checkout, we need to create a
+             ;; 'vcs-version' file manually because the build system does
+             ;; not have access to the git repository information.
+             (unless (file-exists? "vcs-version")
+               (call-with-output-file "vcs-version"
+                 (lambda (port)
+                   (format port "v~a~%" ,version))))
+             #t))
+         (add-after 'unpack 'patch-absolute-file-names
+           (lambda _
+             (substitute* '("lib/utils/process.py"
+                            "lib/utils/text.py"
+                            "src/Ganeti/Constants.hs"
+                            "src/Ganeti/HTools/CLI.hs"
+                            "test/py/ganeti.config_unittest.py"
+                            "test/py/ganeti.hooks_unittest.py"
+                            "test/py/ganeti.utils.process_unittest.py"
+                            "test/py/ganeti.utils.text_unittest.py"
+                            "test/py/ganeti.utils.wrapper_unittest.py")
+               (("/bin/sh") (which "sh"))
+               (("/bin/bash") (which "bash"))
+               (("/usr/bin/env") (which "env"))
+               (("/bin/true") (which "true")))
+
+             ;; This script is called by the node daemon at startup to perform
+             ;; sanity checks on the cluster IP addresses, and it is also used
+             ;; in a master-failover scenario.  Add absolute references to
+             ;; avoid propagating these executables.
+             (substitute* "tools/master-ip-setup"
+               (("arping") (which "arping"))
+               (("ndisc6") (which "ndisc6"))
+               (("fping") (which "fping"))
+               (("grep") (which "grep"))
+               (("ip addr") (string-append (which "ip") " addr")))
+             #t))
+         (add-after 'unpack 'override-builtin-PATH
+           (lambda _
+             ;; Ganeti runs OS install scripts and similar with a built-in
+             ;; hard coded PATH.  Patch so it works on Guix System.
+             (substitute* "src/Ganeti/Constants.hs"
+               (("/sbin:/bin:/usr/sbin:/usr/bin")
+                "/run/setuid-programs:/run/current-system/profile/sbin:\
+/run/current-system/profile/bin"))
+             #t))
+         (add-after 'bootstrap 'patch-sphinx-version-detection
+           (lambda _
+             ;; The build system runs 'sphinx-build --version' to verify that
+             ;; the Sphinx is recent enough, but does not expect the
+             ;; .sphinx-build-real executable name created by the Sphinx wrapper.
+             (substitute* "configure"
+               (("\\$SPHINX --version 2>&1")
+                "$SPHINX --version 2>&1 | sed 's/.sphinx-build-real/sphinx-build/g'"))
+             #t))
+
+         ;; The build system invokes Cabal and GHC, which do not work with
+         ;; GHC_PACKAGE_PATH: <https://github.com/haskell/cabal/issues/3728>.
+         ;; Tweak the build system to do roughly what haskell-build-system does.
+         (add-before 'configure 'configure-haskell
+           (assoc-ref haskell:%standard-phases 'setup-compiler))
+         (add-after 'configure 'do-not-use-GHC_PACKAGE_PATH
+           (lambda _
+             (unsetenv "GHC_PACKAGE_PATH")
+             (substitute* "Makefile"
+               (("\\$\\(CABAL\\)")
+                "$(CABAL) --package-db=../package.conf.d")
+               (("\\$\\(GHC\\)")
+                "$(GHC) -package-db=../package.conf.d"))
+             #t))
+
+         (add-after 'configure 'fix-installation-directories
+           (lambda _
+             (substitute* "Makefile"
+               ;; Do not attempt to create /var during install.
+               (("\\$\\(DESTDIR\\)\\$\\{localstatedir\\}")
+                "$(DESTDIR)${prefix}${localstatedir}")
+               ;; Similarly, do not attempt to install the sample ifup scripts
+               ;; to /etc/ganeti.
+               (("\\$\\(DESTDIR\\)\\$\\(ifupdir\\)")
+                "$(DESTDIR)${prefix}$(ifupdir)"))
+             #t))
+         (add-before 'build 'adjust-tests
+           (lambda _
+             ;; Disable tests that can not run.  Do it early to prevent
+             ;; touching the Makefile later and triggering a needless rebuild.
+             (substitute* "Makefile"
+               ;; These tests expect the presence of a 'root' user (via
+               ;; ganeti/runtime.py), which fails in the build environment.
+               (("test/py/ganeti\\.asyncnotifier_unittest\\.py") "")
+               (("test/py/ganeti\\.backend_unittest\\.py") "")
+               (("test/py/ganeti\\.daemon_unittest\\.py") "")
+               (("test/py/ganeti\\.tools\\.ensure_dirs_unittest\\.py") "")
+               (("test/py/ganeti\\.utils\\.io_unittest-runasroot\\.py") "")
+               ;; Disable the bash_completion test, as it requires the full
+               ;; bash instead of bash-minimal.
+               (("test/py/bash_completion\\.bash")
+                "")
+               ;; This test requires networking.
+               (("test/py/import-export_unittest\\.bash")
+                ""))
+
+             ;; Many of the Makefile targets reset PYTHONPATH before running
+             ;; the Python interpreter, which does not work very well for us.
+             (substitute* "Makefile"
+               (("PYTHONPATH=")
+                (string-append "PYTHONPATH=" (getenv "PYTHONPATH") ":")))
+             #t))
+         (add-after 'build 'build-bash-completions
+           (lambda _
+             (let ((orig-pythonpath (getenv "PYTHONPATH")))
+               (setenv "PYTHONPATH" (string-append ".:" orig-pythonpath))
+               (invoke "./autotools/build-bash-completion")
+               (setenv "PYTHONPATH" orig-pythonpath)
+               #t)))
+         (add-before 'check 'pre-check
+           (lambda* (#:key inputs #:allow-other-keys)
+             ;; Set TZDIR so that time zones are found.
+             (setenv "TZDIR" (string-append (assoc-ref inputs "tzdata")
+                                            "/share/zoneinfo"))
+
+             ;; This test checks whether PYTHONPATH is untouched, and extends
+             ;; it to include test directories if so.  Add an else branch for
+             ;; our modified PYTHONPATH, in order to prevent a confusing test
+             ;; failure where expired certificates are not cleaned because
+             ;; check-cert-expired is silently crashing.
+             (substitute* "test/py/ganeti-cleaner_unittest.bash"
+               (("then export PYTHONPATH=(.*)" all testpath)
+                (string-append all "else export PYTHONPATH="
+                               (getenv "PYTHONPATH") ":" testpath "\n")))
+
+             (substitute* "test/py/ganeti.utils.process_unittest.py"
+               ;; This test attempts to run an executable with
+               ;; RunCmd(..., reset_env=True), which fails because the default
+               ;; PATH from Constants.hs does not exist in the build container.
+               ((".*def testResetEnv.*" all)
+                (string-append "  @unittest.skipIf(True, "
+                               "\"cannot reset env in the build container\")\n"
+                               all))
+
+               ;; XXX: Somehow this test fails in the build container, but
+               ;; works in 'guix environment -C', even without /bin/sh?
+               ((".*def testPidFile.*" all)
+                (string-append "  @unittest.skipIf(True, "
+                               "\"testPidFile fails in the build container\")\n"
+                               all)))
+
+             ;; XXX: Why are these links not added automatically.
+             (with-directory-excursion "test/hs"
+               (for-each (lambda (file)
+                           (symlink "../../src/htools" file))
+                         '("hspace" "hscan" "hinfo" "hbal" "hroller"
+                           "hcheck" "hail" "hsqueeze")))
+             #t))
+         (add-after 'install 'install-bash-completions
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (compdir (string-append out "/etc/bash_completion.d")))
+               (mkdir-p compdir)
+               (copy-file "doc/examples/bash_completion"
+                             (string-append compdir "/ganeti"))
+               ;; The one file contains completions for many different
+               ;; executables.  Create symlinks for found completions.
+               (with-directory-excursion compdir
+                 (for-each
+                  (lambda (prog) (symlink "ganeti" prog))
+                  (call-with-input-file "ganeti"
+                    (lambda (port)
+                      (let loop ((line (read-line port))
+                                 (progs '()))
+                        (if (eof-object? line)
+                            progs
+                            (if (string-prefix? "complete" line)
+                                (loop (read-line port)
+                                      ;; Extract "prog" from lines of the form:
+                                      ;; "complete -F _prog -o filenames prog".
+                                      ;; Note that 'burnin' is listed with the
+                                      ;; absolute file name, which is why we
+                                      ;; run everything through 'basename'.
+                                      (cons (basename (car (reverse (string-split
+                                                                     line #\ ))))
+                                            progs))
+                                (loop (read-line port) progs))))))))
+               #t)))
+         ;; Wrap all executables with PYTHONPATH.  We can't borrow the phase
+         ;; from python-build-system because we also need to wrap the scripts
+         ;; in $out/lib/ganeti such as "node-daemon-setup".
+         (add-after 'install 'wrap
+           (lambda* (#:key inputs outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (sbin (string-append out "/sbin"))
+                    (lib (string-append out "/lib"))
+                    (python (assoc-ref inputs "python"))
+                    (major+minor (python-version python))
+                    (PYTHONPATH (string-append lib "/python" major+minor
+                                               "/site-packages:"
+                                               (getenv "PYTHONPATH"))))
+               (define (shell-script? file)
+                 (call-with-ascii-input-file file
+                   (lambda (port)
+                     (let ((shebang (false-if-exception (read-line port))))
+                       (and shebang
+                            (string-prefix? "#!" shebang)
+                            (or (string-contains shebang "/bin/bash")
+                                (string-contains shebang "/bin/sh")))))))
+
+               (define (wrap? file)
+                 ;; Do not wrap shell scripts because some are meant to be
+                 ;; sourced, which breaks if they are wrapped.  We do wrap
+                 ;; the Haskell executables because some call out to Python
+                 ;; directly.
+                 (and (executable-file? file)
+                      (not (symbolic-link? file))
+                      (not (shell-script? file))))
+
+               (for-each (lambda (file)
+                           (wrap-program file
+                             `("PYTHONPATH" ":" prefix (,PYTHONPATH))))
+                         (filter wrap?
+                                 (append (find-files (string-append lib "/ganeti"))
+                                         (find-files sbin))))
+               #t))))))
+    (native-inputs
+     `(("haskell" ,ghc)
+       ("cabal" ,cabal-install)
+       ("m4" ,m4)
+
+       ;; These inputs are necessary to bootstrap the package, because we
+       ;; have patched the build system.
+       ("autoconf" ,autoconf)
+       ("automake" ,automake)
+
+       ;; For the documentation.
+       ("python-docutils" ,python-docutils)
+       ("sphinx" ,python-sphinx)
+       ("pandoc" ,ghc-pandoc)
+       ("dot" ,graphviz)
+
+       ;; Test dependencies.
+       ("fakeroot" ,fakeroot)
+       ("ghc-temporary" ,ghc-temporary)
+       ("ghc-test-framework" ,ghc-test-framework)
+       ("ghc-test-framework-hunit" ,ghc-test-framework-hunit)
+       ("ghc-test-framework-quickcheck2" ,ghc-test-framework-quickcheck2)
+       ("python-mock" ,python-mock)
+       ("python-pyyaml" ,python-pyyaml)
+       ("openssh" ,openssh)
+       ("procps" ,procps)
+       ("shelltestrunner" ,shelltestrunner)
+       ("tzdata" ,tzdata-for-tests)))
+    (inputs
+     `(("arping" ,iputils)              ;must be the iputils version
+       ("curl" ,curl)
+       ("fping" ,fping)
+       ("iproute2" ,iproute)
+       ("ndisc6" ,ndisc6)
+       ("socat" ,socat)
+       ("qemu" ,qemu-minimal)           ;for qemu-img
+       ("ghc-attoparsec" ,ghc-attoparsec)
+       ("ghc-base64-bytestring" ,ghc-base64-bytestring)
+       ("ghc-cryptonite" ,ghc-cryptonite)
+       ("ghc-curl" ,ghc-curl)
+       ("ghc-hinotify" ,ghc-hinotify)
+       ("ghc-hslogger" ,ghc-hslogger)
+       ("ghc-json" ,ghc-json)
+       ("ghc-lens" ,ghc-lens)
+       ("ghc-lifted-base" ,ghc-lifted-base)
+       ("ghc-network" ,ghc-network)
+       ("ghc-old-time" ,ghc-old-time)
+       ("ghc-psqueue" ,ghc-psqueue)
+       ("ghc-regex-pcre" ,ghc-regex-pcre)
+       ("ghc-utf8-string" ,ghc-utf8-string)
+       ("ghc-zlib" ,ghc-zlib)
+
+       ;; For the optional metadata daemon.
+       ("ghc-snap-core" ,ghc-snap-core)
+       ("ghc-snap-server" ,ghc-snap-server)
+
+       ("python" ,python)
+       ("python-pyopenssl" ,python-pyopenssl)
+       ("python-simplejson" ,python-simplejson)
+       ("python-pyparsing" ,python-pyparsing)
+       ("python-pyinotify" ,python-pyinotify)
+       ("python-pycurl" ,python-pycurl)
+       ("python-bitarray" ,python-bitarray)
+       ("python-paramiko" ,python-paramiko)
+       ("python-psutil" ,python-psutil)))
+    (home-page "http://www.ganeti.org/")
+    (synopsis "Cluster-based virtual machine management system")
+    (description
+     "Ganeti is a virtual machine management tool built on top of existing
+virtualization technologies such as Xen or KVM.  Ganeti controls:
+
+@itemize @bullet
+@item Disk creation management;
+@item Operating system installation for instances (in co-operation with
+OS-specific install scripts); and
+@item Startup, shutdown, and failover between physical systems.
+@end itemize
+
+Ganeti is designed to facilitate cluster management of virtual servers and
+to provide fast and simple recovery after physical failures, using
+commodity hardware.")
+    (license license:bsd-2)))
+
+(define-public ganeti-instance-guix
+  (package
+    (name "ganeti-instance-guix")
+    (version "0.6")
+    (home-page "https://github.com/mbakke/ganeti-instance-guix")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference (url home-page) (commit version)))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0aa08irpcpns6mhjgsplc5f0p8ab1qcr9ah1gj5z66kxgqyflzrp"))))
+    (build-system gnu-build-system)
+    (arguments
+     '(#:configure-flags '("--sysconfdir=/etc" "--localstatedir=/var")))
+    (native-inputs
+     `(("autoconf" ,autoconf)
+       ("automake" ,automake)))
+    (inputs
+     `(("util-linux" ,util-linux)
+       ("qemu-img" ,qemu-minimal)))
+    (synopsis "Guix OS integration for Ganeti")
+    (description
+     "This package provides a guest OS definition for Ganeti that uses
+Guix to build virtual machines.")
+    (license license:gpl3+)))
+
+(define-public ganeti-instance-debootstrap
+  (package
+    (name "ganeti-instance-debootstrap")
+    ;; We need two commits on top of the latest release for compatibility
+    ;; with newer sfdisk, as well as gnt-network integration.
+    (version "0.16-2-ge145396")
+    (home-page "https://github.com/ganeti/instance-debootstrap")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference (url home-page) (commit version)))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0f2isw9d8lawzj21rrq1q9xhq8xfa65rqbhqmrn59z201x9q1336"))))
+    (build-system gnu-build-system)
+    (arguments
+     '(#:configure-flags '("--sysconfdir=/etc" "--localstatedir=/var")
+       #:phases (modify-phases %standard-phases
+                  (add-after 'unpack 'add-absolute-references
+                    (lambda _
+                      (substitute* "common.sh.in"
+                        (("/sbin/blkid") (which "blkid"))
+                        (("kpartx -")
+                         (string-append (which "kpartx") " -")))
+                      (substitute* "import"
+                        (("restore -r")
+                         (string-append (which "restore") " -r")))
+                      (substitute* "export"
+                        (("dump -0")
+                         (string-append (which "dump") " -0")))
+                      (substitute* "create"
+                        (("debootstrap") (which "debootstrap"))
+                        (("`which run-parts`") (which "run-parts"))
+                        ;; Here we actually need to hard code /bin/passwd
+                        ;; because it's called via chroot, which fails if
+                        ;; "/bin" is not in PATH.
+                        (("passwd") "/bin/passwd"))
+                      #t))
+                  (add-after 'unpack 'set-dpkg-arch
+                    (lambda* (#:key system #:allow-other-keys)
+                      ;; The create script passes --arch to debootstrap,
+                      ;; and defaults to `dpkg --print-architecture` when
+                      ;; ARCH is not set in variant.conf.  Hard code the
+                      ;; build-time architecture to avoid the dpkg dependency.
+                      (let ((dpkg-arch
+                             (cond ((string-prefix? "x86_64" system)
+                                    "amd64")
+                                   ((string-prefix? "i686" system)
+                                    "i386")
+                                   ((string-prefix? "aarch64" system)
+                                    "arm64")
+                                   (else (car (string-split system #\-))))))
+                        (substitute* "create"
+                          (("`dpkg --print-architecture`")
+                           dpkg-arch))
+                        #t)))
+                  (add-after 'configure 'adjust-Makefile
+                    (lambda _
+                      ;; Do not attempt to create /etc/ganeti/instance-debootstrap
+                      ;; and /etc/default/ganeti-instance-debootstrap during install.
+                      ;; They are created by the Ganeti service.
+                      (substitute* "Makefile"
+                        (("\\$\\(variantsdir\\)")
+                         "$(prefix)/etc/ganeti/instance-debootstrap/variants")
+                        (("\\$\\(defaultsdir\\)")
+                         "$(prefix)/etc/default/ganeti-instance-debootstrap"))
+                      #t))
+                  (add-after 'install 'make-variants.list-symlink
+                    (lambda* (#:key outputs #:allow-other-keys)
+                      ;; The Ganeti OS API mandates a variants.list file that
+                      ;; describes all supported "variants" of this OS.
+                      ;; Guix generates this file, so make the original file
+                      ;; a symlink to it.
+                      (with-directory-excursion (string-append
+                                                 (assoc-ref outputs "out")
+                                                 "/share/ganeti/os/debootstrap")
+                        (delete-file "variants.list")
+                        (symlink "/etc/ganeti/instance-debootstrap/variants/variants.list"
+                                 "variants.list"))
+                      #t)))))
+    (native-inputs
+     `(("autoconf" ,autoconf)
+       ("automake" ,automake)))
+    (inputs
+     `(("debianutils" ,debianutils)
+       ("debootstrap" ,debootstrap)
+       ("dump" ,dump)
+       ("kpartx" ,multipath-tools)
+       ("util-linux" ,util-linux)))
+    (synopsis "Debian OS integration for Ganeti")
+    (description
+     "This package provides a guest OS definition for Ganeti.  It installs
+Debian or a derivative using @command{debootstrap}.")
+    (license license:gpl2+)))
 
 (define-public libosinfo
   (package
     (name "libosinfo")
-    (version "1.5.0")
+    (version "1.7.1")
     (source
      (origin
        (method url-fetch)
        (uri (string-append "https://releases.pagure.org/libosinfo/libosinfo-"
-                           version ".tar.gz"))
+                           version ".tar.xz"))
        (sha256
         (base32
-         "12b0xj9fz9q91d1pz9xm6aqap5k1ip0m9m3qvqmwjy1lk1kjasdz"))))
-    (build-system gnu-build-system)
+         "1s97sv24bybggjx6hgqba2qdqz3ivfpd4cmkh4zm5y59sim109mv"))))
+    (build-system meson-build-system)
     (arguments
      `(#:configure-flags
-       (list (string-append "--with-usb-ids-path="
+       (list (string-append "-Dwith-usb-ids-path="
                             (assoc-ref %build-inputs "usb.ids"))
-             (string-append "--with-pci-ids-path="
-                            (assoc-ref %build-inputs "pci.ids")))))
+             (string-append "-Dwith-pci-ids-path="
+                            (assoc-ref %build-inputs "pci.ids")))
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'patch-osinfo-path
+           (lambda* (#:key inputs #:allow-other-keys)
+             (substitute* "osinfo/osinfo_loader.c"
+               (("path = DATA_DIR.*")
+                (string-append "path = \"" (assoc-ref inputs "osinfo-db")
+                               "/share/osinfo\";")))
+             #t)))))
     (inputs
      `(("libsoup" ,libsoup)
        ("libxml2" ,libxml2)
        ("libxslt" ,libxslt)
-       ("gobject-introspection" ,gobject-introspection)))
+       ("osinfo-db" ,osinfo-db)))
     (native-inputs
      `(("glib" ,glib "bin")  ; glib-mkenums, etc.
+       ("gobject-introspection" ,gobject-introspection)
        ("gtk-doc" ,gtk-doc)
        ("vala" ,vala)
        ("intltool" ,intltool)
@@ -390,18 +1241,23 @@ manage system or application containers.")
 (define-public libvirt
   (package
     (name "libvirt")
-    (version "5.6.0")
+    (version "5.8.0")
     (source
      (origin
        (method url-fetch)
        (uri (string-append "https://libvirt.org/sources/libvirt-"
                            version ".tar.xz"))
        (sha256
-        (base32 "1d5rmcx5fgb024hw8chbiv886n3jal5wp2yajjk5l4qh9s9gkx35"))))
+        (base32 "0m8cqaqflvys5kaqpvb0qr4k365j09jc5xk6x70yvg8qkcl2hcz2"))
+       (patches
+        (search-patches "libvirt-create-machine-cgroup.patch"))))
     (build-system gnu-build-system)
     (arguments
      `(#:configure-flags
-       (list "--with-polkit"
+       (list "--with-qemu"
+             "--with-qemu-user=nobody"
+             "--with-qemu-group=kvm"
+             "--with-polkit"
              (string-append "--docdir=" (assoc-ref %outputs "out") "/share/doc/"
                             ,name "-" ,version)
              "--sysconfdir=/etc"
@@ -414,9 +1270,20 @@ manage system or application containers.")
              (substitute* "config.h.in"
                (("/bin/sh") (which "sh")))
              #t))
+         (add-before 'configure 'patch-libtirpc-file-names
+           (lambda* (#:key inputs #:allow-other-keys)
+             ;; libvirt uses an m4 macro instead of pkg-config to determine where
+             ;; the RPC headers are located.  Tell it to look in the right place.
+             (substitute* "configure"
+               (("/usr/include/tirpc")  ;defined in m4/virt-xdr.m4
+                (string-append (assoc-ref inputs "libtirpc")
+                               "/include/tirpc")))
+             #t))
          (add-before 'configure 'disable-broken-tests
            (lambda _
              (let ((tests (list "commandtest"      ; hangs idly
+                                "qemuxml2argvtest" ; fails
+                                "qemuhotplugtest"  ; fails
                                 "virnetsockettest" ; tries to network
                                 "virshtest")))     ; fails
                (substitute* "tests/Makefile.in"
@@ -431,27 +1298,18 @@ manage system or application containers.")
              (apply invoke "make" "install"
                     "sysconfdir=/tmp/etc"
                     "localstatedir=/tmp/var"
-                    make-flags)))
-         (add-after 'install 'wrap-libvirtd
-           (lambda* (#:key inputs outputs #:allow-other-keys)
-             (let ((out (assoc-ref outputs "out")))
-               (wrap-program (string-append out "/sbin/libvirtd")
-                 `("PATH" = (,(string-append (assoc-ref inputs "iproute")
-                                             "/sbin")
-                             ,(string-append (assoc-ref inputs "qemu")
-                                             "/bin"))))
-               #t))))))
+                    make-flags))))))
     (inputs
      `(("libxml2" ,libxml2)
        ("eudev" ,eudev)
        ("libpciaccess" ,libpciaccess)
        ("gnutls" ,gnutls)
        ("dbus" ,dbus)
-       ("qemu" ,qemu)
        ("libpcap" ,libpcap)
        ("libnl" ,libnl)
-       ("libuuid" ,util-linux)
-       ("lvm2" ,lvm2)                   ; for libdevmapper
+       ("libtirpc" ,libtirpc)           ;for <rpc/rpc.h>
+       ("libuuid" ,util-linux "lib")
+       ("lvm2" ,lvm2)                   ;for libdevmapper
        ("curl" ,curl)
        ("openssl" ,openssl)
        ("cyrus-sasl" ,cyrus-sasl)
@@ -467,7 +1325,7 @@ manage system or application containers.")
        ("perl" ,perl)
        ("pkg-config" ,pkg-config)
        ("polkit" ,polkit)
-       ("python" ,python)))
+       ("python" ,python-wrapper)))
     (home-page "https://libvirt.org")
     (synopsis "Simple API for virtualization")
     (description "Libvirt is a C toolkit to interact with the virtualization
@@ -479,14 +1337,14 @@ to integrate other virtualization mechanisms if needed.")
 (define-public libvirt-glib
   (package
     (name "libvirt-glib")
-    (version "2.0.0")
+    (version "3.0.0")
     (source (origin
               (method url-fetch)
               (uri (string-append "ftp://libvirt.org/libvirt/glib/"
                                   "libvirt-glib-" version ".tar.gz"))
               (sha256
                (base32
-                "0six9ckmvlwwyavyjkgc262qkpvfqgi8rjij7cyk00bmqq8c9s4l"))))
+                "1zpbv4ninc57c9rw4zmmkvvqn7154iv1qfr20kyxn8xplalqrzvz"))))
     (build-system gnu-build-system)
     (inputs
      `(("openssl" ,openssl)
@@ -521,15 +1379,14 @@ three libraries:
 (define-public python-libvirt
   (package
     (name "python-libvirt")
-    (version "5.6.0")
+    (version "5.8.0")
     (source
      (origin
        (method url-fetch)
-       ;; The latest version hosted on PyPI at 5.6.0 release time was 5.5.0.
        (uri (string-append "https://libvirt.org/sources/python/libvirt-python-"
                            version ".tar.gz"))
        (sha256
-        (base32 "11i440aibykxw22fzyavmrvn67s8rmnijw5bag0yx9r8jpnkzwad"))))
+        (base32 "0kyz3lx49d8p75mvbzinxc1zgs8g7adn77y9bm15b8b4ad9zl5s6"))))
     (build-system python-build-system)
     (arguments
      `(#:phases
@@ -561,7 +1418,7 @@ virtualization library.")
 (define-public virt-manager
   (package
     (name "virt-manager")
-    (version "2.1.0")
+    (version "2.2.1")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://virt-manager.org/download/sources"
@@ -569,13 +1426,14 @@ virtualization library.")
                                   version ".tar.gz"))
               (sha256
                (base32
-                "1m038kyngmxlgz91c7z8g73lb2wy0ajyah871a3g3wb5cnd0dsil"))))
+                "06ws0agxlip6p6n3n43knsnjyd91gqhh2dadgc33wl9lx1k8vn6g"))))
     (build-system python-build-system)
     (arguments
      `(#:use-setuptools? #f          ; uses custom distutils 'install' command
-       ;; Some of the tests seem to require network access to install virtual
-       ;; machines.
-       #:tests? #f
+       #:test-target "test_ui"
+       #:tests? #f                      ; TODO The tests currently fail
+                                        ; RuntimeError: Loop condition wasn't
+                                        ; met
        #:imported-modules ((guix build glib-or-gtk-build-system)
                            ,@%python-build-system-modules)
        #:modules ((ice-9 match)
@@ -587,13 +1445,19 @@ virtualization library.")
        (modify-phases %standard-phases
          (add-after 'unpack 'fix-setup
            (lambda* (#:key outputs #:allow-other-keys)
-             (substitute* "virtcli/cliconfig.py"
+             (substitute* "virtinst/buildconfig.py"
                (("/usr") (assoc-ref outputs "out")))
+             #t))
+         (add-after 'unpack 'fix-qemu-img-reference
+           (lambda* (#:key inputs #:allow-other-keys)
+             (substitute* "virtconv/formats.py"
+               (("/usr(/bin/qemu-img)" _ suffix)
+                (string-append (assoc-ref inputs "qemu") suffix)))
              #t))
          (add-after 'unpack 'fix-default-uri
            (lambda* (#:key inputs #:allow-other-keys)
              ;; Xen is not available for now - so only patch qemu.
-             (substitute* "virtManager/connect.py"
+             (substitute* "virtManager/createconn.py"
                (("/usr(/bin/qemu-system)" _ suffix)
                 (string-append (assoc-ref inputs "qemu") suffix)))
              #t))
@@ -616,6 +1480,16 @@ virtualization library.")
                                ,(filter identity paths))))
                          bin-files))
              #t))
+         (replace 'check
+           (lambda* (#:key tests? #:allow-other-keys)
+             (when tests?
+               (setenv "HOME" "/tmp")
+               (system "Xvfb :1 &")
+               (setenv "DISPLAY" ":1")
+               ;; Dogtail requires that Assistive Technology support be enabled
+               (setenv "GTK_MODULES" "gail:atk-bridge")
+               (invoke "dbus-run-session" "--" "python" "setup.py" "test_ui"))
+             #t))
          (add-after 'install 'glib-or-gtk-compile-schemas
            (assoc-ref glib-or-gtk:%standard-phases 'glib-or-gtk-compile-schemas))
          (add-after 'install 'glib-or-gtk-wrap
@@ -624,14 +1498,13 @@ virtualization library.")
      `(("dconf" ,dconf)
        ("gtk+" ,gtk+)
        ("gtk-vnc" ,gtk-vnc)
+       ("gtksourceview" ,gtksourceview)
        ("libvirt" ,libvirt)
        ("libvirt-glib" ,libvirt-glib)
        ("libosinfo" ,libosinfo)
        ("vte" ,vte)
-       ("gobject-introspection" ,gobject-introspection)
        ("python-libvirt" ,python-libvirt)
        ("python-requests" ,python-requests)
-       ("python-ipaddress" ,python-ipaddress)
        ("python-pycairo" ,python-pycairo)
        ("python-pygobject" ,python-pygobject)
        ("python-libxml2" ,python-libxml2)
@@ -641,9 +1514,17 @@ virtualization library.")
      `(("qemu" ,qemu)))
     (native-inputs
      `(("glib" ,glib "bin")             ; glib-compile-schemas
+       ("gobject-introspection" ,gobject-introspection)
        ("gtk+" ,gtk+ "bin")             ; gtk-update-icon-cache
        ("perl" ,perl)                   ; pod2man
-       ("intltool" ,intltool)))
+       ("intltool" ,intltool)
+       ;; The following are required for running the tests
+       ;; ("python-dogtail" ,python-dogtail)
+       ;; ("xvfb" ,xorg-server-for-tests)
+       ;; ("dbus" ,dbus)
+       ;; ("at-spi2-core" ,at-spi2-core)
+       ;; ("gsettings-desktop-schemas" ,gsettings-desktop-schemas)
+       ))
     (home-page "https://virt-manager.org/")
     (synopsis "Manage virtual machines")
     (description
@@ -656,14 +1537,14 @@ domains, their live performance and resource utilization statistics.")
 (define-public criu
   (package
     (name "criu")
-    (version "3.11")
+    (version "3.14")
     (source (origin
               (method url-fetch)
-              (uri (string-append "http://download.openvz.org/criu/criu-"
+              (uri (string-append "https://download.openvz.org/criu/criu-"
                                   version ".tar.bz2"))
               (sha256
                (base32
-                "03nimyn3wy5mlw30gq7bvlzvvprqjv8f25240yj5arzlld8mhsw8"))))
+                "1jrr3v99g18gc0hriz0avq6ccdvyya0j6wwz888sdsc4icc30gzn"))))
     (build-system gnu-build-system)
     (arguments
      `(#:test-target "test"
@@ -671,7 +1552,11 @@ domains, their live performance and resource utilization statistics.")
        #:make-flags
        (list (string-append "PREFIX=" (assoc-ref %outputs "out"))
              (string-append "LIBDIR=" (assoc-ref %outputs "out")
-                            "/lib"))
+                            "/lib")
+             (string-append "ASCIIDOC=" (assoc-ref %build-inputs "asciidoc")
+                            "/bin/asciidoc")
+             (string-append "XMLTO=" (assoc-ref %build-inputs "xmlto")
+                            "/bin/xmlto"))
        #:phases
        (modify-phases %standard-phases
          (replace 'configure
@@ -680,22 +1565,18 @@ domains, their live performance and resource utilization statistics.")
              (setenv "C_INCLUDE_PATH"
                      (string-append (assoc-ref inputs "libnl")
                                     "/include/libnl3:"
-                                    (getenv "C_INCLUDE_PATH")))
-             ;; Prevent xmlto from failing the install phase.
+                                    (or (getenv "C_INCLUDE_PATH") "")))
+             #t))
+         (add-after 'configure 'fix-documentation
+           (lambda* (#:key inputs outputs #:allow-other-keys)
              (substitute* "Documentation/Makefile"
-               (("XMLTO.*:=.*")
-                (string-append "XMLTO:="
-                               (assoc-ref inputs "xmlto")
-                               "/bin/xmlto"
-                               " --skip-validation "
-                               " -x "
-                               (assoc-ref inputs "docbook-xsl")
-                               "/xml/xsl/docbook-xsl-"
-                               ,(package-version docbook-xsl)
-                               "/manpages/docbook.xsl"))
-               (("\\$\\(XMLTO\\);")
-                (string-append (assoc-ref inputs "xmlto")
-                               "/bin/xmlto;")))
+               (("-m custom.xsl")
+                (string-append
+                 "-m custom.xsl --skip-validation -x "
+                 (assoc-ref inputs "docbook-xsl") "/xml/xsl/"
+                 ,(package-name docbook-xsl) "-"
+                 ,(package-version docbook-xsl)
+                 "/manpages/docbook.xsl")))
              #t))
          (add-after 'unpack 'hardcode-variables
            (lambda* (#:key inputs #:allow-other-keys)
@@ -743,7 +1624,8 @@ domains, their live performance and resource utilization statistics.")
        ("libaio" ,libaio)
        ("libcap" ,libcap)
        ("libnet" ,libnet)
-       ("libnl" ,libnl)))
+       ("libnl" ,libnl)
+       ("libbsd" ,libbsd)))
     (native-inputs
      `(("pkg-config" ,pkg-config)
        ("perl" ,perl)
@@ -768,13 +1650,14 @@ mainly implemented in user space.")
     (name "qmpbackup")
     (version "0.2")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/abbbi/qmpbackup/archive/"
-                                  version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/abbbi/qmpbackup")
+                     (commit version)))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "10k9mnb1yrg4gw1rvz4kw4dxc4aajl8gnjrpm3axqkg63qmxj3qn"))
-              (file-name (string-append name "-" version ".tar.gz"))))
+                "0swhp5byz44brhyis1a39p11fyn9q84xz5q6v2fah29r7d71kmmx"))))
     (build-system python-build-system)
     (arguments
      `(#:python ,python-2))
@@ -798,7 +1681,17 @@ Machine Protocol.")
        (file-name (git-file-name name version))
        (sha256
         (base32
-         "02bq46ndmzq9cihazzn7xq1x7q5nzm7iw4l9lqzihxcxp9famkhw"))))
+         "02bq46ndmzq9cihazzn7xq1x7q5nzm7iw4l9lqzihxcxp9famkhw"))
+       (modules '((guix build utils)))
+       (snippet
+        '(begin
+           ;; Do not create binaries optimized for the CPU of the build machine,
+           ;; for reproducibility and compatibility.  TODO: in the next version
+           ;; of looking glass, this is exposed as a CMake configure option.
+           (substitute* "client/CMakeLists.txt"
+             (("-march=native")
+              ""))
+           #t))))
      (build-system cmake-build-system)
      (inputs `(("fontconfig" ,fontconfig)
                ("glu" ,glu)
@@ -819,13 +1712,20 @@ Machine Protocol.")
                      (lambda* (#:key outputs #:allow-other-keys)
                        (chdir "client")
                        #t))
+                   (add-after 'chdir-to-client 'add-missing-include
+                     (lambda _
+                       ;; Mimic upstream commit b9797529893, required since the
+                       ;; update to Mesa 19.2.
+                       (substitute* "renderers/egl/shader.h"
+                         (("#include <stdbool\\.h>")
+                          "#include <stdbool.h>\n#include <stddef.h>"))
+                       #t))
                    (replace 'install
                      (lambda* (#:key outputs #:allow-other-keys)
                        (install-file "looking-glass-client"
                                      (string-append (assoc-ref outputs "out")
                                                     "/bin"))
-                       #t))
-                   )))
+                       #t)))))
      (home-page "https://looking-glass.hostfission.com")
      (synopsis "KVM Frame Relay (KVMFR) implementation")
      (description "Looking Glass allows the use of a KVM (Kernel-based Virtual
@@ -835,9 +1735,6 @@ monitor/GPU.")
      ;; This package requires SSE instructions.
      (supported-systems '("i686-linux" "x86_64-linux"))
      (license license:gpl2+))))
-
-(define-public lookingglass
-  (deprecated-package "lookingglass" looking-glass-client))
 
 (define-public runc
   (package
@@ -901,19 +1798,19 @@ Open Container Initiative specification.")
 (define-public umoci
   (package
     (name "umoci")
-    (version "0.4.4")
-    (source (origin
-              (method url-fetch)
-              (uri (string-append
-                    "https://github.com/openSUSE/umoci/releases/download/v"
-                    version "/umoci.tar.xz"))
-              (file-name (string-append "umoci-" version ".tar.xz"))
-              (sha256
-               (base32
-                "1wchmha5k2f370jfijmx9fqp0cp99zfa9ajmfbq3j24qc8p5k8lk"))))
+    (version "0.4.6")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append
+             "https://github.com/opencontainers/umoci/releases/download/v"
+             version "/umoci.tar.xz"))
+       (file-name (string-append "umoci-" version ".tar.xz"))
+       (sha256
+        (base32 "06q7xfwnqysc013hapx31jhlzmyg8qb467qfkynj673qc7p9bd6h"))))
     (build-system go-build-system)
     (arguments
-     '(#:import-path "github.com/openSUSE/umoci"
+     '(#:import-path "github.com/opencontainers/umoci"
        #:install-source? #f
        #:phases
        (modify-phases %standard-phases
@@ -946,7 +1843,7 @@ Open Container Initiative (OCI) image layout and its tagged images.")
 (define-public skopeo
   (package
     (name "skopeo")
-    (version "0.1.28")
+    (version "0.1.40")
     (source (origin
               (method git-fetch)
               (uri (git-reference
@@ -955,7 +1852,7 @@ Open Container Initiative (OCI) image layout and its tagged images.")
               (file-name (git-file-name name version))
               (sha256
                (base32
-                "068nwrr3nr27alravcq1sxyhdd5jjr24213vdgn1dqva3885gbi0"))))
+                "1bagirzdzjhicn5dr691092ac3q6lhz3xngjzgqiqkxnvpz7p6cn"))))
     (build-system go-build-system)
     (native-inputs
      `(("pkg-config" ,pkg-config)))
@@ -1031,15 +1928,15 @@ virtual machines.")
 (define-public bubblewrap
   (package
     (name "bubblewrap")
-    (version "0.3.1")
+    (version "0.4.1")
     (source (origin
               (method url-fetch)
-              (uri (string-append "https://github.com/projectatomic/bubblewrap/"
+              (uri (string-append "https://github.com/containers/bubblewrap/"
                                   "releases/download/v" version "/bubblewrap-"
                                   version ".tar.xz"))
               (sha256
                (base32
-                "1y2bdlxnlr84xcbf31lzirc292c5ak9bd2wvcvh4ppsliih6pjny"))))
+                "00ycgi6q2yngh06bnz50wkvar6r2jnjf3j158grhi9k13jdrpimr"))))
     (build-system gnu-build-system)
     (arguments
      `(#:phases
@@ -1059,6 +1956,9 @@ virtual machines.")
                  ;; Some tests try to access /usr, but that doesn't exist.
                  ;; Give them /gnu instead.
                  (("/usr") "/gnu")
+                 (("--ro-bind /bin /bin") "--ro-bind /gnu /bin")
+                 (("--ro-bind /sbin /sbin") "--ro-bind /gnu /sbin")
+                 (("--ro-bind /lib /lib") "--ro-bind /gnu /lib")
                  (("  */bin/bash") (which "bash"))
                  (("/bin/sh") (which "sh"))
                  (("findmnt") (which "findmnt"))))
@@ -1071,9 +1971,9 @@ virtual machines.")
     (inputs
      `(("libcap" ,libcap)))
     (native-inputs
-     `(("python-2" ,python-2)
+     `(("python" ,python-wrapper)
        ("util-linux" ,util-linux)))
-    (home-page "https://github.com/projectatomic/bubblewrap")
+    (home-page "https://github.com/containers/bubblewrap")
     (synopsis "Unprivileged sandboxing tool")
     (description "Bubblewrap is aimed at running applications in a sandbox,
 restricting their access to parts of the operating system or user data such as
@@ -1086,18 +1986,17 @@ by default and can be made read-only.")
 (define-public bochs
   (package
     (name "bochs")
-    (version "2.6.9")
+    (version "2.6.11")
     (source
      (origin
        (method url-fetch)
        (uri (string-append "https://sourceforge.net/projects/bochs/files/bochs/"
                            version "/bochs-" version ".tar.gz"))
        (sha256
-        (base32
-         "1379cq4cnfprhw8mgh60i0q9j8fz8d7n3d5fnn2g9fdiv5znfnzf"))))
+        (base32 "0ql8q6y1k356li1g9gbvl21448mlxphxxi6kjb2b3pxvzd0pp2b3"))))
     (build-system gnu-build-system)
     (arguments
-     `(#:tests? #f)) ; No tests exist
+     `(#:tests? #f))                    ; no tests exist
     (inputs
      `(("libxrandr" ,libxrandr)))
     (home-page "http://bochs.sourceforge.net/")
@@ -1113,7 +2012,7 @@ DOS or Microsoft Windows.")
 (define-public xen
   (package
     (name "xen")
-    (version "4.11.1")
+    (version "4.13.0")
     (source (origin
               (method git-fetch)
               (uri (git-reference
@@ -1122,7 +2021,7 @@ DOS or Microsoft Windows.")
               (file-name (git-file-name name version))
               (sha256
                (base32
-                "1wv1hyfii14vi9lfjmnv07h2gpm3b7kvh2p55f4yy2b40simksgk"))))
+                "0py50n995gv909i0d1lfdcj9wcp5g1d5z6m2291jqqlfyany138g"))))
     (build-system gnu-build-system)
     (arguments
      `(#:configure-flags
@@ -1236,14 +2135,13 @@ override CC = " (assoc-ref inputs "cross-gcc") "/bin/i686-linux-gnu-gcc"))
                                          new-search-path ":")))
                     (setenv env-name new-env-value)))
                 environment-variable-names))
-             (setenv "CROSS_C_INCLUDE_PATH" (getenv "C_INCLUDE_PATH"))
-             (setenv "CROSS_CPLUS_INCLUDE_PATH" (getenv "CPLUS_INCLUDE_PATH"))
+             (setenv "CROSS_CPATH" (getenv "CPATH"))
              (setenv "CROSS_LIBRARY_PATH" (getenv "LIBRARY_PATH"))
              (filter-environment! cross?
-              '("CROSS_C_INCLUDE_PATH" "CROSS_CPLUS_INCLUDE_PATH"
+              '("CROSS_CPATH"
                 "CROSS_LIBRARY_PATH"))
              (filter-environment! (lambda (e) (not (cross? e)))
-              '("C_INCLUDE_PATH" "CPLUS_INCLUDE_PATH"
+              '("CPATH"
                 "LIBRARY_PATH"))
              ;; Guix tries to be helpful and automatically adds
              ;; mini-os-git-checkout/include to the include path,
@@ -1252,7 +2150,7 @@ override CC = " (assoc-ref inputs "cross-gcc") "/bin/i686-linux-gnu-gcc"))
                                     (not
                                      (string-contains e
                                       "mini-os-git-checkout")))
-              '("C_INCLUDE_PATH" "CPLUS_INCLUDE_PATH"
+              '("CPATH"
                 "LIBRARY_PATH"))
             (setenv "EFI_VENDOR" "guix")
              #t))
@@ -1273,14 +2171,14 @@ override CC = " (assoc-ref inputs "cross-gcc") "/bin/i686-linux-gnu-gcc"))
        ("pixman" ,pixman)
        ("qemu" ,qemu-minimal)
        ("seabios" ,seabios)
-       ("util-linux" ,util-linux) ; uuid
+       ("util-linux" ,util-linux "lib") ; uuid
        ; TODO: ocaml-findlib, ocaml-nox.
        ("xz" ,xz) ; for liblzma
        ("zlib" ,zlib)))
     (native-inputs
      `(("dev86" ,dev86)
        ("bison" ,bison)
-       ("cmake" ,cmake)
+       ("cmake" ,cmake-minimal)
        ("figlet" ,figlet)
        ("flex" ,flex)
        ("gettext" ,gettext-minimal)
@@ -1312,3 +2210,73 @@ which is a hypervisor.")
     ;; TODO: Some files are licensed differently.  List those.
     (license license:gpl2)
     (supported-systems '("i686-linux" "x86_64-linux" "armhf-linux"))))
+
+(define-public osinfo-db-tools
+  (package
+    (name "osinfo-db-tools")
+    (version "1.8.0")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append "https://releases.pagure.org/libosinfo/osinfo-db-tools-"
+                                  version ".tar.xz"))
+
+              (sha256
+               (base32
+                "038q3gzdbkfkhpicj0755mw1q4gbvn57pslpw8n2dp3lds9im0g9"))))
+    (build-system meson-build-system)
+    (inputs
+     `(("libsoup" ,libsoup)
+       ("libxml2" ,libxml2)
+       ("libxslt" ,libxslt)
+       ("json-glib" ,json-glib)
+       ("libarchive" ,libarchive)))
+    (native-inputs
+     `(("perl" ,perl)
+       ("gobject-introspection" ,gobject-introspection)
+       ("gettext" ,gettext-minimal)
+       ("pkg-config" ,pkg-config)
+       ;; Tests
+       ("python" ,python)
+       ("pytest" ,python-pytest)
+       ("requests" ,python-requests)))
+    (home-page "https://gitlab.com/libosinfo/osinfo-db-tools")
+    (synopsis "Tools for managing the osinfo database")
+    (description "This package contains a set of tools to assist
+administrators and developers in managing the database.")
+    (license license:lgpl2.0+)))
+
+(define-public osinfo-db
+  (package
+    (name "osinfo-db")
+    (version "20200529")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append "https://releases.pagure.org/libosinfo/osinfo-db-"
+                                  version ".tar.xz"))
+              (sha256
+               (base32
+                "0mbrf9j5wmjhc6jixvhp4jqyxixh1717lqrmzmipdg99xnzba81n"))))
+    (build-system trivial-build-system)
+    (arguments
+     `(#:modules ((guix build utils))
+       #:builder
+       (begin
+         (use-modules (guix build utils))
+         (let* ((out (assoc-ref %outputs "out"))
+                (osinfo-dir (string-append out "/share/osinfo"))
+                (source (assoc-ref %build-inputs "source"))
+                (osinfo-db-import
+                 (string-append (assoc-ref %build-inputs "osinfo-db-tools")
+                                "/bin/osinfo-db-import")))
+           (mkdir-p osinfo-dir)
+           (invoke osinfo-db-import "--dir" osinfo-dir source)
+           #t))))
+    (native-inputs
+     `(("intltool" ,intltool)
+       ("osinfo-db-tools" ,osinfo-db-tools)))
+    (home-page "https://gitlab.com/libosinfo/osinfo-db")
+    (synopsis "Database of information about operating systems")
+    (description "Osinfo-db provides the database files for use with the
+libosinfo library.  It provides information about guest operating systems for
+use with virtualization provisioning tools")
+    (license license:lgpl2.0+)))

@@ -1,5 +1,6 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2019 Jakob L. Kreuze <zerodaysfordays@sdf.lonestar.org>
+;;; Copyright © 2019 Jakob L. Kreuze <zerodaysfordays@sdf.org>
+;;; Copyright © 2020 Ludovic Courtès <ludo@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -23,6 +24,7 @@
   #:use-module (gnu system)
   #:use-module (gnu system file-systems)
   #:use-module (gnu system uuid)
+  #:use-module ((gnu services) #:select (sexp->system-provenance))
   #:use-module (guix diagnostics)
   #:use-module (guix gexp)
   #:use-module (guix i18n)
@@ -36,9 +38,11 @@
   #:use-module (guix store)
   #:use-module (guix utils)
   #:use-module (gcrypt pk-crypto)
+  #:use-module (ice-9 format)
   #:use-module (ice-9 match)
   #:use-module (ice-9 textual-ports)
   #:use-module (srfi srfi-1)
+  #:use-module (srfi srfi-9)
   #:use-module (srfi srfi-19)
   #:use-module (srfi srfi-26)
   #:use-module (srfi srfi-34)
@@ -52,8 +56,10 @@
             machine-ssh-configuration-host-name
             machine-ssh-configuration-build-locally?
             machine-ssh-configuration-authorize?
+            machine-ssh-configuration-allow-downgrades?
             machine-ssh-configuration-port
             machine-ssh-configuration-user
+            machine-ssh-configuration-host-key
             machine-ssh-configuration-session))
 
 ;;; Commentary:
@@ -73,13 +79,14 @@
 (define-record-type* <machine-ssh-configuration> machine-ssh-configuration
   make-machine-ssh-configuration
   machine-ssh-configuration?
-  this-machine-ssh-configuration
   (host-name      machine-ssh-configuration-host-name)     ; string
   (system         machine-ssh-configuration-system)        ; string
   (build-locally? machine-ssh-configuration-build-locally? ; boolean
                   (default #t))
   (authorize?     machine-ssh-configuration-authorize?     ; boolean
                   (default #t))
+  (allow-downgrades? machine-ssh-configuration-allow-downgrades? ; boolean
+                     (default #f))
   (port           machine-ssh-configuration-port           ; integer
                   (default 22))
   (user           machine-ssh-configuration-user           ; string
@@ -87,6 +94,8 @@
   (identity       machine-ssh-configuration-identity       ; path to a private key
                   (default #f))
   (session        machine-ssh-configuration-session        ; session
+                  (default #f))
+  (host-key       machine-ssh-configuration-host-key       ; #f | string
                   (default #f)))
 
 (define (machine-ssh-session machine)
@@ -98,11 +107,16 @@ one from the configuration's parameters if one was not provided."
         (let ((host-name (machine-ssh-configuration-host-name config))
               (user (machine-ssh-configuration-user config))
               (port (machine-ssh-configuration-port config))
-              (identity (machine-ssh-configuration-identity config)))
+              (identity (machine-ssh-configuration-identity config))
+              (host-key (machine-ssh-configuration-host-key config)))
+          (unless host-key
+            (warning (G_ "<machine-ssh-configuration> without a 'host-key' \
+is deprecated~%")))
           (open-ssh-session host-name
                             #:user user
                             #:port port
-                            #:identity identity)))))
+                            #:identity identity
+                            #:host-key host-key)))))
 
 
 ;;;
@@ -135,9 +149,24 @@ an environment type of 'managed-host."
 ;;; Safety checks.
 ;;;
 
+;; Assertion to be executed remotely.  This abstraction exists to allow us to
+;; gather a list of expressions to be evaluated and eventually evaluate them
+;; all at once instead of one by one.  (This is pretty much a monad.)
+(define-record-type <remote-assertion>
+  (remote-assertion exp proc)
+  remote-assertion?
+  (exp   remote-assertion-expression)
+  (proc  remote-assertion-procedure))
+
+(define-syntax-rule (remote-let ((var exp)) body ...)
+  "Return a <remote-assertion> that binds VAR to the result of evaluating EXP,
+a gexp, remotely, and evaluate BODY in that context."
+  (remote-assertion exp (lambda (var) body ...)))
+
 (define (machine-check-file-system-availability machine)
-  "Raise a '&message' error condition if any of the file-systems specified in
-MACHINE's 'system' declaration do not exist on the machine."
+  "Return a list of <remote-assertion> that raise a '&message' error condition
+if any of the file-systems specified in MACHINE's 'system' declaration do not
+exist on the machine."
   (define file-systems
     (filter (lambda (fs)
               (and (file-system-mount? fs)
@@ -147,22 +176,16 @@ MACHINE's 'system' declaration do not exist on the machine."
             (operating-system-file-systems (machine-operating-system machine))))
 
   (define (check-literal-file-system fs)
-    (define remote-exp
-      #~(catch 'system-error
-          (lambda ()
-            (stat #$(file-system-device fs))
-            #t)
-          (lambda args
-            (system-error-errno args))))
-
-    (mlet %store-monad ((errno (machine-remote-eval machine remote-exp)))
+    (remote-let ((errno #~(catch 'system-error
+                            (lambda ()
+                              (stat #$(file-system-device fs))
+                              #t)
+                            (lambda args
+                              (system-error-errno args)))))
       (when (number? errno)
-        (raise (condition
-                (&message
-                 (message (format #f (G_ "device '~a' not found: ~a")
+        (raise (formatted-message (G_ "device '~a' not found: ~a")
                                   (file-system-device fs)
-                                  (strerror errno)))))))
-      (return #t)))
+                                  (strerror errno))))))
 
   (define (check-labeled-file-system fs)
     (define remote-exp
@@ -173,14 +196,11 @@ MACHINE's 'system' declaration do not exist on the machine."
             (find-partition-by-label #$(file-system-label->string
                                         (file-system-device fs))))))
 
-    (mlet %store-monad ((result (machine-remote-eval machine remote-exp)))
+    (remote-let ((result remote-exp))
       (unless result
-        (raise (condition
-                (&message
-                 (message (format #f (G_ "no file system with label '~a'")
+        (raise (formatted-message (G_ "no file system with label '~a'")
                                   (file-system-label->string
-                                   (file-system-device fs))))))))
-      (return #t)))
+                                   (file-system-device fs)))))))
 
   (define (check-uuid-file-system fs)
     (define remote-exp
@@ -191,36 +211,32 @@ MACHINE's 'system' declaration do not exist on the machine."
             (use-modules (gnu build file-systems)
                          (gnu system uuid))
 
-            (define uuid
-              (string->uuid #$(uuid->string (file-system-device fs))))
+            (let ((uuid (uuid #$(uuid->string (file-system-device fs))
+                              '#$(uuid-type (file-system-device fs)))))
+              (find-partition-by-uuid uuid)))))
 
-            (find-partition-by-uuid uuid))))
-
-    (mlet %store-monad ((result (machine-remote-eval machine remote-exp)))
+    (remote-let ((result remote-exp))
       (unless result
-        (raise (condition
-                (&message
-                 (message (format #f (G_ "no file system with UUID '~a'")
-                                  (uuid->string (file-system-device fs))))))))
-      (return #t)))
+        (raise (formatted-message (G_ "no file system with UUID '~a'")
+                                  (uuid->string (file-system-device fs)))))))
 
-  (mbegin %store-monad
-    (mapm %store-monad check-literal-file-system
-          (filter (lambda (fs)
-                    (string? (file-system-device fs)))
-                  file-systems))
-    (mapm %store-monad check-labeled-file-system
-          (filter (lambda (fs)
-                    (file-system-label? (file-system-device fs)))
-                  file-systems))
-    (mapm %store-monad check-uuid-file-system
-          (filter (lambda (fs)
-              (uuid? (file-system-device fs)))
-                  file-systems))))
+  (append (map check-literal-file-system
+               (filter (lambda (fs)
+                         (string? (file-system-device fs)))
+                       file-systems))
+          (map check-labeled-file-system
+               (filter (lambda (fs)
+                         (file-system-label? (file-system-device fs)))
+                       file-systems))
+          (map check-uuid-file-system
+               (filter (lambda (fs)
+                         (uuid? (file-system-device fs)))
+                       file-systems))))
 
 (define (machine-check-initrd-modules machine)
-  "Raise a '&message' error condition if any of the modules needed by
-'needed-for-boot' file systems in MACHINE are not available in the initrd."
+  "Return a list of <remote-assertion> that raise a '&message' error condition
+if any of the modules needed by 'needed-for-boot' file systems in MACHINE are
+not available in the initrd."
   (define file-systems
     (filter file-system-needed-for-boot?
             (operating-system-file-systems (machine-operating-system machine))))
@@ -248,20 +264,37 @@ MACHINE's 'system' declaration do not exist on the machine."
 
               (missing-modules dev '#$(operating-system-initrd-modules
                                        (machine-operating-system machine)))))))
-    (mlet %store-monad ((missing (machine-remote-eval machine remote-exp)))
-      (return (list fs missing))))
 
-  (mlet %store-monad ((device (mapm %store-monad missing-modules file-systems)))
-    (for-each (match-lambda
-                ((fs missing)
-                 (unless (null? missing)
-                   (raise (condition
-                           (&message
-                            (message (format #f (G_ "~a missing modules ~{ ~a~}~%")
-                                             (file-system-device fs)
-                                             missing))))))))
-              device)
-    (return #t)))
+    (remote-let ((missing remote-exp))
+      (unless (null? missing)
+        (raise (condition
+                (&message
+                 (message (format #f (G_ "missing modules for ~a:~{ ~a~}~%")
+                                  (file-system-device fs)
+                                  missing))))))))
+
+  (map missing-modules file-systems))
+
+(define* (machine-check-forward-update machine)
+  "Check whether we are making a forward update for MACHINE.  Depending on its
+'allow-upgrades?' field, raise an error or display a warning if we are
+potentially downgrading it."
+  (define config
+    (machine-configuration machine))
+
+  (define validate-reconfigure
+    (if (machine-ssh-configuration-allow-downgrades? config)
+        warn-about-backward-reconfigure
+        ensure-forward-reconfigure))
+
+  (remote-let ((provenance #~(call-with-input-file
+                                 "/run/current-system/provenance"
+                               read)))
+    (define channels
+      (sexp->system-provenance provenance))
+
+    (check-forward-update validate-reconfigure
+                          #:current-channels channels)))
 
 (define (machine-check-building-for-appropriate-system machine)
   "Raise a '&message' error condition if MACHINE is configured to be built
@@ -271,23 +304,39 @@ by MACHINE."
         (system (remote-system (machine-ssh-session machine))))
     (when (and (machine-ssh-configuration-build-locally? config)
                (not (string= system (machine-ssh-configuration-system config))))
-      (raise (condition
-              (&message
-               (message (format #f (G_ "incorrect target system \
-('~a' was given, while the system reports that it is '~a')~%")
+      (raise (formatted-message (G_ "incorrect target system\
+ ('~a' was given, while the system reports that it is '~a')~%")
                                 (machine-ssh-configuration-system config)
-                                system)))))))
-  (with-monad %store-monad (return #t)))
+                                system)))))
 
 (define (check-deployment-sanity machine)
   "Raise a '&message' error condition if it is clear that deploying MACHINE's
 'system' declaration would fail."
-  ;; Order is important here -- an incorrect value for 'system' will cause
-  ;; invocations of 'remote-eval' to fail.
-  (mbegin %store-monad
-    (machine-check-building-for-appropriate-system machine)
-    (machine-check-file-system-availability machine)
-    (machine-check-initrd-modules machine)))
+  (define assertions
+    (append (machine-check-file-system-availability machine)
+            (machine-check-initrd-modules machine)
+            (list (machine-check-forward-update machine))))
+
+  (define aggregate-exp
+    ;; Gather all the expressions so that a single round-trip is enough to
+    ;; evaluate all the ASSERTIONS remotely.
+    #~(map (lambda (file)
+             (false-if-exception (primitive-load file)))
+           '#$(map (lambda (assertion)
+                     (scheme-file "remote-assertion.scm"
+                                  (remote-assertion-expression assertion)))
+                   assertions)))
+
+  ;; First check MACHINE's system type--an incorrect value for 'system' would
+  ;; cause subsequent invocations of 'remote-eval' to fail.
+  (machine-check-building-for-appropriate-system machine)
+
+  (mlet %store-monad ((values (machine-remote-eval machine aggregate-exp)))
+    (for-each (lambda (proc value)
+                (proc value))
+              (map remote-assertion-procedure assertions)
+              values)
+    (return #t)))
 
 
 ;;;
@@ -371,11 +420,9 @@ environment type of 'managed-host."
   (when (machine-ssh-configuration-authorize?
          (machine-configuration machine))
     (unless (file-exists? %public-key-file)
-      (raise (condition
-              (&message
-               (message (format #f (G_ "no signing key '~a'. \
+      (raise (formatted-message (G_ "no signing key '~a'. \
 have you run 'guix archive --generate-key?'")
-                                %public-key-file))))))
+                                %public-key-file)))
     (remote-authorize-signing-key (call-with-input-file %public-key-file
                                     (lambda (port)
                                       (string->canonical-sexp
@@ -466,9 +513,11 @@ connection to the host.")))
   (let ((config (machine-configuration machine))
         (environment (environment-type-name (machine-environment machine))))
     (unless (and config (machine-ssh-configuration? config))
-      (raise (condition
-              (&message
-               (message (format #f (G_ "unsupported machine configuration '~a'
+      (raise (formatted-message (G_ "unsupported machine configuration '~a'
 for environment of type '~a'")
                                 config
-                                environment))))))))
+                                environment)))))
+
+;; Local Variables:
+;; eval: (put 'remote-let 'scheme-indent-function 1)
+;; End:

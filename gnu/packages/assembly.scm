@@ -3,9 +3,12 @@
 ;;; Copyright © 2013, 2015 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2013 Andreas Enge <andreas@enge.fr>
 ;;; Copyright © 2016 Efraim Flashner <efraim@flashner.co.il>
-;;; Copyright © 2017, 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2017, 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2019 Guy Fleury Iteriteka <hoonandon@gmail.com>
 ;;; Copyright © 2019 Andy Tai <atai@atai.org>
+;;; Copyright © 2020 Jakub Kądziołka <kuba@kadziolka.net>
+;;; Copyright © 2020 Christopher Lemmer Webber <cwebber@dustycloud.org>
+;;; Copyright © 2020 B. Wilson <elaexuotee@wilsonb.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -23,6 +26,7 @@
 ;;; along with GNU Guix.  If not, see <http://www.gnu.org/licenses/>.
 
 (define-module (gnu packages assembly)
+  #:use-module (guix build-system cmake)
   #:use-module (guix build-system gnu)
   #:use-module (guix download)
   #:use-module (guix git-download)
@@ -36,11 +40,15 @@
   #:use-module (gnu packages compression)
   #:use-module (gnu packages flex)
   #:use-module (gnu packages gettext)
+  #:use-module (gnu packages image)
+  #:use-module (gnu packages linux)
   #:use-module (gnu packages man)
   #:use-module (gnu packages perl)
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages texinfo)
   #:use-module (gnu packages python)
+  #:use-module (gnu packages sphinx)
+  #:use-module (gnu packages shells)
   #:use-module (gnu packages xml)
   #:use-module ((guix utils)
                 #:select (%current-system)))
@@ -48,14 +56,14 @@
 (define-public nasm
   (package
     (name "nasm")
-    (version "2.13.03")
+    (version "2.14.02")
     (source (origin
               (method url-fetch)
               (uri (string-append "http://www.nasm.us/pub/nasm/releasebuilds/"
-                                  version "/" name "-" version ".tar.xz"))
+                                  version "/nasm-" version ".tar.xz"))
               (sha256
                (base32
-                "0wr58pb2wnyihcl6635hlx98fnscx5yirxm8m84x8nxwvjqcybl1"))))
+                "1xg8dfr49py15vbwk1rzcjc3zpqydmr49ahlijm56wlgj8zdwjp2"))))
     (build-system gnu-build-system)
     (native-inputs `(("perl" ,perl)  ;for doc and test target
                      ("texinfo" ,texinfo)))
@@ -99,10 +107,14 @@ has strong support for macros.")
                (base32
                 "0gv0slmm0qpq91za3v2v9glff3il594x5xsrbgab7xcmnh0ndkix"))))
     (build-system gnu-build-system)
+    (arguments
+     '(#:parallel-tests? #f))           ; Some tests fail
+                                        ; non-deterministically when run in
+                                        ; parallel
     (inputs
      `(("python" ,python-wrapper)
        ("xmlto" ,xmlto)))
-    (home-page "http://yasm.tortall.net/")
+    (home-page "https://yasm.tortall.net/")
     (synopsis "Rewrite of the NASM assembler")
     (description
      "Yasm is a complete rewrite of the NASM assembler.
@@ -117,14 +129,14 @@ debugging information in STABS, DWARF 2, and CodeView 8 formats.")
 (define-public lightning
   (package
     (name "lightning")
-    (version "2.1.2")
+    (version "2.1.3")
     (source (origin
              (method url-fetch)
              (uri (string-append "mirror://gnu/lightning/lightning-"
                                  version ".tar.gz"))
              (sha256
               (base32
-               "0sbs2lm8b9in2m8d52zf0x9gpp40x6r7sl6sha92yq3pr78rwa4v"))))
+               "1jgxbq2cm51dzi3zhz38mmgwdcgs328mfl8iviw8dxn6dn36p1gd"))))
     (build-system gnu-build-system)
     (native-inputs `(("zlib" ,zlib)))
     (synopsis "Library for generating assembly code at runtime")
@@ -139,14 +151,14 @@ to the clients.")
 (define-public fasm
   (package
     (name "fasm")
-    (version "1.73.11")
+    (version "1.73.24")
     (source
      (origin
        (method url-fetch)
        (uri (string-append "https://flatassembler.net/fasm-"
                            version ".tgz"))
        (sha256
-        (base32 "1zhbs72qc8bw5158zh6mvzznfamcx5a1bsmbmq9ci0d7wb58sxmg"))))
+        (base32 "142vxhs8mh8isvlzq7ir0asmqda410phzxmk9gk9b43dldskkj7k"))))
     (build-system gnu-build-system)
     (arguments
      `(#:tests? #f                      ; no tests exist
@@ -170,9 +182,9 @@ to the clients.")
     (supported-systems '("x86_64-linux" "i686-linux"))
     (synopsis "Assembler for x86 processors")
     (description
-     "FASM is an assembler that supports x86 and IA-64 Intel architectures.
-It does multiple passes to optimize machine code.  It has macro abilities and
-focuses on operating system portability.")
+     "@acronym{FASM, the Flat ASseMbler} is an assembler that supports x86 and
+IA-64 Intel architectures.  It does multiple passes to optimize machine code.
+It has macro abilities and focuses on operating system portability.")
     (home-page "https://flatassembler.net/")
     (license license:bsd-2)))
 
@@ -223,7 +235,7 @@ assembler, a C compiler and a linker.  The assembler uses Intel syntax
                 (uri (git-reference
                       (url "https://git.savannah.gnu.org/r/libjit.git")
                       (commit commit)))
-                (file-name (string-append name "-" version "-checkout"))
+                (file-name (git-file-name name version))
                 (sha256
                  (base32
                   "0p6wklslkkp3s4aisj3w5a53bagqn5fy4m6088ppd4fcfxgqkrcd"))))
@@ -245,3 +257,245 @@ assembler, a C compiler and a linker.  The assembler uses Intel syntax
 functionality independent of any particular bytecode, language, or
 runtime")
       (license license:lgpl2.1+))))
+
+(define-public rgbds
+  (package
+    (name "rgbds")
+    (version "0.4.1")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/rednex/rgbds")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "05djzl3h18zg2z5p2a881wjbmgikzkhf67cgk00frhw4v05sq0lf"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (delete 'configure)
+         (replace 'check
+           (lambda _
+             (with-directory-excursion "test/asm"
+               (invoke "./test.sh"))
+             (with-directory-excursion "test/link"
+               (invoke "./test.sh")))))
+       #:make-flags `("CC=gcc"
+                      ,(string-append "PREFIX="
+                                      (assoc-ref %outputs "out")))))
+    (native-inputs
+     `(("bison" ,bison)
+       ("flex" ,flex)
+       ("pkg-config" ,pkg-config)
+       ("util-linux" ,util-linux)))
+    (inputs
+     `(("libpng" ,libpng)))
+    (home-page "https://github.com/rednex/rgbds")
+    (synopsis "Rednex Game Boy Development System")
+    (description
+     "RGBDS (Rednex Game Boy Development System) is an assembler/linker
+package for the Game Boy and Game Boy Color.  It consists of:
+@itemize @bullet
+@item rgbasm (assembler)
+@item rgblink (linker)
+@item rgbfix (checksum/header fixer)
+@item rgbgfx (PNG-to-Game Boy graphics converter)
+@end itemize")
+    (license license:expat)))
+
+(define-public wla-dx
+  (package
+    (name "wla-dx")
+    (version "9.11")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/vhelin/wla-dx")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0i8pxvyaih79pqnyvqyqd9rwdid91pna76cap0k1n5zhg8xswf2f"))))
+    (build-system cmake-build-system)
+    (native-inputs
+     `(("sphinx" ,python-sphinx)))      ; to generate man pages
+    (arguments
+     `(#:tests? #f))                    ; no tests
+    (home-page "https://github.com/vhelin/wla-dx")
+    (synopsis "Assemblers for various processors")
+    (description "WLA DX is a set of tools to assemble assembly files to
+object or library files (@code{wla-ARCH}) and link them together (@code{wlalink}).
+Supported architectures are:
+
+@itemize @bullet
+@item z80
+@item gb (z80-gb)
+@item 6502
+@item 65c02
+@item 6510
+@item 65816
+@item 6800
+@item 6801
+@item 6809
+@item 8008
+@item 8080
+@item huc6280
+@item spc700
+@end itemize")
+    (license license:gpl2)))
+
+(define-public xa
+  (package
+    (name "xa")
+    (version "2.3.11")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append "https://www.floodgap.com/retrotech/xa"
+                                  "/dists/xa-" version ".tar.gz"))
+              (sha256
+               (base32
+                "0b81r7mvzqxgnbbmhixcnrf9nc72v1nqaw19k67221g3k561dwij"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:tests? #f   ; TODO: custom test harness, not sure how it works
+       #:phases
+       (modify-phases %standard-phases
+         (delete 'configure))            ; no "configure" script
+       #:make-flags (list (string-append "DESTDIR=" (assoc-ref %outputs "out")))))
+    (native-inputs `(("perl" ,perl)))
+    (home-page "https://www.floodgap.com/retrotech/xa/")
+    (synopsis "Two-pass portable cross-assembler")
+    (description
+     "xa is a high-speed, two-pass portable cross-assembler.
+It understands mnemonics and generates code for NMOS 6502s (such
+as 6502A, 6504, 6507, 6510, 7501, 8500, 8501, 8502 ...),
+ CMOS 6502s (65C02 and Rockwell R65C02) and the 65816.")
+    (license license:gpl2)))
+
+(define-public armips
+  (package
+    (name "armips")
+    (version "0.11.0")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/Kingcom/armips")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "1c4dhjkvynqn9xm2vcvwzymk7yg8h25alnawkz4z1dnn1z1k3r9g"))))
+    (build-system cmake-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (replace 'check
+           (lambda* (#:key inputs #:allow-other-keys)
+             (invoke "./armipstests" "../source/Tests")))
+         (replace 'install
+           (lambda* (#:key outputs #:allow-other-keys)
+             (install-file "armips" (string-append (assoc-ref outputs "out")
+                                                   "/bin"))
+             #t)))))
+    (home-page "https://github.com/Kingcom/armips")
+    (synopsis "Assembler for various ARM and MIPS platforms")
+    (description
+     "armips is an assembler with full support for the MIPS R3000, MIPS R4000,
+Allegrex and RSP instruction sets, partial support for the EmotionEngine
+instruction set, as well as complete support for the ARM7 and ARM9 instruction
+sets, both THUMB and ARM mode.")
+    (license license:expat)))
+
+(define-public intel-xed
+  (package
+    (name "intel-xed")
+    (version "11.2.0")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/intelxed/xed")
+             (commit version)))
+       (sha256 (base32 "1jffayski2gpd54vaska7fmiwnnia8v3cka4nfyzjgl8xsky9v2s"))
+       (file-name (git-file-name name version))
+       (patches (search-patches "intel-xed-fix-nondeterminism.patch"))))
+    (build-system gnu-build-system)
+    (native-inputs
+     `(("python-wrapper" ,python-wrapper)
+       ("tcsh" ,tcsh)
+       ;; As of the time of writing this comment, mbuild does not exist in the
+       ;; Python Package Index and seems to only be used by intel-xed, so we
+       ;; opt to include it here instead of packaging separately.  Note also
+       ;; that the git repository contains no version tags, so we directly
+       ;; reference the "version" variable from setup.py instead.
+       ("mbuild"
+        ,(let ((name "mbuild")
+               (version "0.2496"))
+           (origin
+             (method git-fetch)
+             (uri (git-reference
+                   (url "https://github.com/intelxed/mbuild.git")
+                   (commit "5304b94361fccd830c0e2417535a866b79c1c297")))
+             (sha256
+              (base32
+               "0r3avc3035aklqxcnc14rlmmwpj3jp09vbcbwynhvvmcp8srl7dl"))
+             (file-name (git-file-name name version)))))))
+    (outputs '("out" "lib"))
+    (arguments
+     `(#:phases
+       ;; Upstream uses the custom Python build tool `mbuild', so we munge
+       ;; gnu-build-system to fit.  The build process for this package is
+       ;; documented at https://intelxed.github.io/build-manual/.
+       (let* ((build-dir "build")
+              (kit-dir "kit"))
+         (modify-phases %standard-phases
+           (delete 'configure)
+           (replace 'build
+             (lambda* (#:key inputs #:allow-other-keys)
+               (let ((mbuild (assoc-ref inputs "mbuild")))
+                 (setenv "PYTHONPATH" (string-append
+                                       (getenv "PYTHONPATH") ":" mbuild))
+                 (invoke "./mfile.py"
+                         (string-append "--build-dir=" build-dir)
+                         (string-append "--install-dir=" kit-dir)
+                         "examples"
+                         "doc"
+                         "install"))))
+           (replace 'check
+             (lambda _
+               ;; Skip broken test group `tests/tests-avx512pf'.
+               (invoke "tests/run-cmd.py"
+                       (string-append "--build-dir=" kit-dir "/bin")
+                       "--tests" "tests/tests-base"
+                       "--tests" "tests/tests-avx512"
+                       "--tests" "tests/tests-cet"
+                       "--tests" "tests/tests-via"
+                       "--tests" "tests/tests-syntax"
+                       "--tests" "tests/tests-xop")))
+           (replace 'install
+             (lambda* (#:key outputs #:allow-other-keys)
+               (let* ((out (assoc-ref outputs "out"))
+                      (lib (assoc-ref outputs "lib")))
+                 (copy-recursively (string-append kit-dir "/bin")
+                                   (string-append out "/bin"))
+                 (copy-recursively (string-append kit-dir "/include")
+                                   (string-append lib "/include"))
+                 (copy-recursively (string-append kit-dir "/lib")
+                                   (string-append lib "/lib"))
+                 #t)))))))
+    (home-page "https://intelxed.github.io/")
+    (synopsis "Encoder and decoder for x86 (IA32 and Intel64) instructions")
+    (description "The Intel X86 Encoder Decoder (XED) is a software library and
+for encoding and decoding X86 (IA32 and Intel64) instructions.  The decoder
+takes sequences of 1-15 bytes along with machine mode information and produces
+a data structure describing the opcode, operands, and flags.  The encoder takes
+a similar data structure and produces a sequence of 1 to 15 bytes.  Disassembly
+is essentially a printing pass on the data structure.
+
+The library and development files are under the @code{lib} output, with a
+family of command line utility wrappers in the default output.  Each of the cli
+tools is named like @code{xed*}.  Documentation for the cli tools is sparse, so
+this is a case where ``the code is the documentation.''")
+    (license license:asl2.0)))

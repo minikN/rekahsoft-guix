@@ -1,7 +1,8 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2013, 2014, 2015 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2013, 2014, 2015, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2013 Cyril Roelandt <tipecaml@gmail.com>
 ;;; Copyright © 2017 Ricardo Wurmus <rekado@elephly.net>
+;;; Copyright © 2020 Efraim Flashner <efraim@flashner.co.il>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -43,16 +44,19 @@
   `((guix build cmake-build-system)
     ,@%gnu-build-system-modules))
 
-(define (default-cmake)
+(define (default-cmake target)
   "Return the default CMake package."
 
   ;; Do not use `@' to avoid introducing circular dependencies.
   (let ((module (resolve-interface '(gnu packages cmake))))
-    (module-ref module 'cmake)))
+    (module-ref module
+                (if target
+                    'cmake-minimal-cross
+                    'cmake-minimal))))
 
 (define* (lower name
                 #:key source inputs native-inputs outputs system target
-                (cmake (default-cmake))
+                (cmake (default-cmake target))
                 #:allow-other-keys
                 #:rest arguments)
   "Return a bag for NAME."
@@ -69,6 +73,7 @@
                           '())
                     ,@`(("cmake" ,cmake))
                     ,@native-inputs
+                    ,@(if target '() inputs)
                     ,@(if target
                           ;; Use the standard cross inputs of
                           ;; 'gnu-build-system'.
@@ -76,7 +81,7 @@
                           '())
                     ;; Keep the standard inputs of 'gnu-build-system'.
                     ,@(standard-packages)))
-    (host-inputs inputs)
+    (host-inputs (if target inputs '()))
 
     ;; The cross-libc is really a target package, but for bootstrapping
     ;; reasons, we can't put it in 'host-inputs'.  Namely, 'cross-gcc' is a
@@ -99,7 +104,7 @@
                       (build-type "RelWithDebInfo")
                       (tests? #t)
                       (test-target "test")
-                      (parallel-build? #t) (parallel-tests? #f)
+                      (parallel-build? #t) (parallel-tests? #t)
                       (validate-runpath? #t)
                       (patch-shebangs? #t)
                       (strip-binaries? #t)
@@ -109,6 +114,7 @@
                       (phases '(@ (guix build cmake-build-system)
                                   %standard-phases))
                       (system (%current-system))
+                      (substitutable? #t)
                       (imported-modules %cmake-build-system-modules)
                       (modules '((guix build cmake-build-system)
                                  (guix build utils))))
@@ -158,6 +164,7 @@ provides a 'CMakeLists.txt' file as its build system."
                                 #:inputs inputs
                                 #:modules imported-modules
                                 #:outputs outputs
+                                #:substitutable? substitutable?
                                 #:guile-for-build guile-for-build))
 
 
@@ -178,7 +185,7 @@ provides a 'CMakeLists.txt' file as its build system."
                             (build-type "RelWithDebInfo")
                             (tests? #f) ; nothing can be done
                             (test-target "test")
-                            (parallel-build? #t) (parallel-tests? #f)
+                            (parallel-build? #t) (parallel-tests? #t)
                             (validate-runpath? #t)
                             (patch-shebangs? #t)
                             (strip-binaries? #t)
@@ -188,6 +195,7 @@ provides a 'CMakeLists.txt' file as its build system."
                                                   "bin" "sbin"))
                             (phases '(@ (guix build cmake-build-system)
                                         %standard-phases))
+                            (substitutable? #t)
                             (system (%current-system))
                             (build (nix-system->gnu-triplet system))
                             (imported-modules %cmake-build-system-modules)
@@ -267,6 +275,7 @@ build system."
                                 #:inputs (append native-drvs target-drvs)
                                 #:outputs outputs
                                 #:modules imported-modules
+                                #:substitutable? substitutable?
                                 #:guile-for-build guile-for-build))
 
 (define cmake-build-system

@@ -5,7 +5,7 @@
 ;;; Copyright © 2016 Andreas Enge <andreas@enge.fr>
 ;;; Copyright © 2017 Dave Love <fx@gnu.org>
 ;;; Copyright © 2017 Efraim Flashner <efraim@flashner.co.il>
-;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018 Paul Garlick <pgarlick@tourbillion-technology.com>
 ;;; Copyright © 2019 Ricardo Wurmus <rekado@elephly.net>
 ;;;
@@ -26,13 +26,15 @@
 
 (define-module (gnu packages mpi)
   #:use-module (guix packages)
-  #:use-module ((guix licenses)
-                #:hide (expat))
+  #:use-module ((guix licenses) #:prefix license:)
   #:use-module (guix download)
   #:use-module (guix utils)
+  #:use-module (guix deprecation)
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system python)
   #:use-module (gnu packages)
+  #:use-module (gnu packages base)
+  #:use-module (gnu packages compression)
   #:use-module (gnu packages fabric-management)
   #:use-module (gnu packages gcc)
   #:use-module (gnu packages java)
@@ -50,7 +52,7 @@
   #:use-module (srfi srfi-1)
   #:use-module (ice-9 match))
 
-(define-public hwloc
+(define-public hwloc-1
   ;; Note: For now we keep 1.x as the default because many packages have yet
   ;; to migrate to 2.0.
   (package
@@ -127,13 +129,13 @@ exploit it accordingly and efficiently.
 hwloc may display the topology in multiple convenient formats.  It also offers
 a powerful programming interface to gather information about the hardware,
 bind processes, and much more.")
-    (license bsd-3)))
+    (license license:bsd-3)))
 
-(define-public hwloc-2.0
+(define-public hwloc-2
   ;; Note: 2.0 isn't the default yet, see above.
   (package
-    (inherit hwloc)
-    (version "2.0.3")
+    (inherit hwloc-1)
+    (version "2.2.0")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://www.open-mpi.org/software/hwloc/v"
@@ -141,12 +143,12 @@ bind processes, and much more.")
                                   "/downloads/hwloc-" version ".tar.bz2"))
               (sha256
                (base32
-                "09f7ajak8wv5issr0hw72vs3jkldc7crcc7z5fd34sspkvrsm4z3"))))
+                "0li27a3lnmb77qxpijj0kpblz32wmqd3b386sypq8ar7vy9vhw5f"))))
 
     ;; libnuma is no longer needed.
-    (inputs (alist-delete "numactl" (package-inputs hwloc)))
+    (inputs (alist-delete "numactl" (package-inputs hwloc-1)))
     (arguments
-     (substitute-keyword-arguments (package-arguments hwloc)
+     (substitute-keyword-arguments (package-arguments hwloc-1)
        ((#:phases phases)
         `(modify-phases ,phases
            (replace 'skip-linux-libnuma-test
@@ -156,12 +158,26 @@ bind processes, and much more.")
                (substitute* "tests/hwloc/linux-libnuma.c"
                  (("numa_available\\(\\)")
                   "-1"))
+               #t))
+           (add-before 'check 'skip-test-that-fails-on-qemu
+             (lambda _
+               ;; Skip test that fails on emulated hardware due to QEMU bug:
+               ;; <https://bugs.gnu.org/40342>.
+               (substitute* "tests/hwloc/hwloc_get_last_cpu_location.c"
+                 (("hwloc_topology_init" all)
+                  (string-append "exit (77);\n" all)))
                #t))))))))
+
+(define-deprecated hwloc-2.0 hwloc-2)
+
+(define-public hwloc
+  ;; The latest stable series of hwloc.
+  hwloc-2)
 
 (define-public openmpi
   (package
     (name "openmpi")
-    (version "4.0.1")
+    (version "4.0.3")
     (source
      (origin
       (method url-fetch)
@@ -169,10 +185,11 @@ bind processes, and much more.")
                           (version-major+minor version)
                           "/downloads/openmpi-" version ".tar.bz2"))
       (sha256
-       (base32 "02cpzcp113gj5hb0j2xc0cqma2fn04i2i0bzf80r71120p9bdryc"))))
+       (base32 "00zxcw99gr5n693cmcmn4f6a47vx1ywna895p0x7p163v37gw0hl"))
+      (patches (search-patches "openmpi-mtl-priorities.patch"))))
     (build-system gnu-build-system)
     (inputs
-     `(("hwloc" ,hwloc "lib")
+     `(("hwloc" ,hwloc-2 "lib")
        ("gfortran" ,gfortran)
        ("libfabric" ,libfabric)
        ("libevent" ,libevent)
@@ -184,6 +201,10 @@ bind processes, and much more.")
        ,@(if (and (not (%current-target-system))
                   (member (%current-system) (package-supported-systems psm2)))
              `(("psm2" ,psm2))
+             '())
+       ,@(if (and (not (%current-target-system))
+                  (member (%current-system) (package-supported-systems ucx)))
+             `(("ucx" ,ucx))
              '())
        ("rdma-core" ,rdma-core)
        ("valgrind" ,valgrind)
@@ -217,12 +238,10 @@ bind processes, and much more.")
                     (lambda* (#:key inputs #:allow-other-keys)
                       (setenv "C_INCLUDE_PATH"
                               (string-append (assoc-ref inputs "opensm")
-                                             "/include/infiniband/:"
-                                             (getenv "C_INCLUDE_PATH")))
+                                             "/include/infiniband"))
                       (setenv "CPLUS_INCLUDE_PATH"
                               (string-append (assoc-ref inputs "opensm")
-                                             "/include/infiniband/:"
-                                             (getenv "CPLUS_INCLUDE_PATH")))
+                                             "/include/infiniband"))
                       #t))
                   (add-before 'build 'remove-absolute
                     (lambda _
@@ -253,7 +272,7 @@ bind processes, and much more.")
                       (let ((out (assoc-ref outputs "out")))
                         (for-each delete-file (find-files out "config.log"))
                         #t))))))
-    (home-page "http://www.open-mpi.org")
+    (home-page "https://www.open-mpi.org")
     (synopsis "MPI-3 implementation")
     (description
      "The Open MPI Project is an MPI-3 implementation that is developed and
@@ -263,7 +282,7 @@ from all across the High Performance Computing community in order to build the
 best MPI library available.  Open MPI offers advantages for system and
 software vendors, application developers and computer science researchers.")
     ;; See file://LICENSE
-    (license bsd-2)))
+    (license license:bsd-2)))
 
 ;; TODO: javadoc files contain timestamps.
 (define-public java-openmpi
@@ -334,19 +353,27 @@ only provides @code{MPI_THREAD_FUNNELED}.")))
      ;; Allow oversubscription in case there are less physical cores available
      ;; in the build environment than the package wants while testing.
      (setenv "OMPI_MCA_rmaps_base_mapping_policy" "core:OVERSUBSCRIBE")
+
+     ;; UCX sometimes outputs uninteresting warnings such as:
+     ;;
+     ;;   mpool.c:38   UCX  WARN  object 0x7ffff44fffc0 was not returned to mpool ucp_am_bufs
+     ;;
+     ;; These in turn leads to failures of test suites that capture and
+     ;; compare stdout, such as that of 'hdf5-parallel-openmpi'.  Thus, tell
+     ;; UCX to not emit those warnings.
+     (setenv "UCX_LOG_LEVEL" "error")
      #t))
 
 (define-public python-mpi4py
   (package
     (name "python-mpi4py")
-    (version "3.0.2")
+    (version "3.0.3")
     (source
-      (origin
-        (method url-fetch)
-        (uri (pypi-uri "mpi4py" version))
-        (sha256
-          (base32
-            "1q28xl36difma1wq0acq111cqxjya32kn3lxp6fbidz3wg8jkmpq"))))
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "mpi4py" version))
+       (sha256
+        (base32 "07ssbhssv27rrjx1c5vd3vsr31vay5d8xcf4zh9yblcyidn72b81"))))
     (build-system python-build-system)
     (arguments
      `(#:phases
@@ -374,4 +401,81 @@ object oriented interface which closely follows MPI-2 C++ bindings.  It
 supports point-to-point and collective communications of any picklable Python
 object as well as optimized communications of Python objects (such as NumPy
 arrays) that expose a buffer interface.")
-    (license bsd-3)))
+    (license license:bsd-3)))
+
+(define-public mpich
+  (package
+    (name "mpich")
+    (version "3.3.2")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append "http://www.mpich.org/static/downloads/"
+                                  version "/mpich-" version ".tar.gz"))
+              (sha256
+               (base32
+                "1farz5zfx4cd0c3a0wb9pgfypzw0xxql1j1294z1sxslga1ziyjb"))))
+    (build-system gnu-build-system)
+    (inputs
+     `(("zlib" ,zlib)
+       ("hwloc" ,hwloc-2 "lib")
+       ("slurm" ,slurm)
+       ,@(if (and (not (%current-target-system))
+                  (member (%current-system) (package-supported-systems ucx)))
+             `(("ucx" ,ucx))
+             '())))
+    (native-inputs
+     `(("perl" ,perl)
+       ("which" ,which)
+       ("gfortran" ,gfortran)))
+    (outputs '("out" "debug"))
+    (arguments
+     `(#:configure-flags
+       (list "--disable-silent-rules"             ;let's see what's happening
+             "--enable-debuginfo"
+             ;; "--with-device=ch4:ucx" ; --with-device=ch4:ofi segfaults in tests
+             (string-append "--with-hwloc-prefix="
+                            (assoc-ref %build-inputs "hwloc"))
+
+             ,@(if (assoc "ucx" (package-inputs this-package))
+                   `((string-append "--with-ucx="
+                                    (assoc-ref %build-inputs "ucx")))
+                   '()))
+
+       #:phases (modify-phases %standard-phases
+                  (add-after 'unpack 'patch-sources
+                    (lambda _
+                      (substitute* "./maint/gen_subcfg_m4"
+                        (("/usr/bin/env") (which "env")))
+                      (substitute* "src/glue/romio/all_romio_symbols"
+                        (("/usr/bin/env") (which "env")))
+                      (substitute* (find-files "." "buildiface")
+                        (("/usr/bin/env") (which "env")))
+                      (substitute* "maint/extracterrmsgs"
+                        (("/usr/bin/env") (which "env")))
+                      (substitute* (find-files "." "f77tof90")
+                        (("/usr/bin/env") (which "env")))
+                      (substitute* (find-files "." "\\.sh$")
+                        (("/bin/sh") (which "sh")))
+                      #t))
+                  (add-before 'configure 'fix-makefile
+                    (lambda _
+                      ;; Remove "@hwloclib@" from 'pmpi_convenience_libs'.
+                      ;; This fixes "No rule to make target '-lhwloc', needed
+                      ;; by 'lib/libmpi.la'".
+                      (substitute* "Makefile.in"
+                        (("^pmpi_convenience_libs = (.*) @hwloclib@ (.*)$" _
+                          before after)
+                         (string-append "pmpi_convenience_libs = "
+                                        before " " after)))
+                      #t)))))
+    (home-page "https://www.mpich.org/")
+    (synopsis "Implementation of the Message Passing Interface (MPI)")
+    (description
+     "MPICH is a high-performance and portable implementation of the Message
+Passing Interface (MPI) standard (MPI-1, MPI-2 and MPI-3).  MPICH provides an
+MPI implementation that efficiently supports different computation and
+communication platforms including commodity clusters, high-speed networks (10
+Gigabit Ethernet, InfiniBand, Myrinet, Quadrics), and proprietary high-end
+computing systems (Blue Gene, Cray).  It enables research in MPI through a
+modular framework for other derived implementations.")
+    (license license:bsd-2)))

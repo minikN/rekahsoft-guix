@@ -1,5 +1,5 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2013, 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2015 Mark H Weaver <mhw@netris.org>
 ;;; Copyright © 2016, 2018 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2016 John Darrington <jmd@gnu.org>
@@ -11,6 +11,9 @@
 ;;; Copyright © 2018 Arun Isaac <arunisaac@systemreboot.net>
 ;;; Copyright © 2019 Florian Pelz <pelzflorian@pelzflorian.de>
 ;;; Copyright © 2019 Maxim Cournoyer <maxim.cournoyer@gmail.com>
+;;; Copyright © 2019 Sou Bunnbu <iyzsong@member.fsf.org>
+;;; Copyright © 2019 Alex Griffin <a@ajgrf.com>
+;;; Copyright © 2020 Brice Waegeneire <brice@waegenei.re>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -30,6 +33,8 @@
 (define-module (gnu services networking)
   #:use-module (gnu services)
   #:use-module (gnu services base)
+  #:use-module (gnu services configuration)
+  #:use-module (gnu services linux)
   #:use-module (gnu services shepherd)
   #:use-module (gnu services dbus)
   #:use-module (gnu system shadow)
@@ -50,6 +55,7 @@
   #:use-module (guix gexp)
   #:use-module (guix records)
   #:use-module (guix modules)
+  #:use-module (guix packages)
   #:use-module (guix deprecation)
   #:use-module (rnrs enums)
   #:use-module (srfi srfi-1)
@@ -109,6 +115,7 @@
             network-manager-configuration
             network-manager-configuration?
             network-manager-configuration-dns
+            network-manager-configuration-vpn-plugins
             network-manager-service-type
 
             connman-configuration
@@ -125,16 +132,28 @@
             usb-modeswitch-configuration-usb-modeswitch-data
             usb-modeswitch-service-type
 
-            <wpa-supplicant-configuration>
             wpa-supplicant-configuration
             wpa-supplicant-configuration?
             wpa-supplicant-configuration-wpa-supplicant
+            wpa-supplicant-configuration-requirement
             wpa-supplicant-configuration-pid-file
             wpa-supplicant-configuration-dbus?
             wpa-supplicant-configuration-interface
             wpa-supplicant-configuration-config-file
             wpa-supplicant-configuration-extra-options
             wpa-supplicant-service-type
+
+            hostapd-configuration
+            hostapd-configuration?
+            hostapd-configuration-package
+            hostapd-configuration-interface
+            hostapd-configuration-ssid
+            hostapd-configuration-broadcast-ssid?
+            hostapd-configuration-channel
+            hostapd-configuration-driver
+            hostapd-service-type
+
+            simulated-wifi-service-type
 
             openvswitch-service-type
             openvswitch-configuration
@@ -144,7 +163,24 @@
             iptables-configuration-iptables
             iptables-configuration-ipv4-rules
             iptables-configuration-ipv6-rules
-            iptables-service-type))
+            iptables-service-type
+
+            nftables-service-type
+            nftables-configuration
+            nftables-configuration?
+            nftables-configuration-package
+            nftables-configuration-ruleset
+            %default-nftables-ruleset
+
+            pagekite-service-type
+            pagekite-configuration
+            pagekite-configuration?
+            pagekite-configuration-package
+            pagekite-configuration-kitename
+            pagekite-configuration-kitesecret
+            pagekite-configuration-frontend
+            pagekite-configuration-kites
+            pagekite-configuration-extra-file))
 
 ;;; Commentary:
 ;;;
@@ -213,13 +249,14 @@ fe80::1%lo0 apps.facebook.com\n")
                  (define valid?
                    (lambda (interface)
                      (and (arp-network-interface? interface)
-                          (not (loopback-network-interface? interface)))))
+                          (not (loopback-network-interface? interface))
+                          ;; XXX: Make sure the interfaces are up so that
+                          ;; 'dhclient' can actually send/receive over them.
+                          ;; Ignore those that cannot be activated.
+                          (false-if-exception
+                           (set-network-interface-up interface)))))
                  (define ifaces
                    (filter valid? (all-network-interface-names)))
-
-                 ;; XXX: Make sure the interfaces are up so that 'dhclient' can
-                 ;; actually send/receive over them.
-                 (for-each set-network-interface-up ifaces)
 
                  (false-if-exception (delete-file #$pid-file))
                  (let ((pid (fork+exec-command
@@ -291,7 +328,7 @@ Protocol (DHCP) client, on all the non-loopback network interfaces."
              (with-output-to-file #$lease-file
                (lambda _ (display ""))))
            ;; Validate the config.
-           (invoke
+           (invoke/quiet
             #$(file-append package "/sbin/dhcpd") "-t" "-cf"
             #$config-file))))))
 
@@ -300,7 +337,9 @@ Protocol (DHCP) client, on all the non-loopback network interfaces."
    (name 'dhcpd)
    (extensions
     (list (service-extension shepherd-root-service-type dhcpd-shepherd-service)
-          (service-extension activation-service-type dhcpd-activation)))))
+          (service-extension activation-service-type dhcpd-activation)))
+   (description "Run a DHCP (Dynamic Host Configuration Protocol) daemon.  The
+daemon is responsible for allocating IP addresses to its client.")))
 
 
 ;;;
@@ -335,7 +374,7 @@ Protocol (DHCP) client, on all the non-loopback network interfaces."
                 (res '()))
        (if (list? x)
            (fold loop res x)
-           (cons (format #f "~s" x) res)))))
+           (cons (format #f "~a" x) res)))))
 
   (match ntp-server
     (($ <ntp-server> type address options)
@@ -384,15 +423,16 @@ deprecated.  Please use <ntp-server> records instead.\n")
        ntp-servers))))
 
 (define ntp-shepherd-service
-  (match-lambda
-    (($ <ntp-configuration> ntp servers allow-large-adjustment?)
-     (let ()
-       ;; TODO: Add authentication support.
-       (define config
-         (string-append "driftfile /var/run/ntpd/ntp.drift\n"
-                        (string-join (map ntp-server->string servers)
-                                     "\n")
-                        "
+  (lambda (config)
+    (match config
+      (($ <ntp-configuration> ntp servers allow-large-adjustment?)
+       (let ((servers (ntp-configuration-servers config)))
+         ;; TODO: Add authentication support.
+         (define config
+           (string-append "driftfile /var/run/ntpd/ntp.drift\n"
+                          (string-join (map ntp-server->string servers)
+                                       "\n")
+                          "
 # Disable status queries as a workaround for CVE-2013-5211:
 # <http://support.ntp.org/bin/view/Main/SecurityNotice#DRDoS_Amplification_Attack_using>.
 restrict default kod nomodify notrap nopeer noquery limited
@@ -406,20 +446,20 @@ restrict -6 ::1
 # option by default, as documented in the 'ntp.conf' manual.
 restrict source notrap nomodify noquery\n"))
 
-       (define ntpd.conf
-         (plain-file "ntpd.conf" config))
+         (define ntpd.conf
+           (plain-file "ntpd.conf" config))
 
-       (list (shepherd-service
-              (provision '(ntpd))
-              (documentation "Run the Network Time Protocol (NTP) daemon.")
-              (requirement '(user-processes networking))
-              (start #~(make-forkexec-constructor
-                        (list (string-append #$ntp "/bin/ntpd") "-n"
-                              "-c" #$ntpd.conf "-u" "ntpd"
-                              #$@(if allow-large-adjustment?
-                                     '("-g")
-                                     '()))))
-              (stop #~(make-kill-destructor))))))))
+         (list (shepherd-service
+                (provision '(ntpd))
+                (documentation "Run the Network Time Protocol (NTP) daemon.")
+                (requirement '(user-processes networking))
+                (start #~(make-forkexec-constructor
+                          (list (string-append #$ntp "/bin/ntpd") "-n"
+                                "-c" #$ntpd.conf "-u" "ntpd"
+                                #$@(if allow-large-adjustment?
+                                       '("-g")
+                                       '()))))
+                (stop #~(make-kill-destructor)))))))))
 
 (define %ntp-accounts
   (list (user-account
@@ -978,7 +1018,7 @@ and @command{wicd-curses} user interfaces."
                    (default network-manager))
   (dns network-manager-configuration-dns
        (default "default"))
-  (vpn-plugins network-manager-vpn-plugins        ;list of <package>
+  (vpn-plugins network-manager-configuration-vpn-plugins ;list of <package>
                (default '())))
 
 (define network-manager-activation
@@ -996,6 +1036,33 @@ and @command{wicd-curses} user interfaces."
 (define (vpn-plugin-directory plugins)
   "Return a directory containing PLUGINS, the NM VPN plugins."
   (directory-union "network-manager-vpn-plugins" plugins))
+
+(define (network-manager-accounts config)
+  "Return the list of <user-account> and <user-group> for CONFIG."
+  (define nologin
+    (file-append shadow "/sbin/nologin"))
+
+  (define accounts
+    (append-map (lambda (package)
+                  (map (lambda (name)
+                         (user-account (system? #t)
+                                       (name name)
+                                       (group "network-manager")
+                                       (comment "NetworkManager helper")
+                                       (home-directory "/var/empty")
+                                       (create-home-directory? #f)
+                                       (shell nologin)))
+                       (or (assoc-ref (package-properties package)
+                                      'user-accounts)
+                           '())))
+                (network-manager-configuration-vpn-plugins config)))
+
+  (match accounts
+    (()
+     '())
+    (_
+     (cons (user-group (name "network-manager") (system? #t))
+           accounts))))
 
 (define network-manager-environment
   (match-lambda
@@ -1046,6 +1113,8 @@ and @command{wicd-curses} user interfaces."
                                (compose
                                 list
                                 network-manager-configuration-network-manager))
+            (service-extension account-service-type
+                               network-manager-accounts)
             (service-extension activation-service-type
                                network-manager-activation)
             (service-extension session-environment-service-type
@@ -1253,6 +1322,8 @@ whatever the thing is supposed to do).")))
   wpa-supplicant-configuration?
   (wpa-supplicant     wpa-supplicant-configuration-wpa-supplicant ;<package>
                       (default wpa-supplicant))
+  (requirement        wpa-supplicant-configuration-requirement    ;list of symbols
+                      (default '(user-processes dbus-system loopback syslogd)))
   (pid-file           wpa-supplicant-configuration-pid-file       ;string
                       (default "/var/run/wpa_supplicant.pid"))
   (dbus?              wpa-supplicant-configuration-dbus?          ;Boolean
@@ -1266,12 +1337,12 @@ whatever the thing is supposed to do).")))
 
 (define wpa-supplicant-shepherd-service
   (match-lambda
-    (($ <wpa-supplicant-configuration> wpa-supplicant pid-file dbus? interface
-                                       config-file extra-options)
+    (($ <wpa-supplicant-configuration> wpa-supplicant requirement pid-file dbus?
+                                       interface config-file extra-options)
      (list (shepherd-service
             (documentation "Run the WPA supplicant daemon")
             (provision '(wpa-supplicant))
-            (requirement '(user-processes dbus-system loopback syslogd))
+            (requirement requirement)
             (start #~(make-forkexec-constructor
                       (list (string-append #$wpa-supplicant
                                            "/sbin/wpa_supplicant")
@@ -1305,6 +1376,99 @@ whatever the thing is supposed to do).")))
                   (description "Run the WPA Supplicant daemon, a service that
 implements authentication, key negotiation and more for wireless networks.")
                   (default-value (wpa-supplicant-configuration)))))
+
+
+;;;
+;;; Hostapd.
+;;;
+
+(define-record-type* <hostapd-configuration>
+  hostapd-configuration make-hostapd-configuration
+  hostapd-configuration?
+  (package           hostapd-configuration-package
+                     (default hostapd))
+  (interface         hostapd-configuration-interface ;string
+                     (default "wlan0"))
+  (ssid              hostapd-configuration-ssid)  ;string
+  (broadcast-ssid?   hostapd-configuration-broadcast-ssid? ;Boolean
+                     (default #t))
+  (channel           hostapd-configuration-channel ;integer
+                     (default 1))
+  (driver            hostapd-configuration-driver ;string
+                     (default "nl80211"))
+  ;; See <https://w1.fi/cgit/hostap/plain/hostapd/hostapd.conf> for a list of
+  ;; additional options we could add.
+  (extra-settings    hostapd-configuration-extra-settings ;string
+                     (default "")))
+
+(define (hostapd-configuration-file config)
+  "Return the configuration file for CONFIG, a <hostapd-configuration>."
+  (match-record config <hostapd-configuration>
+    (interface ssid broadcast-ssid? channel driver extra-settings)
+    (plain-file "hostapd.conf"
+                (string-append "\
+# Generated from your Guix configuration.
+
+interface=" interface "
+ssid=" ssid "
+ignore_broadcast_ssid=" (if broadcast-ssid? "0" "1") "
+channel=" (number->string channel) "\n"
+extra-settings "\n"))))
+
+(define* (hostapd-shepherd-services config #:key (requirement '()))
+  "Return Shepherd services for hostapd."
+  (list (shepherd-service
+         (provision '(hostapd))
+         (requirement `(user-processes ,@requirement))
+         (documentation "Run the hostapd WiFi access point daemon.")
+         (start #~(make-forkexec-constructor
+                   (list #$(file-append hostapd "/sbin/hostapd")
+                         #$(hostapd-configuration-file config))
+                   #:log-file "/var/log/hostapd.log"))
+         (stop #~(make-kill-destructor)))))
+
+(define hostapd-service-type
+  (service-type
+   (name 'hostapd)
+   (extensions
+    (list (service-extension shepherd-root-service-type
+                             hostapd-shepherd-services)))
+   (description
+    "Run the @uref{https://w1.fi/hostapd/, hostapd} daemon for Wi-Fi access
+points and authentication servers.")))
+
+(define (simulated-wifi-shepherd-services config)
+  "Return Shepherd services to run hostapd with CONFIG, a
+<hostapd-configuration>, as well as services to set up WiFi hardware
+simulation."
+  (append (hostapd-shepherd-services config
+                                     #:requirement
+                                     '(unblocked-wifi
+                                       kernel-module-loader))
+          (list (shepherd-service
+                 (provision '(unblocked-wifi))
+                 (requirement '(file-systems kernel-module-loader))
+                 (documentation
+                  "Unblock WiFi devices for use by mac80211_hwsim.")
+                 (start #~(lambda _
+                            (invoke #$(file-append util-linux "/sbin/rfkill")
+                                    "unblock" "0")
+                            (invoke #$(file-append util-linux "/sbin/rfkill")
+                                    "unblock" "1")))
+                 (one-shot? #t)))))
+
+(define simulated-wifi-service-type
+  (service-type
+   (name 'simulated-wifi)
+   (extensions
+    (list (service-extension shepherd-root-service-type
+                             simulated-wifi-shepherd-services)
+          (service-extension kernel-module-loader-service-type
+                             (const '("mac80211_hwsim")))))
+   (default-value (hostapd-configuration
+                   (interface "wlan1")
+                   (ssid "Test Network")))
+   (description "Run hostapd to simulate WiFi connectivity.")))
 
 
 ;;;
@@ -1414,5 +1578,173 @@ COMMIT
    (extensions
     (list (service-extension shepherd-root-service-type
                              (compose list iptables-shepherd-service))))))
+
+;;;
+;;; nftables
+;;;
+
+(define %default-nftables-ruleset
+  (plain-file "nftables.conf"
+              "# A simple and safe firewall
+table inet filter {
+  chain input {
+    type filter hook input priority 0; policy drop;
+
+    # early drop of invalid connections
+    ct state invalid drop
+
+    # allow established/related connections
+    ct state { established, related } accept
+
+    # allow from loopback
+    iifname lo accept
+
+    # allow icmp
+    ip protocol icmp accept
+    ip6 nexthdr icmpv6 accept
+
+    # allow ssh
+    tcp dport ssh accept
+
+    # reject everything else
+    reject with icmpx type port-unreachable
+  }
+  chain forward {
+    type filter hook forward priority 0; policy drop;
+  }
+  chain output {
+    type filter hook output priority 0; policy accept;
+  }
+}
+"))
+
+(define-record-type* <nftables-configuration>
+  nftables-configuration
+  make-nftables-configuration
+  nftables-configuration?
+  (package nftables-configuration-package
+           (default nftables))
+  (ruleset nftables-configuration-ruleset ; file-like object
+           (default %default-nftables-ruleset)))
+
+(define nftables-shepherd-service
+  (match-lambda
+    (($ <nftables-configuration> package ruleset)
+     (let ((nft (file-append package "/sbin/nft")))
+       (shepherd-service
+        (documentation "Packet filtering and classification")
+        (provision '(nftables))
+        (start #~(lambda _
+                   (invoke #$nft "--file" #$ruleset)))
+        (stop #~(lambda _
+                  (invoke #$nft "flush" "ruleset"))))))))
+
+(define nftables-service-type
+  (service-type
+   (name 'nftables)
+   (description
+    "Run @command{nft}, setting up the specified ruleset.")
+   (extensions
+    (list (service-extension shepherd-root-service-type
+                             (compose list nftables-shepherd-service))
+          (service-extension profile-service-type
+                             (compose list nftables-configuration-package))))
+   (default-value (nftables-configuration))))
+
+
+;;;
+;;; PageKite
+;;;
+
+(define-record-type* <pagekite-configuration>
+  pagekite-configuration
+  make-pagekite-configuration
+  pagekite-configuration?
+  (package pagekite-configuration-package
+           (default pagekite))
+  (kitename pagekite-configuration-kitename
+            (default #f))
+  (kitesecret pagekite-configuration-kitesecret
+              (default #f))
+  (frontend pagekite-configuration-frontend
+            (default #f))
+  (kites pagekite-configuration-kites
+         (default '("http:@kitename:localhost:80:@kitesecret")))
+  (extra-file pagekite-configuration-extra-file
+              (default #f)))
+
+(define (pagekite-configuration-file config)
+  (match-record config <pagekite-configuration>
+    (package kitename kitesecret frontend kites extra-file)
+    (mixed-text-file "pagekite.rc"
+                     (if extra-file
+                         (string-append "optfile = " extra-file "\n")
+                         "")
+                     (if kitename
+                         (string-append "kitename = " kitename "\n")
+                         "")
+                     (if kitesecret
+                         (string-append "kitesecret = " kitesecret "\n")
+                         "")
+                     (if frontend
+                         (string-append "frontend = " frontend "\n")
+                         "defaults\n")
+                     (string-join (map (lambda (kite)
+                                         (string-append "service_on = " kite))
+                                       kites)
+                                  "\n"
+                                  'suffix))))
+
+(define (pagekite-shepherd-service config)
+  (match-record config <pagekite-configuration>
+    (package kitename kitesecret frontend kites extra-file)
+    (with-imported-modules (source-module-closure
+                            '((gnu build shepherd)
+                              (gnu system file-systems)))
+      (shepherd-service
+       (documentation "Run the PageKite service.")
+       (provision '(pagekite))
+       (requirement '(networking))
+       (modules '((gnu build shepherd)
+                  (gnu system file-systems)))
+       (start #~(make-forkexec-constructor/container
+                 (list #$(file-append package "/bin/pagekite")
+                       "--clean"
+                       "--nullui"
+                       "--nocrashreport"
+                       "--runas=pagekite:pagekite"
+                       (string-append "--optfile="
+                                      #$(pagekite-configuration-file config)))
+                 #:log-file "/var/log/pagekite.log"
+                 #:mappings #$(if extra-file
+                                  #~(list (file-system-mapping
+                                           (source #$extra-file)
+                                           (target source)))
+                                  #~'())))
+       ;; SIGTERM doesn't always work for some reason.
+       (stop #~(make-kill-destructor SIGINT))))))
+
+(define %pagekite-accounts
+  (list (user-group (name "pagekite") (system? #t))
+        (user-account
+         (name "pagekite")
+         (group "pagekite")
+         (system? #t)
+         (comment "PageKite user")
+         (home-directory "/var/empty")
+         (shell (file-append shadow "/sbin/nologin")))))
+
+(define pagekite-service-type
+  (service-type
+   (name 'pagekite)
+   (default-value (pagekite-configuration))
+   (extensions
+    (list (service-extension shepherd-root-service-type
+                             (compose list pagekite-shepherd-service))
+          (service-extension account-service-type
+                             (const %pagekite-accounts))))
+   (description
+    "Run @url{https://pagekite.net/,PageKite}, a tunneling solution to make
+local servers publicly accessible on the web, even behind NATs and firewalls.")))
 
 ;;; networking.scm ends here

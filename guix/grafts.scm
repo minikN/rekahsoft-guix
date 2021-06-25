@@ -1,5 +1,5 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -20,10 +20,12 @@
   #:use-module (guix store)
   #:use-module (guix monads)
   #:use-module (guix records)
+  #:use-module (guix combinators)
   #:use-module (guix derivations)
   #:use-module ((guix utils) #:select (%current-system))
   #:use-module (guix sets)
   #:use-module (srfi srfi-1)
+  #:use-module (srfi srfi-11)
   #:use-module (srfi srfi-9 gnu)
   #:use-module (srfi srfi-26)
   #:use-module (srfi srfi-34)
@@ -152,51 +154,23 @@ are not recursively applied to dependencies of DRV."
 
                                      #:properties properties)))))
 
-(define (non-self-references references drv outputs)
+(define (non-self-references store drv outputs)
   "Return the list of references of the OUTPUTS of DRV, excluding self
-references.  Call REFERENCES to get the list of references."
-  (let ((refs (append-map (compose references
-                                   (cut derivation->output-path drv <>))
-                          outputs))
+references."
+  (define (references* items)
+    ;; Return the references of ITEMS.
+    (guard (c ((store-protocol-error? c)
+               ;; ITEMS are not in store so build INPUT first.
+               (and (build-derivations store (list drv))
+                    (append-map (cut references/cached store <>) items))))
+      (append-map (cut references/cached store <>) items)))
+
+  (let ((refs (references* (map (cut derivation->output-path drv <>)
+                                outputs)))
         (self (match (derivation->output-paths drv)
                 (((names . items) ...)
                  items))))
     (remove (cut member <> self) refs)))
-
-(define (references-oracle store input)
-  "Return a one-argument procedure that, when passed the output file names of
-INPUT, a derivation input, or their dependencies, returns the list of
-references of that item.  Use either local info or substitute info; build
-INPUT if no information is available."
-  (define (references* items)
-    (guard (c ((store-protocol-error? c)
-               ;; As a last resort, build DRV and query the references of the
-               ;; build result.
-
-               ;; Warm up the narinfo cache, otherwise each derivation build
-               ;; will result in one HTTP request to get one narinfo, which is
-               ;; much less efficient than fetching them all upfront.
-               (substitution-oracle store
-                                    (list (derivation-input-derivation input)))
-
-               (and (build-derivations store (list input))
-                    (map (cut references store <>) items))))
-      (references/substitutes store items)))
-
-  (let loop ((items (derivation-input-output-paths input))
-             (result vlist-null))
-    (match items
-      (()
-       (lambda (item)
-         (match (vhash-assoc item result)
-           ((_ . refs) refs)
-           (#f         #f))))
-      (_
-       (let* ((refs   (references* items))
-              (result (fold vhash-cons result items refs)))
-         (loop (remove (cut vhash-assoc <> result)
-                       (delete-duplicates (concatenate refs) string=?))
-               result))))))
 
 (define-syntax-rule (with-cache key exp ...)
   "Cache the value of monadic expression EXP under KEY."
@@ -211,43 +185,55 @@ INPUT if no information is available."
            (set-current-state (vhash-cons key result cache))
            (return result)))))))
 
-(define (reference-origin drv item)
-  "Return the derivation/output pair among the inputs of DRV, recursively,
-that produces ITEM.  Return #f if ITEM is not produced by a derivation (i.e.,
-it's a content-addressed \"source\"), or if it's not produced by a dependency
-of DRV."
+(define (reference-origins drv items)
+  "Return the derivation/output pairs among the inputs of DRV, recursively,
+that produce ITEMS.  Elements of ITEMS not produced by a derivation (i.e.,
+it's a content-addressed \"source\"), or not produced by a dependency of DRV,
+have no corresponding element in the resulting list."
+  (define (lookup-derivers drv result items)
+    ;; Return RESULT augmented by all the drv/output pairs producing one of
+    ;; ITEMS, and ITEMS stripped of matching items.
+    (fold2 (match-lambda*
+             (((output . file) result items)
+              (if (member file items)
+                  (values (alist-cons drv output result)
+                          (delete file items))
+                  (values result items))))
+           result items
+           (derivation->output-paths drv)))
+
   ;; Perform a breadth-first traversal of the dependency graph of DRV in
-  ;; search of the derivation that produces ITEM.
+  ;; search of the derivations that produce ITEMS.
   (let loop ((drv (list drv))
+             (items items)
+             (result '())
              (visited (setq)))
     (match drv
       (()
-       #f)
+       result)
       ((drv . rest)
-       (if (set-contains? visited drv)
-           (loop rest visited)
-           (let ((inputs (derivation-inputs drv)))
-             (or (any (lambda (input)
-                        (let ((drv (derivation-input-derivation input)))
-                          (any (match-lambda
-                                 ((output . file)
-                                  (and (string=? file item)
-                                       (cons drv output))))
-                               (derivation->output-paths drv))))
-                      inputs)
-                 (loop (append rest (map derivation-input-derivation inputs))
-                       (set-insert drv visited)))))))))
+       (cond ((null? items)
+              result)
+             ((set-contains? visited drv)
+              (loop rest items result visited))
+             (else
+              (let*-values (((inputs)
+                             (map derivation-input-derivation
+                                  (derivation-inputs drv)))
+                            ((result items)
+                             (fold2 lookup-derivers
+                                    result items inputs)))
+                (loop (append rest inputs)
+                      items result
+                      (set-insert drv visited)))))))))
 
 (define* (cumulative-grafts store drv grafts
-                            references
                             #:key
                             (outputs (derivation-output-names drv))
                             (guile (%guile-for-build))
                             (system (%current-system)))
   "Augment GRAFTS with additional grafts resulting from the application of
-GRAFTS to the dependencies of DRV; REFERENCES must be a one-argument procedure
-that returns the list of references of the store item it is given.  Return the
-resulting list of grafts.
+GRAFTS to the dependencies of DRV.  Return the resulting list of grafts.
 
 This is a monadic procedure in %STATE-MONAD where the state is a vhash mapping
 derivations to the corresponding set of grafts."
@@ -264,25 +250,27 @@ derivations to the corresponding set of grafts."
       (_
        #f)))
 
-  (define (dependency-grafts item)
-    (match (reference-origin drv item)
-      ((drv . output)
-       ;; If GRAFTS already contains a graft from DRV, do not override it.
-       (if (find (cut graft-origin? drv <>) grafts)
-           (state-return grafts)
-           (cumulative-grafts store drv grafts references
-                              #:outputs (list output)
-                              #:guile guile
-                              #:system system)))
-      (#f
-       (state-return grafts))))
+  (define (dependency-grafts items)
+    (mapm %store-monad
+          (lambda (drv+output)
+            (match drv+output
+              ((drv . output)
+               ;; If GRAFTS already contains a graft from DRV, do not
+               ;; override it.
+               (if (find (cut graft-origin? drv <>) grafts)
+                   (state-return grafts)
+                   (cumulative-grafts store drv grafts
+                                      #:outputs (list output)
+                                      #:guile guile
+                                      #:system system)))))
+          (reference-origins drv items)))
 
   (with-cache (cons (derivation-file-name drv) outputs)
-    (match (non-self-references references drv outputs)
+    (match (non-self-references store drv outputs)
       (()                                         ;no dependencies
        (return grafts))
       (deps                                       ;one or more dependencies
-       (mlet %state-monad ((grafts (mapm %state-monad dependency-grafts deps)))
+       (mlet %state-monad ((grafts (dependency-grafts deps)))
          (let ((grafts (delete-duplicates (concatenate grafts) equal?)))
            (match (filter (lambda (graft)
                             (member (graft-origin-file-name graft) deps))
@@ -315,15 +303,8 @@ derivations to the corresponding set of grafts."
   "Apply GRAFTS to the OUTPUTS of DRV and all their dependencies, recursively.
 That is, if GRAFTS apply only indirectly to DRV, graft the dependencies of
 DRV, and graft DRV itself to refer to those grafted dependencies."
-
-  ;; First, pre-compute the dependency tree of the outputs of DRV.  Do this
-  ;; upfront to have as much parallelism as possible when querying substitute
-  ;; info or when building DRV.
-  (define references
-    (references-oracle store (derivation-input drv outputs)))
-
   (match (run-with-state
-             (cumulative-grafts store drv grafts references
+             (cumulative-grafts store drv grafts
                                 #:outputs outputs
                                 #:guile guile #:system system)
            vlist-null)                            ;the initial cache

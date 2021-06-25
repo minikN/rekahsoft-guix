@@ -4,8 +4,10 @@
 ;;; Copyright © 2015 Mark H Weaver <mhw@netris.org>
 ;;; Copyright © 2016 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2017 Thomas Danckaert <post@thomasdanckaert.be>
-;;; Copyright © 2017 Pierre Langlois <pierre.langlois@gmx.com>
-;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2017, 2019 Pierre Langlois <pierre.langlois@gmx.com>
+;;; Copyright © 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2019 Ricardo Wurmus <rekado@elephly.net>
+;;; Copyright © 2020 Michael Rohleder <mike@rohleder.de>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -30,6 +32,7 @@
   #:use-module (gnu packages gcc)
   #:use-module (gnu packages boost)
   #:use-module (gnu packages cdrom)
+  #:use-module (gnu packages check)
   #:use-module (gnu packages compression)
   #:use-module (gnu packages gettext)
   #:use-module (gnu packages ghostscript)
@@ -39,6 +42,7 @@
   #:use-module (gnu packages pcre)
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages python)
+  #:use-module (gnu packages python-web)
   #:use-module (gnu packages python-xyz)
   #:use-module (gnu packages xiph)
   #:use-module (gnu packages pulseaudio)
@@ -123,7 +127,8 @@ versions of ID3v2.")
             (modules '((guix build utils)))
             ;; Don't use bundled zlib
             (snippet '(begin (delete-file-recursively "zlib") #t))
-            (patches (search-patches "id3lib-CVE-2007-4460.patch"))))
+            (patches (search-patches "id3lib-CVE-2007-4460.patch"
+                                     "id3lib-UTF16-writing-bug.patch"))))
    (build-system gnu-build-system)
    (inputs `(("zlib" ,zlib)))
    (arguments
@@ -168,7 +173,7 @@ a highly stable and efficient implementation.")
       '(#:tests? #f ; Tests are not ran with BUILD_SHARED_LIBS on.
         #:configure-flags (list "-DBUILD_SHARED_LIBS=ON")))
     (inputs `(("zlib" ,zlib)))
-    (home-page "http://taglib.org")
+    (home-page "https://taglib.org")
     (synopsis "Library to access audio file meta-data")
     (description
      "TagLib is a C++ library for reading and editing the meta-data of several
@@ -305,22 +310,24 @@ This package contains the binary.")
 (define-public mpg123
   (package
     (name "mpg123")
-    (version "1.25.12")
-    (source (origin
-              (method url-fetch)
-              (uri (list (string-append "mirror://sourceforge/mpg123/mpg123/"
-                                        version "/mpg123-" version ".tar.bz2")
-                         (string-append
-                          "https://www.mpg123.org/download/mpg123-"
-                          version ".tar.bz2")))
-              (sha256
-               (base32
-                "1l9iwwgqzw6yg5zk9pqmlbfyq6d8dqysbmj0j3m8dyrxd34wgzhz"))))
+    (version "1.26.3")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (list (string-append "mirror://sourceforge/mpg123/mpg123/"
+                                 version "/mpg123-" version ".tar.bz2")
+                  (string-append
+                   "https://www.mpg123.org/download/mpg123-"
+                   version ".tar.bz2")))
+       (sha256
+        (base32 "0vkcfdx0mqq6lmpczsmpa2jsb0s6dryx3i7gvr32i3w9b9w9ij9h"))))
     (build-system gnu-build-system)
     (arguments '(#:configure-flags '("--with-default-audio=pulse")))
-    (native-inputs `(("pkg-config" ,pkg-config)))
-    (inputs `(("pulseaudio" ,pulseaudio)
-              ("alsa-lib" ,alsa-lib)))
+    (native-inputs
+     `(("pkg-config" ,pkg-config)))
+    (inputs
+     `(("alsa-lib" ,alsa-lib)
+       ("pulseaudio" ,pulseaudio)))
     (home-page "https://www.mpg123.org/")
     (synopsis "Console MP3 player and decoder library")
     (description
@@ -472,13 +479,13 @@ compression format (.mpc files).")
 (define-public eyed3
   (package
     (name "eyed3")
-    (version "0.8.10")
+    (version "0.8.12")
     (source
      (origin
        (method url-fetch)
        (uri (pypi-uri "eyeD3" version))
        (sha256
-        (base32 "1jb22n1jczxgbpcnfiw12r8dcs74556g1d09mzms44f52kgs7lgc"))))
+        (base32 "0vabr7hh6vy1w8gn35vmx9qwiyrfv734d5ahifg7x3pv0c5fqkp5"))))
     (build-system python-build-system)
     (arguments
      `(#:tests? #f))    ; the required test data contains copyrighted material
@@ -499,7 +506,7 @@ command-line tool.")
 (define-public chromaprint
   (package
     (name "chromaprint")
-    (version "1.4.3")
+    (version "1.5.0")
     (source (origin
       (method url-fetch)
       (uri (string-append
@@ -507,7 +514,7 @@ command-line tool.")
             version "/chromaprint-" version ".tar.gz"))
       (sha256
        (base32
-        "10kz8lncal4s2rp2rqpgc6xyjp0jzcrihgkx7chf127vfs5n067a"))))
+        "0sknmyl5254rc55bvkhfwpl4dfvz45xglk1rq8zq5crmwq058fjp"))))
     (build-system cmake-build-system)
     (arguments
      `(#:tests? #f ; tests require googletest *sources*
@@ -525,3 +532,49 @@ command-line tool.")
 fingerprints which are used by the Acoustid service.  Its main purpose
 is to provide an accurate identifier for record tracks.")
     (license license:lgpl2.1+)))
+
+(define-public python-audioread
+  (package
+    (name "python-audioread")
+    (version "2.1.8")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "audioread" version))
+       (sha256
+        (base32
+         "0s6iilb8ca6j6nv5a5hbyxi5alr3crvsbr6kggh82a44pkx08f87"))))
+    (build-system python-build-system)
+    (arguments `(#:tests? #f)) ; there is no "audiofile" fixture
+    (native-inputs
+     `(("python-pytest" ,python-pytest)
+       ("python-pytest-runner" ,python-pytest-runner)))
+    (home-page "https://github.com/sampsyo/audioread")
+    (synopsis "Decode audio files using whichever backend is available")
+    (description
+     "This package provides a Python library for audo decoding.  It uses
+whatever audio backend is available, such as GStreamer, Core Audio, MAD,
+FFmpeg, etc.")
+    (license license:expat)))
+
+(define-public python-pyacoustid
+  (package
+    (name "python-pyacoustid")
+    (version "1.1.7")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "pyacoustid" version))
+       (sha256
+        (base32
+         "1zan6c22ca6sjy0g9ajwjp6mkzw7jv8r3n7jzska09a6x254lf87"))))
+    (build-system python-build-system)
+    (propagated-inputs
+     `(("python-audioread" ,python-audioread)
+       ("python-requests" ,python-requests)))
+    (home-page "https://github.com/sampsyo/pyacoustid")
+    (synopsis "Bindings for Chromaprint acoustic fingerprinting")
+    (description
+     "This package provides bindings for the Chromaprint acoustic
+fingerprinting library and the Acoustid API.")
+    (license license:expat)))

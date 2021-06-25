@@ -194,6 +194,13 @@ cat ~a | sudo -u zabbix psql zabbix;
                 (start-service 'postgres))
              marionette))
 
+          ;; Add /run/setuid-programs to $PATH so that the scripts passed to
+          ;; 'system' can find 'sudo'.
+          (marionette-eval
+           '(setenv "PATH"
+                    "/run/setuid-programs:/run/current-system/profile/bin")
+           marionette)
+
           (test-eq "postgres create zabbix user"
             0
             (marionette-eval '(begin (system #$%psql-user-create-zabbix))
@@ -273,7 +280,7 @@ zabbix||{}
              '(file-exists? "/var/run/nginx/pid")
              marionette))
 
-          ;; Make sure we can access pages that correspond to our repository.
+          ;; Make sure we can access pages that correspond to our Zabbix instance.
           (letrec-syntax ((test-url
                            (syntax-rules ()
                              ((_ path code)

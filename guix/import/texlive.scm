@@ -38,7 +38,10 @@
   #:use-module (guix packages)
   #:use-module (gnu packages)
   #:use-module (guix build-system texlive)
-  #:export (texlive->guix-package))
+  #:export (texlive->guix-package
+
+            fetch-sxml
+            sxml->package))
 
 ;;; Commentary:
 ;;;
@@ -140,7 +143,9 @@ expression describing it."
            (synopsis   (sxml-value '(entry caption *text*)))
            (version    (or (sxml-value '(entry version @ number *text*))
                            (sxml-value '(entry version @ date *text*))))
-           (license    (string->license (sxml-value '(entry license @ type *text*))))
+           (license    (match ((sxpath '(entry license @ type *text*)) sxml)
+                         ((license) (string->license license))
+                         ((lst ...) (map string->license lst))))
            (home-page  (string-append "http://www.ctan.org/pkg/" id))
            (ref        (texlive-ref component id))
            (checkout   (download-svn-to-store store ref)))
@@ -169,7 +174,9 @@ expression describing it."
                                 (sxml->string (or (sxml-value '(entry description))
                                                   '())))
                                #\newline)))))
-         (license ,license)))))
+         (license ,(match license
+                     ((lst ...) `(list ,@lst))
+                     (license license)))))))
 
 (define texlive->guix-package
   (memoize

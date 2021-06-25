@@ -1,5 +1,5 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -19,9 +19,12 @@
 (define-module (guix inferior)
   #:use-module (srfi srfi-9)
   #:use-module (srfi srfi-9 gnu)
+  #:use-module (srfi srfi-34)
+  #:use-module (srfi srfi-35)
+  #:use-module ((guix diagnostics)
+                #:select (source-properties->location))
   #:use-module ((guix utils)
                 #:select (%current-system
-                          source-properties->location
                           call-with-temporary-directory
                           version>? version-prefix?
                           cache-directory))
@@ -29,7 +32,8 @@
                 #:select (store-connection-socket
                           store-connection-major-version
                           store-connection-minor-version
-                          store-lift))
+                          store-lift
+                          &store-protocol-error))
   #:use-module ((guix derivations)
                 #:select (read-derivation-from-file))
   #:use-module (guix gexp)
@@ -41,7 +45,8 @@
   #:use-module (guix derivations)
   #:use-module (guix base32)
   #:use-module (gcrypt hash)
-  #:autoload   (guix cache) (maybe-remove-expired-cache-entries)
+  #:autoload   (guix cache) (maybe-remove-expired-cache-entries
+                             file-expiration-time)
   #:autoload   (guix ui) (show-what-to-build*)
   #:autoload   (guix build utils) (mkdir-p)
   #:use-module (srfi srfi-1)
@@ -59,6 +64,10 @@
             inferior-eval
             inferior-eval-with-store
             inferior-object?
+            inferior-exception?
+            inferior-exception-arguments
+            inferior-exception-inferior
+            inferior-exception-stack
             read-repl-response
 
             inferior-packages
@@ -79,6 +88,7 @@
             inferior-package-native-search-paths
             inferior-package-transitive-native-search-paths
             inferior-package-search-paths
+            inferior-package-provenance
             inferior-package-derivation
 
             inferior-package->manifest-entry
@@ -86,6 +96,7 @@
             gexp->derivation-in-inferior
 
             %inferior-cache-directory
+            cached-channel-instance
             inferior-for-channels))
 
 ;;; Commentary:
@@ -107,11 +118,11 @@
   (packages inferior-package-promise)            ;promise of inferior packages
   (table    inferior-package-table))             ;promise of vhash
 
-(define (inferior-pipe directory command)
+(define* (inferior-pipe directory command error-port)
   "Return an input/output pipe on the Guix instance in DIRECTORY.  This runs
 'DIRECTORY/COMMAND repl' if it exists, or falls back to some other method if
 it's an old Guix."
-  (let ((pipe (with-error-to-port (%make-void-port "w")
+  (let ((pipe (with-error-to-port error-port
                 (lambda ()
                   (open-pipe* OPEN_BOTH
                               (string-append directory "/" command)
@@ -122,19 +133,21 @@ it's an old Guix."
 
           ;; Older versions of Guix didn't have a 'guix repl' command, so
           ;; emulate it.
-          (open-pipe* OPEN_BOTH "guile"
-                      "-L" (string-append directory "/share/guile/site/"
-                                          (effective-version))
-                      "-C" (string-append directory "/share/guile/site/"
-                                          (effective-version))
-                      "-C" (string-append directory "/lib/guile/"
-                                          (effective-version) "/site-ccache")
-                      "-c"
-                      (object->string
-                       `(begin
-                          (primitive-load ,(search-path %load-path
-                                                        "guix/scripts/repl.scm"))
-                          ((@ (guix scripts repl) machine-repl))))))
+          (with-error-to-port error-port
+            (lambda ()
+              (open-pipe* OPEN_BOTH "guile"
+                          "-L" (string-append directory "/share/guile/site/"
+                                              (effective-version))
+                          "-C" (string-append directory "/share/guile/site/"
+                                              (effective-version))
+                          "-C" (string-append directory "/lib/guile/"
+                                              (effective-version) "/site-ccache")
+                          "-c"
+                          (object->string
+                           `(begin
+                              (primitive-load ,(search-path %load-path
+                                                            "guix/repl.scm"))
+                              ((@ (guix repl) machine-repl))))))))
         pipe)))
 
 (define* (port->inferior pipe #:optional (close close-port))
@@ -148,20 +161,32 @@ inferior."
      (letrec ((result (inferior 'pipe pipe close (cons 0 rest)
                                 (delay (%inferior-packages result))
                                 (delay (%inferior-package-table result)))))
+
+       ;; For protocol (0 1) and later, send the protocol version we support.
+       (match rest
+         ((n _ ...)
+          (when (>= n 1)
+            (send-inferior-request '(() repl-version 0 1 1) result)))
+         (_
+          #t))
+
        (inferior-eval '(use-modules (guix)) result)
        (inferior-eval '(use-modules (gnu)) result)
        (inferior-eval '(use-modules (ice-9 match)) result)
+       (inferior-eval '(use-modules (srfi srfi-34)) result)
        (inferior-eval '(define %package-table (make-hash-table))
                       result)
        result))
     (_
      #f)))
 
-(define* (open-inferior directory #:key (command "bin/guix"))
+(define* (open-inferior directory
+                        #:key (command "bin/guix")
+                        (error-port (%make-void-port "w")))
   "Open the inferior Guix in DIRECTORY, running 'DIRECTORY/COMMAND repl' or
 equivalent.  Return #f if the inferior could not be launched."
   (define pipe
-    (inferior-pipe directory command))
+    (inferior-pipe directory command error-port))
 
   (port->inferior pipe close-pipe))
 
@@ -184,8 +209,16 @@ equivalent.  Return #f if the inferior could not be launched."
 
 (set-record-type-printer! <inferior-object> write-inferior-object)
 
-(define (read-repl-response port)
-  "Read a (guix repl) response from PORT and return it as a Scheme object."
+;; Reified exception thrown by an inferior.
+(define-condition-type &inferior-exception &error
+  inferior-exception?
+  (arguments  inferior-exception-arguments)       ;key + arguments
+  (inferior   inferior-exception-inferior)        ;<inferior> | #f
+  (stack      inferior-exception-stack))          ;list of (FILE COLUMN LINE)
+
+(define* (read-repl-response port #:optional inferior)
+  "Read a (guix repl) response from PORT and return it as a Scheme object.
+Raise '&inferior-exception' when an exception is read from PORT."
   (define sexp->object
     (match-lambda
       (('value value)
@@ -196,11 +229,23 @@ equivalent.  Return #f if the inferior could not be launched."
   (match (read port)
     (('values objects ...)
      (apply values (map sexp->object objects)))
+    (('exception ('arguments key objects ...)
+                 ('stack frames ...))
+     ;; Protocol (0 1 1) and later.
+     (raise (condition (&inferior-exception
+                        (arguments (cons key (map sexp->object objects)))
+                        (inferior inferior)
+                        (stack frames)))))
     (('exception key objects ...)
-     (apply throw key (map sexp->object objects)))))
+     ;; Protocol (0 0).
+     (raise (condition (&inferior-exception
+                        (arguments (cons key (map sexp->object objects)))
+                        (inferior inferior)
+                        (stack '())))))))
 
 (define (read-inferior-response inferior)
-  (read-repl-response (inferior-socket inferior)))
+  (read-repl-response (inferior-socket inferior)
+                      inferior))
 
 (define (send-inferior-request exp inferior)
   (write exp (inferior-socket inferior))
@@ -386,7 +431,7 @@ inferior package."
   (cut inferior-package-input-field <> 'package-transitive-propagated-inputs))
 
 (define (%inferior-package-search-paths package field)
-  "Return the list of search path specificiations of PACKAGE, an inferior
+  "Return the list of search path specifications of PACKAGE, an inferior
 package."
   (define paths
     (inferior-package-field package
@@ -406,6 +451,19 @@ package."
 
 (define inferior-package-transitive-native-search-paths
   (cut %inferior-package-search-paths <> 'package-transitive-native-search-paths))
+
+(define (inferior-package-provenance package)
+  "Return a \"provenance sexp\" for PACKAGE, an inferior package.  The result
+is similar to the sexp returned by 'package-provenance' for regular packages."
+  (inferior-package-field package
+                          '(let* ((describe
+                                   (false-if-exception
+                                    (resolve-interface '(guix describe))))
+                                  (provenance
+                                   (false-if-exception
+                                    (module-ref describe
+                                                'package-provenance))))
+                             (or provenance (const #f)))))
 
 (define (proxy client backend)                    ;adapted from (guix ssh)
   "Proxy communication between CLIENT and BACKEND until CLIENT closes the
@@ -462,7 +520,13 @@ thus be the code of a one-argument procedure that accepts a store."
        (listen socket 1024)
        (send-inferior-request
         `(let ((proc   ,code)
-               (socket (socket AF_UNIX SOCK_STREAM 0)))
+               (socket (socket AF_UNIX SOCK_STREAM 0))
+               (error? (if (defined? 'store-protocol-error?)
+                           store-protocol-error?
+                           nix-protocol-error?))
+               (error-message (if (defined? 'store-protocol-error-message)
+                                  store-protocol-error-message
+                                  nix-protocol-error-message)))
            (connect socket AF_UNIX ,name)
 
            ;; 'port->connection' appeared in June 2018 and we can hardly
@@ -475,7 +539,13 @@ thus be the code of a one-argument procedure that accepts a store."
              (dynamic-wind
                (const #t)
                (lambda ()
-                 (proc store))
+                 ;; Serialize '&store-protocol-error' conditions.  The
+                 ;; exception serialization mechanism that
+                 ;; 'read-repl-response' expects is unsuitable for SRFI-35
+                 ;; error conditions, hence this special case.
+                 (guard (c ((error? c)
+                            `(store-protocol-error ,(error-message c))))
+                   `(result ,(proc store))))
                (lambda ()
                  (close-connection store)
                  (close-port socket)))))
@@ -484,7 +554,14 @@ thus be the code of a one-argument procedure that accepts a store."
          ((client . address)
           (proxy client (store-connection-socket store))))
        (close-port socket)
-       (read-inferior-response inferior)))))
+
+       (match (read-inferior-response inferior)
+         (('store-protocol-error message)
+          (raise (condition
+                  (&store-protocol-error (message message)
+                                         (status 1)))))
+         (('result result)
+          result))))))
 
 (define* (inferior-package-derivation store package
                                       #:optional
@@ -608,6 +685,63 @@ failing when GUIX is too old and lacks the 'guix repl' command."
   (make-parameter (string-append (cache-directory #:ensure? #f)
                                  "/inferiors")))
 
+(define* (cached-channel-instance store
+                                  channels
+                                  #:key
+                                  (authenticate? #t)
+                                  (cache-directory (%inferior-cache-directory))
+                                  (ttl (* 3600 24 30)))
+  "Return a directory containing a guix filetree defined by CHANNELS, a list of channels.
+The directory is a subdirectory of CACHE-DIRECTORY, where entries can be reclaimed after TTL seconds.
+This procedure opens a new connection to the build daemon.  AUTHENTICATE?
+determines whether CHANNELS are authenticated."
+  (define instances
+    (latest-channel-instances store channels
+                              #:authenticate? authenticate?))
+
+  (define key
+    (bytevector->base32-string
+     (sha256
+      (string->utf8
+       (string-concatenate (map channel-instance-commit instances))))))
+
+  (define cached
+    (string-append cache-directory "/" key))
+
+  (define (base32-encoded-sha256? str)
+    (= (string-length str) 52))
+
+  (define (cache-entries directory)
+    (map (lambda (file)
+           (string-append directory "/" file))
+         (scandir directory base32-encoded-sha256?)))
+
+  (define symlink*
+    (lift2 symlink %store-monad))
+
+  (define add-indirect-root*
+    (store-lift add-indirect-root))
+
+  (mkdir-p cache-directory)
+  (maybe-remove-expired-cache-entries cache-directory
+                                      cache-entries
+                                      #:entry-expiration
+                                      (file-expiration-time ttl))
+
+  (if (file-exists? cached)
+      cached
+      (run-with-store store
+        (mlet %store-monad ((profile
+                             (channel-instances->derivation instances)))
+          (mbegin %store-monad
+            (show-what-to-build* (list profile))
+            (built-derivations (list profile))
+            ;; Note: Caching is fine even when AUTHENTICATE? is false because
+            ;; we always call 'latest-channel-instances?'.
+            (symlink* (derivation->output-path profile) cached)
+            (add-indirect-root* cached)
+            (return cached))))))
+
 (define* (inferior-for-channels channels
                                 #:key
                                 (cache-directory (%inferior-cache-directory))
@@ -618,48 +752,10 @@ procedure opens a new connection to the build daemon.
 
 This is a convenience procedure that people may use in manifests passed to
 'guix package -m', for instance."
-  (with-store store
-    (let ()
-      (define instances
-        (latest-channel-instances store channels))
-
-      (define key
-        (bytevector->base32-string
-         (sha256
-          (string->utf8
-           (string-concatenate (map channel-instance-commit instances))))))
-
-      (define cached
-        (string-append cache-directory "/" key))
-
-      (define (base32-encoded-sha256? str)
-        (= (string-length str) 52))
-
-      (define (cache-entries directory)
-        (map (lambda (file)
-               (string-append directory "/" file))
-             (scandir directory base32-encoded-sha256?)))
-
-      (define symlink*
-        (lift2 symlink %store-monad))
-
-      (define add-indirect-root*
-        (store-lift add-indirect-root))
-
-      (mkdir-p cache-directory)
-      (maybe-remove-expired-cache-entries cache-directory
-                                          cache-entries
-                                          #:entry-expiration
-                                          (file-expiration-time ttl))
-
-      (if (file-exists? cached)
-          (open-inferior cached)
-          (run-with-store store
-            (mlet %store-monad ((profile
-                                 (channel-instances->derivation instances)))
-              (mbegin %store-monad
-                (show-what-to-build* (list profile))
-                (built-derivations (list profile))
-                (symlink* (derivation->output-path profile) cached)
-                (add-indirect-root* cached)
-                (return (open-inferior cached)))))))))
+  (define cached
+    (with-store store
+      (cached-channel-instance store
+                               channels
+                               #:cache-directory cache-directory
+                               #:ttl ttl)))
+  (open-inferior cached))

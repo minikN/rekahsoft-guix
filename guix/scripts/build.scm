@@ -1,6 +1,8 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2013 Mark H Weaver <mhw@netris.org>
+;;; Copyright © 2020 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2020 Ricardo Wurmus <rekado@elephly.net>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -20,6 +22,7 @@
 (define-module (guix scripts build)
   #:use-module (guix ui)
   #:use-module (guix scripts)
+  #:use-module (guix import json)
   #:use-module (guix store)
   #:use-module (guix derivations)
   #:use-module (guix packages)
@@ -34,6 +37,7 @@
 
   #:use-module (guix monads)
   #:use-module (guix gexp)
+  #:use-module (guix profiles)
   #:autoload   (guix http-client) (http-fetch http-get-error?)
   #:use-module (ice-9 format)
   #:use-module (ice-9 match)
@@ -43,10 +47,10 @@
   #:use-module (srfi srfi-26)
   #:use-module (srfi srfi-34)
   #:use-module (srfi srfi-37)
-  #:autoload   (gnu packages) (specification->package %package-module-path)
+  #:use-module (gnu packages)
   #:autoload   (guix download) (download-to-store)
-  #:autoload   (guix git-download) (git-reference?)
-  #:autoload   (guix git) (git-checkout?)
+  #:autoload   (guix git-download) (git-reference? git-reference-url)
+  #:autoload   (guix git) (git-checkout git-checkout? git-checkout-url)
   #:use-module ((guix status) #:select (with-status-verbosity))
   #:use-module ((guix progress) #:select (current-terminal-columns))
   #:use-module ((guix build syscalls) #:select (terminal-columns))
@@ -504,7 +508,7 @@ options handled by 'set-build-options-from-command-line', and listed in
   (display (G_ "
       --no-grafts        do not graft packages"))
   (display (G_ "
-      --no-build-hook    do not attempt to offload builds via the build hook"))
+      --no-offload       do not attempt to offload builds"))
   (display (G_ "
       --max-silent-time=SECONDS
                          mark the build as failed after SECONDS of silence"))
@@ -522,7 +526,20 @@ options handled by 'set-build-options-from-command-line', and listed in
 (define (set-build-options-from-command-line store opts)
   "Given OPTS, an alist as returned by 'args-fold' given
 '%standard-build-options', set the corresponding build options on STORE."
-  ;; TODO: Add more options.
+
+  ;; '--keep-failed' has no effect when talking to a remote daemon.  Catch the
+  ;; case where GUIX_DAEMON_SOCKET=guix://….
+  (when (and (assoc-ref opts 'keep-failed?)
+             (let* ((socket (store-connection-socket store))
+                    (peer   (catch 'system-error
+                              (lambda ()
+                                (and (file-port? socket)
+                                     (getpeername socket)))
+                              (const #f))))
+               (and peer (not (= AF_UNIX (sockaddr:fam peer))))))
+    (warning (G_ "'--keep-failed' ignored since you are \
+talking to a remote daemon\n")))
+
   (set-build-options store
                      #:keep-failed? (assoc-ref opts 'keep-failed?)
                      #:keep-going? (assoc-ref opts 'keep-going?)
@@ -532,7 +549,8 @@ options handled by 'set-build-options-from-command-line', and listed in
                      #:fallback? (assoc-ref opts 'fallback?)
                      #:use-substitutes? (assoc-ref opts 'substitutes?)
                      #:substitute-urls (assoc-ref opts 'substitute-urls)
-                     #:use-build-hook? (assoc-ref opts 'build-hook?)
+                     #:offload? (and (assoc-ref opts 'offload?)
+                                     (not (assoc-ref opts 'keep-failed?)))
                      #:max-silent-time (assoc-ref opts 'max-silent-time)
                      #:timeout (assoc-ref opts 'timeout)
                      #:print-build-trace (assoc-ref opts 'print-build-trace?)
@@ -597,11 +615,15 @@ options handled by 'set-build-options-from-command-line', and listed in
                          (alist-cons 'graft? #f
                                      (alist-delete 'graft? result eq?))
                          rest)))
-        (option '("no-build-hook") #f #f
+        (option '("no-offload" "no-build-hook") #f #f
                 (lambda (opt name arg result . rest)
+                  (when (string=? name "no-build-hook")
+                    (warning (G_ "'--no-build-hook' is deprecated; \
+use '--no-offload' instead~%")))
+
                   (apply values
-                         (alist-cons 'build-hook? #f
-                                     (alist-delete 'build-hook? result))
+                         (alist-cons 'offload? #f
+                                     (alist-delete 'offload? result))
                          rest)))
         (option '("max-silent-time") #t #f
                 (lambda (opt name arg result . rest)
@@ -646,7 +668,7 @@ options handled by 'set-build-options-from-command-line', and listed in
   `((build-mode . ,(build-mode normal))
     (graft? . #t)
     (substitutes? . #t)
-    (build-hook? . #t)
+    (offload? . #t)
     (print-build-trace? . #t)
     (print-extended-build-trace? . #t)
     (multiplexed-build-output? . #t)
@@ -661,6 +683,9 @@ Build the given PACKAGE-OR-DERIVATION and return their output paths.\n"))
   (display (G_ "
   -f, --file=FILE        build the package or derivation that the code within
                          FILE evaluates to"))
+  (display (G_ "
+  -m, --manifest=FILE    build the packages that the manifest given in FILE
+                         evaluates to"))
   (display (G_ "
   -S, --source           build the packages' source derivations"))
   (display (G_ "
@@ -750,9 +775,12 @@ must be one of 'package', 'all', or 'transitive'~%")
          (option '(#\f "file") #t #f
                  (lambda (opt name arg result)
                    (alist-cons 'file arg result)))
+         (option '(#\m "manifest") #t #f
+                 (lambda (opt name arg result)
+                   (alist-cons 'manifest arg result)))
          (option '(#\n "dry-run") #f #f
                  (lambda (opt name arg result)
-                   (alist-cons 'dry-run? #t (alist-cons 'graft? #f result))))
+                   (alist-cons 'dry-run? #t result)))
          (option '(#\r "root") #t #f
                  (lambda (opt name arg result)
                    (alist-cons 'gc-root arg result)))
@@ -789,14 +817,34 @@ build---packages, gexps, derivations, and so on."
   (append-map (match-lambda
                 (('argument . (? string? spec))
                  (cond ((derivation-path? spec)
-                        (list (read-derivation-from-file spec)))
+                        (catch 'system-error
+                          (lambda ()
+                            ;; Ask for absolute file names so that .drv file
+                            ;; names passed from the user to 'read-derivation'
+                            ;; are absolute when it returns.
+                            (let ((spec (canonicalize-path spec)))
+                              (list (read-derivation-from-file spec))))
+                          (lambda args
+                            ;; Non-existent .drv files can be substituted down
+                            ;; the road, so don't error out.
+                            (if (= ENOENT (system-error-errno args))
+                                '()
+                                (apply throw args)))))
                        ((store-path? spec)
                         ;; Nothing to do; maybe for --log-file.
                         '())
                        (else
                         (list (specification->package spec)))))
                 (('file . file)
-                 (ensure-list (load* file (make-user-module '()))))
+                 (let ((file (or (and (string-suffix? ".json" file)
+                                      (json->scheme-file file))
+                                 file)))
+                   (ensure-list (load* file (make-user-module '())))))
+                (('manifest . manifest)
+                 (map manifest-entry-item
+                      (manifest-entries
+                       (load* manifest
+                              (make-user-module '((guix profiles) (gnu)))))))
                 (('expression . str)
                  (ensure-list (read/eval str)))
                 (('argument . (? derivation? drv))
@@ -877,8 +925,10 @@ build."
   (with-unbound-variable-handling
    (parameterize ((%graft? graft?))
      (append-map (lambda (system)
-                   (append-map (cut compute-derivation <> system)
-                               things-to-build))
+                   (concatenate
+                    (map/accumulate-builds store
+                                           (cut compute-derivation <> system)
+                                           things-to-build)))
                  systems))))
 
 (define (show-build-log store file urls)
@@ -900,16 +950,25 @@ needed."
     (parse-command-line args %options
                         (list %default-options)))
 
-  (with-error-handling
-    ;; Ask for absolute file names so that .drv file names passed from the
-    ;; user to 'read-derivation' are absolute when it returns.
-    (with-fluids ((%file-port-name-canonicalization 'absolute))
-      (with-status-verbosity (assoc-ref opts 'verbosity)
-        (with-store store
-          ;; Set the build options before we do anything else.
-          (set-build-options-from-command-line store opts)
+  (define graft?
+    (assoc-ref opts 'graft?))
 
-          (parameterize ((current-terminal-columns (terminal-columns)))
+  (with-error-handling
+    (with-status-verbosity (assoc-ref opts 'verbosity)
+      (with-store store
+        ;; Set the build options before we do anything else.
+        (set-build-options-from-command-line store opts)
+
+        (with-build-handler (build-notifier #:use-substitutes?
+                                            (assoc-ref opts 'substitutes?)
+                                            #:dry-run?
+                                            (assoc-ref opts 'dry-run?))
+          (parameterize ((current-terminal-columns (terminal-columns))
+
+                         ;; Set grafting upfront in case the user's input
+                         ;; depends on it (e.g., a manifest or code snippet that
+                         ;; calls 'gexp->derivation').
+                         (%graft?                  graft?))
             (let* ((mode  (assoc-ref opts 'build-mode))
                    (drv   (options->derivations store opts))
                    (urls  (map (cut string-append <> "/log")
@@ -921,7 +980,11 @@ needed."
                                    '())))
                    (items (filter-map (match-lambda
                                         (('argument . (? store-path? file))
-                                         (and (not (derivation-path? file))
+                                         ;; If FILE is a .drv that's not in
+                                         ;; store, keep it so that it can be
+                                         ;; substituted.
+                                         (and (or (not (derivation-path? file))
+                                                  (not (file-exists? file)))
                                               file))
                                         (_ #f))
                                       opts))
@@ -929,14 +992,6 @@ needed."
                                         (('gc-root . root) root)
                                         (_ #f))
                                       opts)))
-
-              (unless (or (assoc-ref opts 'log-file?)
-                          (assoc-ref opts 'derivations-only?))
-                (show-what-to-build store drv
-                                    #:use-substitutes?
-                                    (assoc-ref opts 'substitutes?)
-                                    #:dry-run? (assoc-ref opts 'dry-run?)
-                                    #:mode mode))
 
               (cond ((assoc-ref opts 'log-file?)
                      ;; Pass 'show-build-log' the output file names, not the
@@ -951,8 +1006,9 @@ needed."
                      (for-each (cut register-root store <> <>)
                                (map (compose list derivation-file-name) drv)
                                roots))
-                    ((not (assoc-ref opts 'dry-run?))
-                     (and (build-derivations store drv mode)
+                    (else
+                     (and (build-derivations store (append drv items)
+                                             mode)
                           (for-each show-derivation-outputs drv)
                           (for-each (cut register-root store <> <>)
                                     (map (lambda (drv)

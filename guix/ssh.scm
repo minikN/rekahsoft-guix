@@ -1,5 +1,5 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -20,7 +20,7 @@
   #:use-module (guix store)
   #:use-module (guix inferior)
   #:use-module (guix i18n)
-  #:use-module ((guix utils) #:select (&fix-hint))
+  #:use-module ((guix diagnostics) #:select (&fix-hint formatted-message))
   #:use-module (gcrypt pk-crypto)
   #:use-module (ssh session)
   #:use-module (ssh auth)
@@ -37,6 +37,8 @@
   #:use-module (ice-9 format)
   #:use-module (ice-9 binary-ports)
   #:export (open-ssh-session
+            authenticate-server*
+
             remote-inferior
             remote-daemon-channel
             connect-to-remote-daemon
@@ -60,12 +62,56 @@
 (define %compression
   "zlib@openssh.com,zlib")
 
+(define (host-key->type+key host-key)
+  "Destructure HOST-KEY, an OpenSSH host key string, and return two values:
+its key type as a symbol, and the actual base64-encoded string."
+  (define (type->symbol type)
+    (and (string-prefix? "ssh-" type)
+         (string->symbol (string-drop type 4))))
+
+  (match (string-tokenize host-key)
+    ((type key x)
+     (values (type->symbol type) key))
+    ((type key)
+     (values (type->symbol type) key))))
+
+(define (authenticate-server* session key)
+  "Make sure the server for SESSION has the given KEY, where KEY is a string
+such as \"ssh-ed25519 AAAAC3Nz… root@example.org\".  Raise an exception if the
+actual key does not match."
+  (let-values (((server)   (get-server-public-key session))
+               ((type key) (host-key->type+key key)))
+    (unless (and (or (not (get-key-type server))
+                     (eq? (get-key-type server) type))
+                 (string=? (public-key->string server) key))
+      ;; Key mismatch: something's wrong.  XXX: It could be that the server
+      ;; provided its Ed25519 key when we where expecting its RSA key.  XXX:
+      ;; Guile-SSH 0.10.1 doesn't know about ed25519 keys and 'get-key-type'
+      ;; returns #f in that case.
+      (raise (formatted-message (G_ "server at '~a' returned host key \
+'~a' of type '~a' instead of '~a' of type '~a'~%")
+                                (session-get session 'host)
+                                (public-key->string server)
+                                (get-key-type server)
+                                key type)))))
+
 (define* (open-ssh-session host #:key user port identity
-                           (compression %compression))
+                           host-key
+                           (compression %compression)
+                           (timeout 3600))
   "Open an SSH session for HOST and return it.  IDENTITY specifies the file
 name of a private key to use for authenticating with the host.  When USER,
 PORT, or IDENTITY are #f, use default values or whatever '~/.ssh/config'
-specifies; otherwise use them.  Throw an error on failure."
+specifies; otherwise use them.
+
+When HOST-KEY is true, it must be a string like \"ssh-ed25519 AAAAC3Nz…
+root@example.org\"; the server is authenticated and an error is raised if its
+host key is different from HOST-KEY.
+
+Install TIMEOUT as the maximum time in seconds after which a read or write
+operation on a channel of the returned session is considered as failing.
+
+Throw an error on failure."
   (let ((session (make-session #:user user
                                #:identity identity
                                #:host host
@@ -73,32 +119,58 @@ specifies; otherwise use them.  Throw an error on failure."
                                #:timeout 10       ;seconds
                                ;; #:log-verbosity 'protocol
 
+                               ;; Prevent libssh from reading
+                               ;; ~/.ssh/known_hosts when the caller provides
+                               ;; a HOST-KEY to match against.
+                               #:knownhosts (and host-key "/dev/null")
+
                                ;; We need lightweight compression when
                                ;; exchanging full archives.
                                #:compression compression
-                               #:compression-level 3)))
+                               #:compression-level 3
+
+                               ;; Speed up RPCs by creating sockets with
+                               ;; TCP_NODELAY.
+                               #:nodelay #t)))
 
     ;; Honor ~/.ssh/config.
     (session-parse-config! session)
 
     (match (connect! session)
       ('ok
+       (if host-key
+           ;; Make sure the server's key is what we expect.
+           (authenticate-server* session host-key)
+
+           ;; Authenticate against ~/.ssh/known_hosts.
+           (match (authenticate-server session)
+             ('ok #f)
+             (reason
+              (raise (formatted-message (G_ "failed to authenticate \
+server at '~a': ~a")
+                                        (session-get session 'host)
+                                        reason)))))
+
        ;; Use public key authentication, via the SSH agent if it's available.
        (match (userauth-public-key/auto! session)
          ('success
+          (session-set! session 'timeout timeout)
           session)
          (x
-          (disconnect! session)
-          (raise (condition
-                  (&message
-                   (message (format #f (G_ "SSH authentication failed for '~a': ~a~%")
-                                    host (get-error session)))))))))
+          (match (userauth-gssapi! session)
+            ('success
+             (session-set! session 'timeout timeout)
+             session)
+            (x
+             (disconnect! session)
+             (raise (condition
+                     (&message
+                      (message (format #f (G_ "SSH authentication failed for '~a': ~a~%")
+                                       host (get-error session)))))))))))
       (x
        ;; Connection failed or timeout expired.
-       (raise (condition
-               (&message
-                (message (format #f (G_ "SSH connection to '~a' failed: ~a~%")
-                                 host (get-error session))))))))))
+       (raise (formatted-message (G_ "SSH connection to '~a' failed: ~a~%")
+                                 host (get-error session)))))))
 
 (define* (remote-inferior session #:optional become-command)
   "Return a remote inferior for the given SESSION.  If BECOME-COMMAND is
@@ -109,11 +181,9 @@ given, use that to invoke the remote Guile REPL."
     (when (eof-object? (peek-char pipe))
       (let ((status (channel-get-exit-status pipe)))
         (close-port pipe)
-        (raise (condition
-                (&message
-                 (message (format #f (G_ "remote command '~{~a~^ ~}' failed \
+        (raise (formatted-message (G_ "remote command '~{~a~^ ~}' failed \
 with status ~a")
-                                  repl-command status)))))))
+                                  repl-command status))))
     (port->inferior pipe)))
 
 (define* (inferior-remote-eval exp session #:optional become-command)
@@ -331,11 +401,24 @@ to the system ACL file if it has not yet been authorized."
   "Send the subset of FILES from LOCAL (a local store) that's missing to
 REMOTE, a remote store.  When RECURSIVE? is true, send the closure of FILES.
 Return the list of store items actually sent."
+  (define (inferior-remote-eval* exp session)
+    (guard (c ((inferior-exception? c)
+               (match (inferior-exception-arguments c)
+                 (('quit 7)
+                  (report-module-error (remote-store-host remote)))
+                 (_
+                  (report-inferior-exception c (remote-store-host remote))))))
+      (inferior-remote-eval exp session)))
+
   ;; Compute the subset of FILES missing on SESSION and send them.
   (let* ((files   (if recursive? (requisites local files) files))
          (session (channel-get-session (store-connection-socket remote)))
-         (missing (inferior-remote-eval
+         (missing (inferior-remote-eval*
                    `(begin
+                      (eval-when (load expand eval)
+                        (unless (resolve-module '(guix) #:ensure #f)
+                          (exit 7)))
+
                       (use-modules (guix)
                                    (srfi srfi-1) (srfi srfi-26))
 
@@ -492,5 +575,10 @@ check.")
 own module directory.  Run @command{ssh ~A env | grep GUILE_LOAD_PATH} to
 check.")
                    host)))
+
+(define (report-inferior-exception exception host)
+  "Report EXCEPTION, an &inferior-exception that occurred on HOST."
+  (raise-error (G_ "exception occurred on remote host '~A': ~s")
+               host (inferior-exception-arguments exception)))
 
 ;;; ssh.scm ends here

@@ -1,5 +1,6 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2019 Jakob L. Kreuze <zerodaysfordays@sdf.lonestar.org>
+;;; Copyright © 2019 Jakob L. Kreuze <zerodaysfordays@sdf.org>
+;;; Copyright © 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -21,7 +22,6 @@
   #:use-module (gnu packages compression)
   #:use-module (gnu packages tls)
   #:use-module (gnu packages upnp)
-  #:use-module (gnu packages web)
   #:use-module (guix packages)
   #:use-module (guix git-download)
   #:use-module (guix build-system cmake)
@@ -30,21 +30,20 @@
 (define-public i2pd
   (package
     (name "i2pd")
-    (version "2.27.0")
+    (version "2.31.0")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/PurpleI2P/i2pd.git")
+             (url "https://github.com/PurpleI2P/i2pd")
              (commit version)))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "00y0y57z84gakwa88zzm0g3ixgc6y7zm35rjiysiajzvmdq5w1wf"))))
+        (base32 "1q2gxz041ha9n5lfn91iy11sdf3z7d806vcq4z43m7lf92m7i4nn"))))
     (build-system cmake-build-system)
     (inputs `(("boost" ,boost)
               ("miniupnpc" ,miniupnpc)
               ("openssl" ,openssl)
-              ("websocketpp" ,websocketpp)
               ("zlib" ,zlib)))
     (arguments '(#:configure-flags
                  (let ((source (assoc-ref %build-inputs "source")))
@@ -52,7 +51,6 @@
                          "-DWITH_PCH=OFF"
                          "-DWITH_STATIC=OFF"
                          "-DWITH_UPNP=ON"
-                         "-DWITH_WEBSOCKETS=ON"
                          "-DWITH_LIBRARY=ON"
                          "-DBUILD_SHARED_LIBS=ON"
                          "-DWITH_BINARY=ON"))
@@ -68,7 +66,12 @@
                                            "./tests")
                          (with-directory-excursion "tests"
                            (substitute* "Makefile"
-                             (("../libi2pd/") (string-append source "/libi2pd/")))
+                             (("../libi2pd/") (string-append source "/libi2pd/"))
+                             ;; Disable the x25519 test, which only compiles if
+                             ;; openssl doesn't have X25519 support, but the
+                             ;; version we use has it.
+                             (("test-base-64 test-x25519 test-aeadchacha20poly1305")
+                              "test-base-64 test-aeadchacha20poly1305"))
                            (apply invoke "make" "all"
                                   `(,@(if parallel-tests?
                                           `("-j" ,(number->string

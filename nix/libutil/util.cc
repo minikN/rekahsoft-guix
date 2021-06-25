@@ -177,8 +177,13 @@ struct stat lstat(const Path & path)
 bool pathExists(const Path & path)
 {
     int res;
+#ifdef HAVE_STATX
+    struct statx st;
+    res = statx(AT_FDCWD, path.c_str(), AT_SYMLINK_NOFOLLOW, 0, &st);
+#else
     struct stat st;
     res = lstat(path.c_str(), &st);
+#endif
     if (!res) return true;
     if (errno != ENOENT && errno != ENOTDIR)
         throw SysError(format("getting status of %1%") % path);
@@ -300,15 +305,26 @@ void writeLine(int fd, string s)
 }
 
 
-static void _deletePath(const Path & path, unsigned long long & bytesFreed)
+static void _deletePath(const Path & path, unsigned long long & bytesFreed, size_t linkThreshold)
 {
     checkInterrupt();
 
     printMsg(lvlVomit, format("%1%") % path);
 
+#ifdef HAVE_STATX
+# define st_mode stx_mode
+# define st_size stx_size
+# define st_nlink stx_nlink
+    struct statx st;
+    if (statx(AT_FDCWD, path.c_str(),
+	      AT_SYMLINK_NOFOLLOW,
+	      STATX_SIZE | STATX_NLINK | STATX_MODE, &st) == -1)
+	throw SysError(format("getting status of `%1%'") % path);
+#else
     struct stat st = lstat(path);
+#endif
 
-    if (!S_ISDIR(st.st_mode) && st.st_nlink == 1)
+    if (!S_ISDIR(st.st_mode) && st.st_nlink <= linkThreshold)
 	bytesFreed += st.st_size;
 
     if (S_ISDIR(st.st_mode)) {
@@ -319,8 +335,11 @@ static void _deletePath(const Path & path, unsigned long long & bytesFreed)
         }
 
         for (auto & i : readDirectory(path))
-            _deletePath(path + "/" + i.name, bytesFreed);
+            _deletePath(path + "/" + i.name, bytesFreed, linkThreshold);
     }
+#undef st_mode
+#undef st_size
+#undef st_nlink
 
     if (remove(path.c_str()) == -1)
         throw SysError(format("cannot unlink `%1%'") % path);
@@ -334,12 +353,12 @@ void deletePath(const Path & path)
 }
 
 
-void deletePath(const Path & path, unsigned long long & bytesFreed)
+void deletePath(const Path & path, unsigned long long & bytesFreed, size_t linkThreshold)
 {
     startNest(nest, lvlDebug,
         format("recursively deleting path `%1%'") % path);
     bytesFreed = 0;
-    _deletePath(path, bytesFreed);
+    _deletePath(path, bytesFreed, linkThreshold);
 }
 
 
@@ -842,6 +861,10 @@ void killUser(uid_t uid)
                which means "follow POSIX", which we don't want here
                  */
             if (syscall(SYS_kill, -1, SIGKILL, false) == 0) break;
+#elif __GNU__
+            /* Killing all a user's processes using PID=-1 does currently
+               not work on the Hurd.  */
+            if (kill(getpid(), SIGKILL) == 0) break;
 #else
             if (kill(-1, SIGKILL) == 0) break;
 #endif
@@ -854,6 +877,10 @@ void killUser(uid_t uid)
     });
 
     int status = pid.wait(true);
+#if __GNU__
+    /* When the child killed itself, status = SIGKILL.  */
+    if (status == SIGKILL) return;
+#endif
     if (status != 0)
         throw Error(format("cannot kill processes for uid `%1%': %2%") % uid % statusToString(status));
 

@@ -1,6 +1,7 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2018 Efraim Flashner <efraim@flashner.co.il>
-;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2020 Marius Bakke <marius@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -24,9 +25,12 @@
   #:use-module (guix packages)
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system trivial)
+  #:use-module (gnu packages autotools)
   #:use-module (gnu packages base)
   #:use-module (gnu packages compression)
+  #:use-module (gnu packages gettext)
   #:use-module (gnu packages gnupg)
+  #:use-module (gnu packages wget)
   #:use-module (gnu packages perl))
 
 (define-public debian-archive-keyring
@@ -117,7 +121,7 @@ contains the archive keys used for that.")
 (define-public debootstrap
   (package
     (name "debootstrap")
-    (version "1.0.114")
+    (version "1.0.123")
     (source
       (origin
         (method git-fetch)
@@ -126,8 +130,7 @@ contains the archive keys used for that.")
               (commit version)))
         (file-name (git-file-name name version))
         (sha256
-         (base32
-          "147308flz9y8g6f972izi3szmsywf5f8xm64z2smy1cayd340i63"))))
+         (base32 "0fr5ir8arzisx71jybbk4xz85waz50lf2y052nfimzh6vv9dx54c"))))
     (build-system gnu-build-system)
     (arguments
      `(#:phases
@@ -181,7 +184,11 @@ contains the archive keys used for that.")
     (inputs
      `(("debian-keyring" ,debian-archive-keyring)
        ("ubuntu-keyring" ,ubuntu-keyring)
-       ("tzdata" ,tzdata)))
+       ("tzdata" ,tzdata)
+
+       ;; Called at run-time from various places, needs to be in PATH.
+       ("gnupg" ,gnupg)
+       ("wget" ,wget)))
     (native-inputs
      `(("perl" ,perl)))
     (home-page "https://tracker.debian.org/pkg/debootstrap")
@@ -191,3 +198,80 @@ scratch, without requiring the availability of @code{dpkg} or @code{apt}.
 It does this by downloading .deb files from a mirror site, and carefully
 unpacking them into a directory which can eventually be chrooted into.")
     (license license:gpl2)))
+
+(define-public debianutils
+  (package
+    (name "debianutils")
+    (version "4.11")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://salsa.debian.org/debian/debianutils.git")
+                    (commit (string-append "debian/" version))))
+              (file-name (git-file-name "debianutils" version))
+              (sha256
+               (base32
+                "1fmhzvymajack7kh8g4qjbwd9mq85z6rxl1psd1sm67s5695i9rc"))))
+    (build-system gnu-build-system)
+    (arguments
+     '(#:phases (modify-phases %standard-phases
+                  (add-after 'bootstrap 'create-translations
+                    (lambda _
+                      (with-directory-excursion "po4a"
+                        (invoke "po4a" "--no-backups" "po4a.conf"))
+                      #t)))))
+    (native-inputs
+     `(("autoconf" ,autoconf)
+       ("automake" ,automake)
+       ("gettext" ,gettext-minimal)
+       ("po4a" ,po4a)))
+    (home-page "https://packages.debian.org/unstable/debianutils")
+    (synopsis "Miscellaneous shell utilities")
+    (description
+     "This package provides a number of utilities which are mostly for use
+in installation scripts of Debian packages.  The programs included are
+@command{add-shell}, @command{installkernel}, @command{ischroot},
+@command{remove-shell}, @command{run-parts}, @command{savelog},
+@command{tempfile}, and @command{which}.")
+    (license (list license:gpl2+
+                   ;; The 'savelog' program is distributed under a
+                   ;; GPL-compatible copyleft license.
+                   (license:fsf-free "file://debian/copyright"
+                                     "The SMAIL General Public License, see
+debian/copyright for more information.")))))
+
+(define-public apt-mirror
+  (let ((commit "e664486a5d8947c2579e16dd793d762ea3de4202")
+        (revision "1"))
+    (package
+      (name "apt-mirror")
+      (version (git-version "0.5.4" revision commit))
+      (source (origin
+                (method git-fetch)
+                (uri (git-reference
+                      (url "https://github.com/apt-mirror/apt-mirror/")
+                      (commit commit)))
+                (file-name (git-file-name name version))
+                (sha256
+                 (base32
+                  "0qj6b7gldwcqyfs2kp6amya3ja7s4vrljs08y4zadryfzxf35nqq"))))
+      (build-system gnu-build-system)
+      (outputs '("out"))
+      (arguments
+       `(#:tests? #f
+         ;; sysconfdir is not PREFIXed in the makefile but DESTDIR is
+         ;; honored correctly; we therefore use DESTDIR for our
+         ;; needs. A more correct fix would involve patching.
+         #:make-flags (list (string-append "DESTDIR=" (assoc-ref %outputs "out"))
+                            "PREFIX=/")
+         #:phases (modify-phases %standard-phases (delete 'configure))))
+      (inputs
+       `(("wget" ,wget)
+         ("perl" ,perl)))
+      (home-page "http://apt-mirror.github.io/")
+      (synopsis "Script for mirroring a Debian repository")
+      (description
+       "apt-mirror is a small tool that provides the ability to
+selectively mirror Debian and Ubuntu GNU/Linux distributions or any
+other apt sources typically provided by open source developers.")
+      (license license:gpl2))))

@@ -9,6 +9,7 @@
 ;;; Copyright © 2017 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2017, 2018 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2018, 2019 Arun Isaac <arunisaac@systemreboot.net>
+;;; Copyright © 2019 Simon Tournier <zimon.toutoune@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -29,7 +30,9 @@
   #:use-module (guix packages)
   #:use-module (guix lint)
   #:use-module (guix ui)
+  #:use-module (guix store)
   #:use-module (guix scripts)
+  #:use-module (guix scripts build)
   #:use-module (gnu packages)
   #:use-module (ice-9 match)
   #:use-module (ice-9 format)
@@ -51,7 +54,7 @@
              (lint-warning-message lint-warning))))
    warnings))
 
-(define (run-checkers package checkers)
+(define* (run-checkers package checkers #:key store)
   "Run the given CHECKERS on PACKAGE."
   (let ((tty? (isatty? (current-error-port))))
     (for-each (lambda (checker)
@@ -61,7 +64,9 @@
                           (lint-checker-name checker))
                   (force-output (current-error-port)))
                 (emit-warnings
-                 ((lint-checker-check checker) package)))
+                 (if (lint-checker-requires-store? checker)
+                     ((lint-checker-check checker) package #:store store)
+                     ((lint-checker-check checker) package))))
               checkers)
     (when tty?
       (format (current-error-port) "\x1b[K")
@@ -93,6 +98,9 @@ run the checkers on all packages.\n"))
   (display (G_ "
   -c, --checkers=CHECKER1,CHECKER2...
                          only run the specified checkers"))
+  (display (G_ "
+  -L, --load-path=DIR    prepend DIR to the package module search path"))
+  (newline)
   (display (G_ "
   -h, --help             display this help and exit"))
   (display (G_ "
@@ -128,6 +136,9 @@ run the checkers on all packages.\n"))
                               %local-checkers
                               (alist-delete 'checkers
                                             result))))
+        (find (lambda (option)
+                (member "load-path" (option-names option)))
+              %standard-build-options)
         (option '(#\h "help") #f #f
                 (lambda args
                   (show-help)
@@ -159,12 +170,27 @@ run the checkers on all packages.\n"))
                              (_ #f))
                            (reverse opts)))
          (checkers (or (assoc-ref opts 'checkers) %all-checkers)))
-    (cond
-     ((assoc-ref opts 'list?)
+
+    (when (assoc-ref opts 'list?)
       (list-checkers-and-exit checkers))
-     ((null? args)
-      (fold-packages (lambda (p r) (run-checkers p checkers)) '()))
-     (else
-      (for-each (lambda (spec)
-                  (run-checkers (specification->package spec) checkers))
-                args)))))
+
+    (let ((any-lint-checker-requires-store?
+           (any lint-checker-requires-store? checkers)))
+
+      (define (call-maybe-with-store proc)
+        (if any-lint-checker-requires-store?
+            (with-store store
+              (proc store))
+            (proc #f)))
+
+      (call-maybe-with-store
+       (lambda (store)
+         (cond
+          ((null? args)
+           (fold-packages (lambda (p r) (run-checkers p checkers
+                                                      #:store store)) '()))
+          (else
+           (for-each (lambda (spec)
+                       (run-checkers (specification->package spec) checkers
+                                     #:store store))
+                     args))))))))

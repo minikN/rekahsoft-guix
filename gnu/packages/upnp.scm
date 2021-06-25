@@ -1,9 +1,10 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2014 Sree Harsha Totakura <sreeharsha@totakura.in>
 ;;; Copyright © 2015 Federico Beffa <beffa@fbengineering.ch>
-;;; Copyright © 2016, 2017, 2018 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2016, 2017, 2018, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018 Theodoros Foradis <theodoros@foradis.org>
 ;;; Copyright © 2019 Jens Mølgaard <jens@zete.tk>
+;;; Copyright © 2020 Jan Wielkiewicz <tona_kosmicznego_smiecia@interia.pl>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -28,6 +29,7 @@
   #:use-module (gnu packages photo)
   #:use-module (gnu packages image)
   #:use-module (gnu packages mp3)
+  #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages xiph)
   #:use-module (gnu packages sqlite)
   #:use-module (gnu packages python)
@@ -42,14 +44,14 @@
 (define-public miniupnpc
   (package
     (name "miniupnpc")
-    (version "2.1.20190824")
+    (version "2.1.20191224")
     (source
      (origin
        (method url-fetch)
        (uri (string-append "https://miniupnp.tuxfamily.org/files/"
-                           name "-" version ".tar.gz"))
+                           "miniupnpc-" version ".tar.gz"))
        (sha256
-        (base32 "0rg1i51lnyq8zgflhcg981kq4348vgq03ndmbgiv7knd1vmfzb8z"))))
+        (base32 "1kv6dpj93gckvwvgzxl4vdqpwnicb0c8p0xw53m2gh5naiw44ys4"))))
     (build-system gnu-build-system)
     (native-inputs
      `(("python" ,python-2)))
@@ -89,68 +91,27 @@ over IRC, instant messaging, network games, and most server software.")
     (license
      (x11-style "file://LICENSE" "See 'LICENSE' file in the distribution"))))
 
-(define-public monero-miniupnpc
-  ;; This package is the bundled version of miniupnpc used with monero.
-  ;; Monero-project has been maintaining its own version of the package since
-  ;; release 0.12.2.0.  It includes security fixes not included in upstream
-  ;; releases.
-  (let ((revision "0")
-        (commit "6a63f9954959119568fbc4af57d7b491b9428d87"))
-    (package
-      (inherit miniupnpc)
-      (name "miniupnpc-monero")
-      (version (string-append "2.1-monero-0.12.3.0-" revision "."
-                              (string-take commit 7)))
-      (source (origin
-                (method git-fetch)
-                (uri (git-reference
-                      (url "https://github.com/monero-project/miniupnp/")
-                      (commit commit)))
-                (sha256
-                 (base32
-                  "0s67zcz978iapjlq30yy9dl8qda9xhrl3jdi5f99cnbglh5gy16a"))
-                (file-name (string-append name "-" version "-checkout"))
-                (modules '((guix build utils)))
-                (snippet
-                 '(begin
-                    ;; Delete miniupnp subprojects except for miniupnpc.
-                    (for-each
-                     delete-file-recursively
-                     '("minissdpd" "miniupnpc-async" "miniupnpc-libevent"
-                       "miniupnpd" ))
-                    #t))))
-      (arguments
-       (substitute-keyword-arguments (package-arguments miniupnpc)
-         ((#:phases phases)
-          `(modify-phases ,phases
-             (add-before 'build 'change-directory
-               (lambda _
-                 (chdir "miniupnpc")
-                 #t))
-             (add-after 'change-directory 'chmod-header-file
-               (lambda _
-                 (chmod "miniupnpc.h" #o644)
-                 #t)))))))))
-
 (define-public libupnp
   (package
     (name "libupnp")
-    (version "1.6.25")
+    (version "1.12.1")
     (source
      (origin
       (method url-fetch)
-      (uri (string-append "mirror://sourceforge/pupnp/pupnp/libUPnP%20"
-                          version "/" name "-" version ".tar.bz2"))
+      (uri (string-append "https://github.com/pupnp/pupnp/releases/download"
+                          "/release-" version "/libupnp-" version".tar.bz2"))
       (sha256
        (base32
-        "0hzsd7rvfa87b4hxg9yj4xhdfxx9sp09r9sqdl3mqhvmcyw018y5"))))
+        "02a0dnbk1cla8xlb5l2zp09grv2hsf8n4jbd560mmzj830mn8dpw"))))
+    (native-inputs
+     `(("pkg-config" ,pkg-config)))
     (build-system gnu-build-system)
     (arguments
      ;; The tests require a network device capable of multicasting which is
      ;; not available in the build environment. See
      ;; https://lists.gnu.org/archive/html/guix-devel/2015-01/msg00312.html.
      `(#:tests? #f
-       #:configure-flags '("--enable-ipv6")))
+       #:configure-flags '("--disable-static")))
     (home-page "http://pupnp.sourceforge.net")
     (synopsis "Portable SDK for UPnP Devices")
     (description
@@ -187,7 +148,7 @@ and others.")
        ("gettext" ,gettext-minimal)))
     (inputs
      `(("libexif" ,libexif)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libid3tag" ,libid3tag)
        ("flac" ,flac)
        ("libvorbis" ,libvorbis)

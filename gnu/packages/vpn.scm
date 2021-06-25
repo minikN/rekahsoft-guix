@@ -1,15 +1,19 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2013 Andreas Enge <andreas@enge.fr>
-;;; Copyright © 2013, 2016, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2013, 2016, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2014 Eric Bavier <bavier@member.fsf.org>
 ;;; Copyright © 2015 Jeff Mickey <j@codemac.net>
 ;;; Copyright © 2016, 2017, 2019 Efraim Flashner <efraim@flashner.co.il>
-;;; Copyright © 2016, 2017, 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2016, 2017, 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2017 Julien Lepiller <julien@lepiller.eu>
 ;;; Copyright © 2018 Pierre Langlois <pierre.langlois@gmx.com>
 ;;; Copyright © 2018 Meiyo Peng <meiyo.peng@gmail.com>
-;;; Copyright © 2019 Leo Famulari <leo@famulari.name>
+;;; Copyright © 2019, 2020 Leo Famulari <leo@famulari.name>
 ;;; Copyright © 2019 Rutger Helling <rhelling@mykolab.com>
+;;; Copyright © 2019 Ricardo Wurmus <rekado@elephly.net>
+;;; Copyright © 2020 Brice Waegeneire <brice@waegenei.re>
+;;; Copyright © 2020 Ryan Prior <rprior@protonmail.com>
+;;; Copyright © 2020 Ivan Kozlov <kanichos@yandex.ru>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -33,15 +37,19 @@
   #:use-module (guix git-download)
   #:use-module (guix build-system cmake)
   #:use-module (guix build-system gnu)
+  #:use-module (guix build-system linux-module)
   #:use-module (guix build-system python)
   #:use-module (gnu packages)
   #:use-module (gnu packages admin)
   #:use-module (gnu packages base)
+  #:use-module (gnu packages bash)
   #:use-module (gnu packages check)
+  #:use-module (gnu packages dns)
   #:use-module (gnu packages autotools)
   #:use-module (gnu packages compression)
   #:use-module (gnu packages gettext)
   #:use-module (gnu packages gnupg)
+  #:use-module (gnu packages guile)
   #:use-module (gnu packages libevent)
   #:use-module (gnu packages linux)
   #:use-module (gnu packages nss)
@@ -49,6 +57,8 @@
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages python)
   #:use-module (gnu packages python-xyz)
+  #:use-module (gnu packages python-web)
+  #:use-module (gnu packages samba)
   #:use-module (gnu packages tls)
   #:use-module (gnu packages xml))
 
@@ -116,7 +126,7 @@ shared-secret IPSec authentication with Xauth, AES (256, 192, 128), 3DES,
 1DES, MD5, SHA1, DH1/2/5 and IP tunneling.  It runs entirely in userspace.
 Only \"Universal TUN/TAP device driver support\" is needed in the kernel.")
    (license license:gpl2+) ; some file are bsd-2, see COPYING
-   (home-page "http://www.unix-ag.uni-kl.de/~massar/vpnc/")))
+   (home-page "https://www.unix-ag.uni-kl.de/~massar/vpnc/")))
 
 (define-public vpnc-scripts
   (let ((commit "1000e0f6dd7d6bff163169a46359211c1fc3a6d2"))
@@ -134,7 +144,8 @@ Only \"Universal TUN/TAP device driver support\" is needed in the kernel.")
                  (base32
                   "1g41yarz2bl0f73kbjqnywr485ghanbp7nmspklfb0n07yp0z6ak"))))
       (build-system gnu-build-system)
-      (inputs `(("coreutils" ,coreutils)
+      (inputs `(("guile" ,guile-3.0) ; for the wrapper scripts
+                ("coreutils" ,coreutils)
                 ("grep" ,grep)
                 ("iproute2" ,iproute)    ; for ‘ip’
                 ("net-tools" ,net-tools) ; for ‘ifconfig’, ‘route’
@@ -149,7 +160,7 @@ Only \"Universal TUN/TAP device driver support\" is needed in the kernel.")
                (for-each (lambda (script)
                            (substitute* script
                              (("^PATH=.*") "")
-                             (("(/usr|)/s?bin/") "")
+                             (("/usr/s?bin/") "")
                              (("\\[ +-x +([^]]+) +\\]" _ command)
                               (string-append "command -v >/dev/null 2>&1 "
                                              command))))
@@ -177,7 +188,7 @@ Only \"Universal TUN/TAP device driver support\" is needed in the kernel.")
                (let ((out (assoc-ref outputs "out")))
                  (for-each
                   (lambda (script)
-                    (wrap-program script
+                    (wrap-script (string-append out "/etc/vpnc/" script)
                       `("PATH" ":" prefix
                         ,(map (lambda (name)
                                 (let ((input (assoc-ref inputs name)))
@@ -189,8 +200,9 @@ Only \"Universal TUN/TAP device driver support\" is needed in the kernel.")
                                     "net-tools"
                                     "sed"
                                     "which")))))
-                  (find-files (string-append out "/etc/vpnc/vpnc-script")
-                              "^vpnc-script"))
+                  (list "vpnc-script-ptrtd"
+                        "vpnc-script-sshd"
+                        "vpnc-script"))
                  #t))))
          #:tests? #f))                  ; no tests
       (home-page "http://git.infradead.org/users/dwmw2/vpnc-scripts.git")
@@ -213,14 +225,14 @@ the entire VPN in a network namespace accessible only through SSH.")
     (name "ocproxy")
     (version "1.60")
     (source (origin
-              (method url-fetch)
-              (uri (string-append
-                    "https://github.com/cernekee/ocproxy/archive/v"
-                    version ".tar.gz"))
-              (file-name (string-append name "-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/cernekee/ocproxy")
+                     (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "1b4rg3xq5jnrp2l14sw0msan8kqhdxmsd7gpw9lkiwvxy13pcdm7"))))
+                "03323nnhb4y9nzwva04mq7xg03dvdrgp689g89f69jqc261skcqx"))))
     (build-system gnu-build-system)
     (native-inputs
      `(("autoconf" ,autoconf)
@@ -239,20 +251,23 @@ the user specifically asks to proxy, so the @dfn{VPN} interface no longer
 (define-public openconnect
   (package
    (name "openconnect")
-   (version "8.04")
+   (version "8.10")
    (source (origin
             (method url-fetch)
             (uri (string-append "ftp://ftp.infradead.org/pub/openconnect/"
                                 "openconnect-" version ".tar.gz"))
             (sha256
-             (base32 "07zqcl2ykdc4mgix9sbv4jgpg7cybifxfgrycvf99ckq7xp9r5wq"))))
+             (base32 "1cdsx4nsrwawbsisfkldfc9i4qn60g03vxb13nzppr2br9p4rrih"))))
    (build-system gnu-build-system)
    (propagated-inputs
     `(("libxml2" ,libxml2)
-      ("gnutls" ,gnutls)
+      ;; XXX ‘DTLS is insecure in GnuTLS v3.6.3 through v3.6.12.’
+      ;; See <https://gitlab.com/gnutls/gnutls/-/issues/960>.
+      ("gnutls" ,gnutls-3.6.14)
       ("zlib" ,zlib)))
    (inputs
-    `(("vpnc-scripts" ,vpnc-scripts)))
+    `(("lz4" ,lz4)
+      ("vpnc-scripts" ,vpnc-scripts)))
    (native-inputs
     `(("gettext" ,gettext-minimal)
       ("pkg-config" ,pkg-config)))
@@ -273,7 +288,7 @@ and probably others.")
 (define-public openvpn
   (package
     (name "openvpn")
-    (version "2.4.7")
+    (version "2.4.9")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -281,7 +296,7 @@ and probably others.")
                     version ".tar.xz"))
               (sha256
                (base32
-                "0j7na936isk9j8nsdrrbw7wmy09inmjqvsb8mw8az7k61xbm6bx4"))))
+                "1qpbllwlha7cffsd5dlddb8rl22g9rar5zflkz1wrcllhvfkl7v4"))))
     (build-system gnu-build-system)
     (arguments
      '(#:configure-flags '("--enable-iproute2=yes")))
@@ -302,17 +317,51 @@ security protocol that utilizes SSL/TLS for key exchange.  It is capable of
 traversing network address translators (@dfn{NAT}s) and firewalls.")
     (license license:gpl2)))
 
+(define-public protonvpn-cli
+  (package
+    (name "protonvpn-cli")
+    (version "2.2.2")
+    (source
+     (origin
+       ;; PyPI has a ".whl" file but not a proper source release.
+       ;; Thus, fetch code from Git.
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/ProtonVPN/linux-cli")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32
+         "0ixjb02kj4z79whm1izd8mrn2h0rp9cmw4im1qvp93rahqxdd4n8"))))
+    (build-system python-build-system)
+    (arguments '(#:tests? #f)) ; no tests in repo
+    (native-inputs
+     `(("docopt" ,python-docopt)))
+    (inputs
+     `(("pythondialog" ,python-pythondialog)
+       ("requests" ,python-requests)))
+    (propagated-inputs
+     `(("openvpn" ,openvpn)))
+    (synopsis "Command-line client for ProtonVPN")
+    (description
+     "This is the official command-line interface for ProtonVPN, a secure
+point-to-point virtual private networking (VPN) service with a gratis tier.
+It can automatically find and connect to the fastest servers or use Tor over
+VPN.  The gratis tier offers unlimited bandwidth for up to 10 devices.")
+    (home-page "https://github.com/ProtonVPN/linux-cli")
+    (license license:gpl3+)))
+
 (define-public tinc
   (package
     (name "tinc")
-    (version "1.0.35")
+    (version "1.0.36")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://tinc-vpn.org/packages/"
-                                  name "-" version ".tar.gz"))
+                                  "tinc-" version ".tar.gz"))
               (sha256
                (base32
-                "0pl92sdwrkiwgll78x0ww06hfljd07mkwm62g8x17qn3gha3pj0q"))))
+                "021i2sl2mjscbm8g59d7vs74iw3gf0m48wg7w3zhwj6czarkpxs0"))))
     (build-system gnu-build-system)
     (arguments
      '(#:configure-flags
@@ -413,7 +462,7 @@ with configuration options for most of @command{sshuttle}’s features.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/ambrop72/badvpn.git")
+             (url "https://github.com/ambrop72/badvpn")
              (commit version)))
        (file-name (git-file-name name version))
        (sha256
@@ -449,76 +498,139 @@ The peer-to-peer VPN implements a Layer 2 (Ethernet) network between the peers
     ;; 3-clause BSD license.
     (license license:bsd-3)))
 
-(define-public wireguard
+(define-public wireguard-linux-compat
   (package
-    (name "wireguard")
-    (version "0.0.20190905")
+    (name "wireguard-linux-compat")
+    (version "1.0.20200623")
     (source (origin
               (method url-fetch)
-              (uri (string-append "https://git.zx2c4.com/WireGuard/snapshot/"
-                                  "WireGuard-" version ".tar.xz"))
+              (uri (string-append "https://git.zx2c4.com/wireguard-linux-compat/"
+                                  "snapshot/wireguard-linux-compat-" version
+                                  ".tar.xz"))
               (sha256
                (base32
-                "1xm8w773impgp11jj6kp3fghld0aj8nhfpqla6lflsr8npp7qxkq"))))
-    (build-system gnu-build-system)
-    (outputs '("out" ; The WireGuard userspace tools
-               "kernel-patch")) ; A patch to build Linux with WireGuard support
+                "0iclixsqfckaz6kz6a4lhzdary3xhfy1d0pz0pgrwy8m8mr3f28k"))))
+    (build-system linux-module-build-system)
+    (outputs '("out"
+               "kernel-patch"))
     (arguments
-     `(#:tests? #f ; No tests available.
-       #:make-flags
-       (list "CC=gcc"
-             "WITH_BASHCOMPLETION=yes"
-             ;; Build and install the helper script wg-quick(8).
-             "WITH_WGQUICK=yes"
-             (string-append "PREFIX=" (assoc-ref %outputs "out"))
-             (string-append "SYSCONFDIR=" (assoc-ref %outputs "out") "/etc"))
-       #:modules ((guix build gnu-build-system)
+     `(#:tests? #f ; No test suite
+       #:modules ((guix build linux-module-build-system)
                   (guix build utils)
                   (ice-9 popen)
                   (ice-9 textual-ports))
        #:phases
        (modify-phases %standard-phases
-         ;; There is no ./configure script.
-         (delete 'configure)
-         ;; Until WireGuard is added to the upstream Linux kernel, it is
-         ;; distributed as a kernel patch generated by this script.
-         (add-after 'patch-source-shebangs 'make-patch
+         (add-before 'build 'change-directory
+           (lambda _
+             (chdir "./src")
+             #t))
+         (add-after 'build 'build-patch
            (lambda* (#:key outputs #:allow-other-keys)
-             (let* ((output (string-append (assoc-ref outputs "kernel-patch")
-                                           "/wireguard.patch"))
-                    (patch-builder "./contrib/kernel-tree/create-patch.sh")
+             (let* ((patch-builder "../kernel-tree-scripts/create-patch.sh")
                     (port (open-input-pipe patch-builder))
                     (str (get-string-all port)))
                (close-pipe port)
-               (mkdir-p (dirname output))
-               (call-with-output-file output
+               (call-with-output-file "wireguard.patch"
                  (lambda (port)
                    (format port "~a" str))))
                #t))
-         (add-after 'make-patch 'chdir
-           (lambda _
-             (chdir "src/tools")
+         (add-after 'install 'install-patch
+           (lambda* (#:key outputs #:allow-other-keys)
+             (install-file "wireguard.patch"
+                           (assoc-ref %outputs "kernel-patch"))
              #t))
-         ;; Otherwise the 'install-license-file' phase installs nothing.
-         ;; <https://bugs.gnu.org/34703>
-         (add-after 'install 'reset-cwd
+         ;; So that 'install-license-files' works...
+         (add-before 'install-license-files 'reset-cwd
            (lambda _
-             (chdir "../..")
+             (chdir "..")
              #t)))))
-    (inputs
-     `(("libmnl" ,libmnl)))
-    (home-page "https://www.wireguard.com/")
-    (synopsis "Tools for configuring WireGuard")
-    (description "This package provides the userspace tools for setting and
-retrieving configuration of WireGuard network tunnel interfaces, and a patch
-that can be applied to a Linux kernel source tree in order to build it with
-WireGuard support.")
+    (home-page "https://git.zx2c4.com/wireguard-linux-compat/")
+    (synopsis "WireGuard kernel module for Linux 3.10 through 5.5")
+    (description "This package contains an out-of-tree kernel patch and
+a loadable module adding WireGuard to Linux kernel versions 3.10 through 5.5.
+WireGuard was added to Linux 5.6.")
     (license license:gpl2)))
+
+(define-public wireguard-tools
+  (package
+    (name "wireguard-tools")
+    (version "1.0.20200513")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://git.zx2c4.com/wireguard-tools.git")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "1yk8hng0qw2rf76hnawjbdpjssmah88bd5fk20h1c0j1yazlx0a9"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:make-flags
+       (list "CC=gcc"
+             "--directory=src"
+             "WITH_BASHCOMPLETION=yes"
+             ;; Install the ‘simple and dirty’ helper script wg-quick(8).
+             "WITH_WGQUICK=yes"
+             (string-append "PREFIX=" (assoc-ref %outputs "out"))
+             ;; Currently used only to create an empty /etc/wireguard directory.
+             (string-append "SYSCONFDIR=no-thanks"))
+       ;; The test suite is meant to be run interactively.  It runs Clang's
+       ;; scan-build static analyzer and then starts a web server to display the
+       ;; results.
+       #:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         ;; No configure script
+         (delete 'configure)
+         (add-after 'install 'install-contrib-docs
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out")))
+               (copy-recursively "contrib/"
+                                 (string-append out "/share/doc/wireguard-tools"))
+               #t)))
+         (add-after 'install 'wrap-wg-quick
+           (lambda* (#:key inputs outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (inputs-sbin (map (lambda (input)
+                                        (string-append (assoc-ref inputs input) "/sbin"))
+                                      (list "resolvconf" "iproute" "procps"
+                                            "iptables")))
+                   (coreutils (string-append (assoc-ref inputs "coreutils")
+                                             "/bin")))
+               (wrap-program (string-append out "/bin/wg-quick")
+                 `("PATH" ":" prefix ,(append inputs-sbin
+                                              (list coreutils))))
+               #t))))))
+    (inputs
+     `(("resolvconf" ,openresolv)
+       ("coreutils" ,coreutils)
+       ("bash" ,bash)                   ; for scripts using /dev/tcp
+       ("procps" ,procps)
+       ("iproute" ,iproute)
+       ("iptables" ,iptables)))
+    (home-page "https://www.wireguard.com/")
+    (synopsis "Tools for configuring WireGuard tunnels")
+    (description
+     "This package provides the user-space command-line tools for using and
+configuring WireGuard tunnels.
+
+WireGuard is a simple and fast general-purpose @acronym{VPN, Virtual Private
+Network} that securely encapsulates IP packets over UDP.  It aims to be as easy
+to configure and deploy as SSH.  VPN connections are made simply by exchanging
+public keys and can roam across IP addresses.")
+    (license
+     (list license:lgpl2.1+    ; src/netlink.h & contrib/embeddable-wg-library
+           license:gpl2))))    ; everything else
+
+(define-public wireguard
+  (deprecated-package "wireguard" wireguard-tools))
 
 (define-public xl2tpd
   (package
     (name "xl2tpd")
-    (version "1.3.14")
+    (version "1.3.15")
     (source (origin
               (method git-fetch)
               (uri (git-reference
@@ -527,15 +639,26 @@ WireGuard support.")
               (file-name (git-file-name name version))
               (sha256
                (base32
-                "1c2ahxz2zmmxwmk951d2qhijgz67zhwa1hn0r59fgz0y14w22myi"))))
+                "0ppwza8nwm1av1vldw40gin9wrjrs4l9si50jad414js3k8ycaag"))))
     (build-system gnu-build-system)
     (arguments
-     `(#:make-flags (list (string-append "DESTDIR=" %output)
+     `(#:make-flags (list (string-append "PREFIX=" %output)
                           "CC=gcc")
        #:phases (modify-phases %standard-phases
-                  (delete 'configure))  ; no configure script
+                  (delete 'configure) ;no configure script
+                  (add-before 'build 'setup-environment
+                    (lambda* (#:key inputs #:allow-other-keys)
+                      (substitute* "l2tp.h"
+                        (("/usr/sbin/pppd")
+                         (string-append (assoc-ref inputs "ppp")
+                                        "/sbin/pppd")))
+                      (setenv "KERNELSRC"
+                              (assoc-ref inputs "linux-libre-headers"))
+                      #t)))
        #:tests? #f))                    ; no tests provided
-    (inputs `(("libpcap" ,libpcap)))
+    (inputs `(("libpcap" ,libpcap)
+              ("linux-libre-headers" ,linux-libre-headers)
+              ("ppp" ,ppp)))
     (home-page "https://www.xelerance.com/software/xl2tpd/")
     (synopsis "Layer 2 Tunnelling Protocol Daemon (RFC 2661)")
     (description

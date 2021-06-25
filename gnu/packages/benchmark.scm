@@ -1,10 +1,12 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2016, 2017 Marius Bakke <mbakke@fastmail.com>
 ;;; Copyright © 2017 Dave Love <fx@gnu.org>
-;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018, 2019 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2019 Eric Bavier <bavier@member.fsf.org>
 ;;; Copyright © 2019 Gábor Boskovits <boskovits@gmail.com>
+;;; Copyright © 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2020 Vincent Legoll <vincent.legoll@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -34,7 +36,9 @@
   #:use-module (gnu packages linux)
   #:use-module (gnu packages maths)
   #:use-module (gnu packages mpi)
+  #:use-module (gnu packages perl)
   #:use-module (gnu packages python)
+  #:use-module (gnu packages python-science)
   #:use-module (gnu packages python-xyz)
   #:use-module (gnu packages storage)
   #:use-module (ice-9 match))
@@ -42,14 +46,14 @@
 (define-public fio
   (package
     (name "fio")
-    (version "3.14")
+    (version "3.21")
     (source (origin
               (method url-fetch)
-              (uri (string-append "http://brick.kernel.dk/snaps/"
+              (uri (string-append "https://brick.kernel.dk/snaps/"
                                   "fio-" version ".tar.bz2"))
               (sha256
                (base32
-                "047y53nyhnmnxcrsfbsf0gcpxw7bli3n19ycscpxy9974j0fck0v"))))
+                "0np1scxqfpd6fcnnnfyn8xdsh6lc5pyq3vk1jm1zk7sa58fvccd4"))))
     (build-system gnu-build-system)
     (arguments
      '(#:test-target "test"
@@ -117,18 +121,22 @@ is to write a job file matching the I/O load one wants to simulate.")
                    license:public-domain))))
 
 ;; Parameterized in anticipation of m(va)pich support
-(define (imb mpi)
+(define (intel-mpi-benchmarks mpi)
   (package
-    (name (string-append "imb-" (package-name mpi)))
-    (version "2019.1")
-    (source
-     (origin
-      (method git-fetch)
-      (uri (git-reference
-            (url "https://github.com/intel/mpi-benchmarks.git")
-            (commit (string-append "v" version))))
-      (file-name (git-file-name name version))
-      (sha256 (base32 "18hfdyvl5i172gadiq9si1qxif5rvic0lifxpbrr7s59ylg8f9c4"))))
+    (name (string-append "intel-mpi-benchmarks"
+                         (if (string=? (package-name mpi) "openmpi")
+                             ""
+                             (string-append "-" (package-name mpi)))))
+    (version "2019.3")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/intel/mpi-benchmarks")
+                    (commit (string-append "IMB-v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0si5xi6ilhd3w0gbsg124589pvp094hvf366rvjjb9pi7pdk5p4i"))))
     (build-system gnu-build-system)
     (inputs
      `(("mpi" ,mpi)))
@@ -137,25 +145,25 @@ is to write a job file matching the I/O load one wants to simulate.")
        (modify-phases %standard-phases
          (delete 'configure)
          (delete 'check)
-         (replace 'build
-           (lambda* (#:key inputs #:allow-other-keys)
-             (let ((mpi-home (assoc-ref inputs "mpi")))
-               ;; Override default parallelism
-               (substitute* "Makefile"
-                 (("make -j[[:digit:]]+")
-                  (format #f "make -j~d" (parallel-job-count))))
-               (invoke "make" "SHELL=sh" "CC=mpicc" "CXX=mpic++"))))
          (replace 'install
            (lambda* (#:key outputs #:allow-other-keys)
+             (define (benchmark? file stat)
+               (and (string-prefix? "IMB-" (basename file))
+                    (executable-file? file)))
+
              (let* ((out (assoc-ref outputs "out"))
                     (bin (string-append out "/bin")))
-               (for-each
-                (lambda (file)
-                  (install-file file bin))
-                '("IMB-IO" "IMB-EXT" "IMB-MPI1" "IMB-NBC" "IMB-RMA" "IMB-MT")))
-             #t)))))
+               (for-each (lambda (file)
+                           (install-file file bin))
+                         (find-files "." benchmark?))
+               #t))))
+
+       ;; The makefile doesn't express all the dependencies, it seems.
+       #:parallel-build? #t
+
+       #:make-flags '("CC=mpicc" "CXX=mpicxx")))
     (home-page "https://software.intel.com/en-us/articles/intel-mpi-benchmarks")
-    (synopsis "Intel MPI Benchmarks")
+    (synopsis "Benchmarks for the Message Passing Interface (MPI)")
     (description
      "This package provides benchmarks for implementations of the @dfn{Message
 Passing Interface} (MPI).  It contains MPI performance measurements for
@@ -171,7 +179,11 @@ Efficiency of the MPI implementation.
 @end itemize")
     (license license:cpl1.0)))
 
-(define-public imb-openmpi (imb openmpi))
+(define-public intel-mpi-benchmarks/openmpi
+  (intel-mpi-benchmarks openmpi))
+
+(define-public imb-openmpi
+  (deprecated-package "imb-openmpi" intel-mpi-benchmarks/openmpi))
 
 (define-public multitime
   (package
@@ -205,7 +217,7 @@ This can give a much better understanding of the command's performance.")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/google/benchmark.git")
+                    (url "https://github.com/google/benchmark")
                     (commit (string-append "v" version))))
               (file-name (git-file-name name version))
               (sha256
@@ -221,3 +233,28 @@ This can give a much better understanding of the command's performance.")
      "Benchmark is a library to benchmark code snippets,
 similar to unit tests.")
     (license license:asl2.0)))
+
+(define-public bonnie++
+  (package
+    (name "bonnie++")
+    (version "1.98")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append "https://www.coker.com.au/bonnie++/bonnie++-"
+                                  version ".tgz"))
+              (sha256
+               (base32
+                "010bmlmi0nrlp3aq7p624sfaj5a65lswnyyxk3cnz1bqig0cn2vf"))))
+    (build-system gnu-build-system)
+    (native-inputs
+     `(("perl" ,perl)))
+    (arguments '(#:tests? #f)) ; there are no tests
+    (home-page "https://doc.coker.com.au/projects/bonnie/")
+    (synopsis "Hard drive and file system benchmark suite")
+    (description
+     "Bonnie++ is a benchmark suite that is aimed at performing a number of
+simple tests of hard drive and file system performance.  Bonnie++ allows you to
+benchmark how your file systems perform with respect to data read and write
+speed, the number of seeks that can be performed per second, and the number of
+file metadata operations that can be performed per second.")
+    (license license:gpl2)))   ;GPL 2 only, see copyright.txt

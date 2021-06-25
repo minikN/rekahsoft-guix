@@ -1,5 +1,5 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2013, 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2014 Alex Kost <alezost@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
@@ -113,6 +113,11 @@
       (manifest-matching-entries m (list p))
       #f)))
 
+(test-equal "concatenate-manifests"
+  (manifest (list guile-2.0.9 glibc))
+  (concatenate-manifests (list (manifest (list guile-2.0.9))
+                               (manifest (list glibc)))))
+
 (test-assert "manifest-remove"
   (let* ((m0 (manifest (list guile-2.0.9 guile-2.0.9:debug)))
          (m1 (manifest-remove m0
@@ -218,6 +223,17 @@
                  (string=? (dirname (readlink bindir))
                            (derivation->output-path guile))))))
 
+(test-assertm "<profile>"
+  (mlet* %store-monad
+      ((entry ->   (package->manifest-entry %bootstrap-guile))
+       (profile -> (profile (hooks '()) (locales? #f)
+                            (content (manifest (list entry)))))
+       (drv        (lower-object profile))
+       (profile -> (derivation->output-path drv))
+       (bindir ->  (string-append profile "/bin"))
+       (_          (built-derivations (list drv))))
+    (return (file-exists? (string-append bindir "/guile")))))
+
 (test-assertm "profile-derivation relative symlinks, one entry"
   (mlet* %store-monad
       ((entry ->   (package->manifest-entry %bootstrap-guile))
@@ -239,11 +255,10 @@
 (unless (network-reachable?) (test-skip 1))
 (test-assertm "profile-derivation relative symlinks, two entries"
   (mlet* %store-monad
-      ((gnu-make-boot0 -> (@@ (gnu packages commencement) gnu-make-boot0))
-       (manifest -> (packages->manifest
-                     (list %bootstrap-guile gnu-make-boot0)))
+      ((manifest -> (packages->manifest
+                     (list %bootstrap-guile gnu-make-for-tests)))
        (guile       (package->derivation %bootstrap-guile))
-       (make        (package->derivation gnu-make-boot0))
+       (make        (package->derivation gnu-make-for-tests))
        (drv         (profile-derivation manifest
                                         #:relative-symlinks? #t
                                         #:hooks '()

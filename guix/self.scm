@@ -1,5 +1,5 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -28,7 +28,6 @@
   #:use-module (guix sets)
   #:use-module (guix modules)
   #:use-module ((guix build utils) #:select (find-files))
-  #:use-module ((guix build compile) #:select (%lightweight-optimizations))
   #:use-module (srfi srfi-1)
   #:use-module (srfi srfi-9)
   #:use-module (srfi srfi-35)
@@ -49,13 +48,13 @@
   (let ((ref (lambda (module variable)
                (module-ref (resolve-interface module) variable))))
     (match-lambda
-      ("guile"      (ref '(gnu packages commencement) 'guile-final))
+      ("guile"      (ref '(gnu packages guile) 'guile-3.0/libgc-7))
       ("guile-json" (ref '(gnu packages guile) 'guile-json-3))
       ("guile-ssh"  (ref '(gnu packages ssh)   'guile-ssh))
       ("guile-git"  (ref '(gnu packages guile) 'guile-git))
       ("guile-sqlite3" (ref '(gnu packages guile) 'guile-sqlite3))
       ("guile-gcrypt"  (ref '(gnu packages gnupg) 'guile-gcrypt))
-      ("gnutls"     (ref '(gnu packages tls) 'gnutls))
+      ("gnutls"     (ref '(gnu packages tls) 'guile3.0-gnutls))
       ("zlib"       (ref '(gnu packages compression) 'zlib))
       ("lzlib"      (ref '(gnu packages compression) 'lzlib))
       ("gzip"       (ref '(gnu packages compression) 'gzip))
@@ -124,7 +123,11 @@ NODE's modules, under their FHS directories: share/guile/site and lib/guile."
           (symlink #$(node-compiled node) object))))
 
   (computed-file (string-append (node-name node) "-modules")
-                 build))
+                 build
+                 #:options '(#:local-build? #t
+
+                             ;; "Building" it locally is faster.
+                             #:substitutable? #f)))
 
 (define (node-fold proc init nodes)
   (let loop ((nodes nodes)
@@ -210,7 +213,15 @@ record with the new file name."
      ;; itself.
      (local-file (string-append item "/" file)
                  #:recursive? recursive?))
-    ;; TODO: Add 'local-file?' case.
+    ((? local-file? base)
+     ;; Likewise, but with a <local-file>.
+     (if (local-file-recursive? base)
+         (local-file (string-append (local-file-absolute-file-name base)
+                                    "/" file)
+                     (basename file)
+                     #:recursive? recursive?
+                     #:select? (local-file-select? base))
+         (file-append base file)))
     (_
      ;; In this case, anything that refers to the result also depends on ITEM,
      ;; which isn't great.
@@ -279,10 +290,115 @@ DOMAIN, a gettext domain."
       #~(begin
           (use-modules (guix build utils) (guix build po)
                        (ice-9 match) (ice-9 regex) (ice-9 textual-ports)
+                       (ice-9 vlist) (ice-9 threads)
                        (srfi srfi-1))
 
-          (mkdir #$output)
+          (define (translate-tmp-texi po source output)
+            "Translate Texinfo file SOURCE using messages from PO, and write
+the result to OUTPUT."
+            (invoke #+(file-append po4a "/bin/po4a-translate")
+              "-M" "UTF-8" "-L" "UTF-8" "-k" "0" "-f" "texinfo"
+              "-m" source "-p" po "-l" output))
 
+          (define (canonicalize-whitespace str)
+            ;; Change whitespace (newlines, etc.) in STR to #\space.
+            (string-map (lambda (chr)
+                          (if (char-set-contains? char-set:whitespace chr)
+                              #\space
+                              chr))
+                        str))
+
+          (define xref-regexp
+            ;; Texinfo cross-reference regexp.
+            (make-regexp "@(px|x)?ref\\{([^,}]+)"))
+
+          (define (translate-cross-references texi translations)
+            ;; Translate the cross-references that appear in TEXI, a Texinfo
+            ;; file, using the msgid/msgstr pairs from TRANSLATIONS.
+            (define content
+              (call-with-input-file texi get-string-all))
+
+            (define matches
+              (list-matches xref-regexp content))
+
+            (define translation-map
+              (fold (match-lambda*
+                      (((msgid . str) result)
+                       (vhash-cons msgid str result)))
+                    vlist-null
+                    translations))
+
+            (define translated
+              ;; Iterate over MATCHES and replace cross-references with their
+              ;; translation found in TRANSLATION-MAP.  (We can't use
+              ;; 'substitute*' because matches can span multiple lines.)
+              (let loop ((matches matches)
+                         (offset 0)
+                         (result '()))
+                (match matches
+                  (()
+                   (string-concatenate-reverse
+                    (cons (string-drop content offset) result)))
+                  ((head . tail)
+                   (let ((prefix (match:substring head 1))
+                         (ref    (canonicalize-whitespace (match:substring head 2))))
+                     (define translated
+                       (string-append "@" (or prefix "")
+                                      "ref{"
+                                      (match (vhash-assoc ref translation-map)
+                                        (#f ref)
+                                        ((_ . str) str))))
+
+                     (loop tail
+                           (match:end head)
+                           (append (list translated
+                                         (string-take
+                                          (string-drop content offset)
+                                          (- (match:start head) offset)))
+                                   result)))))))
+
+            (format (current-error-port)
+                    "translated ~a cross-references in '~a'~%"
+                    (length matches) texi)
+            (call-with-output-file texi
+              (lambda (port)
+                (display translated port))))
+
+          (define* (translate-texi prefix po lang
+                                   #:key (extras '()))
+            "Translate the manual for one language LANG using the PO file.
+PREFIX must be the prefix of the manual, 'guix' or 'guix-cookbook'.  EXTRAS is
+a list of extra files, such as '(\"contributing\")."
+            (let ((translations (call-with-input-file po read-po-file)))
+              (for-each (lambda (file)
+                          (translate-tmp-texi po (string-append file ".texi")
+                                              (string-append file "." lang
+                                                             ".texi.tmp")))
+                        (cons prefix extras))
+
+              (for-each (lambda (file)
+                          (let* ((texi (string-append file "." lang ".texi"))
+                                 (tmp  (string-append texi ".tmp")))
+                            (copy-file tmp texi)
+                            (translate-cross-references texi
+                                                        translations)))
+                        (cons prefix extras))))
+
+          (define (available-translations directory domain)
+            ;; Return the list of available translations under DIRECTORY for
+            ;; DOMAIN, a gettext domain such as "guix-manual".  The result is
+            ;; a list of language/PO file pairs.
+            (filter-map (lambda (po)
+                          (let ((base (basename po)))
+                            (and (string-prefix? (string-append domain ".")
+                                                 base)
+                                 (match (string-split base #\.)
+                                   ((_ ... lang "po")
+                                    (cons lang po))))))
+                        (find-files directory
+                                    "\\.[a-z]{2}(_[A-Z]{2})?\\.po$")))
+
+          (mkdir #$output)
           (copy-recursively #$documentation "."
                             #:log (%make-void-port "w"))
 
@@ -297,82 +413,25 @@ DOMAIN, a gettext domain."
           (setenv "LC_ALL" "en_US.UTF-8")
           (setlocale LC_ALL "en_US.UTF-8")
 
-          (define (translate-tmp-texi po source output)
-            "Translate Texinfo file SOURCE using messages from PO, and write
-the result to OUTPUT."
-            (invoke #+(file-append po4a "/bin/po4a-translate")
-              "-M" "UTF-8" "-L" "UTF-8" "-k" "0" "-f" "texinfo"
-              "-m" source "-p" po "-l" output))
+          (n-par-for-each (parallel-job-count)
+                          (match-lambda
+                            ((language . po)
+                             (translate-texi "guix" po language
+                                             #:extras '("contributing"))))
+                          (available-translations "." "guix-manual"))
 
-          (define (make-ref-regex msgid end)
-            (make-regexp (string-append
-                           "ref\\{"
-                           (string-join (string-split (regexp-quote msgid) #\ )
-                                        "[ \n]+")
-                           end)))
+          (n-par-for-each (parallel-job-count)
+                          (match-lambda
+                            ((language . po)
+                             (translate-texi "guix-cookbook" po language)))
+                          (available-translations "." "guix-cookbook"))
 
-          (define (translate-cross-references content translations)
-            "Take CONTENT, a string representing a .texi file and translate any
-cross-reference in it (@ref, @xref and @pxref) that have a translation in
-TRANSLATIONS, an alist of msgid and msgstr."
-            (fold
-              (lambda (elem content)
-                (match elem
-                  ((msgid . msgstr)
-                   ;; Empty translations and strings containing some special characters
-                   ;; cannot be the name of a section.
-                   (if (or (equal? msgstr "")
-                           (string-any (lambda (chr)
-                                         (member chr '(#\{ #\} #\( #\) #\newline #\,)))
-                                       msgid))
-                       content
-                       ;; Otherwise, they might be the name of a section, so we
-                       ;; need to translate any occurence in @(p?x?)ref{...}.
-                       (let ((regexp1 (make-ref-regex msgid ","))
-                             (regexp2 (make-ref-regex msgid "\\}")))
-                         (regexp-substitute/global
-                           #f regexp2
-                           (regexp-substitute/global
-                             #f regexp1 content 'pre "ref{" msgstr "," 'post)
-                           'pre "ref{" msgstr "}" 'post))))))
-              content translations))
-          
-          (define (translate-texi po lang)
-            "Translate the manual for one language LANG using the PO file."
-            (let ((translations (call-with-input-file po read-po-file)))
-              (translate-tmp-texi po "guix.texi"
-                                  (string-append "guix." lang ".texi.tmp"))
-              (translate-tmp-texi po "contributing.texi"
-                                  (string-append "contributing." lang ".texi.tmp"))
-              (let* ((texi-name (string-append "guix." lang ".texi"))
-                     (tmp-name (string-append texi-name ".tmp")))
-                (with-output-to-file texi-name
-                  (lambda _
-                    (format #t "~a"
-                      (translate-cross-references
-                        (call-with-input-file tmp-name get-string-all)
-                        translations)))))
-              (let* ((texi-name (string-append "contributing." lang ".texi"))
-                     (tmp-name (string-append texi-name ".tmp")))
-                (with-output-to-file texi-name
-                  (lambda _
-                    (format #t "~a"
-                      (translate-cross-references
-                        (call-with-input-file tmp-name get-string-all)
-                        translations)))))))
-
-          (for-each (lambda (po)
-                      (match (reverse (string-split po #\.))
-                        ((_ lang _ ...)
-                         (translate-texi po lang))))
-                    (find-files "." "^guix-manual\\.[a-z]{2}(_[A-Z]{2})?\\.po$"))
-
-          (for-each
-            (lambda (file)
-              (copy-file file (string-append #$output "/" file)))
-            (append
-              (find-files "." "contributing\\..*\\.texi$")
-              (find-files "." "guix\\..*\\.texi$"))))))
+          (for-each (lambda (file)
+                      (install-file file #$output))
+                    (append
+                     (find-files "." "contributing\\..*\\.texi$")
+                     (find-files "." "guix\\..*\\.texi$")
+                     (find-files "." "guix-cookbook\\..*\\.texi$"))))))
 
   (computed-file "guix-translated-texinfo" build))
 
@@ -399,7 +458,8 @@ TRANSLATIONS, an alist of msgid and msgstr."
   (define build
     (with-imported-modules '((guix build utils))
       #~(begin
-          (use-modules (guix build utils))
+          (use-modules (guix build utils)
+                       (ice-9 match))
 
           (mkdir #$output)
 
@@ -460,13 +520,13 @@ TRANSLATIONS, an alist of msgid and msgstr."
                   #+(file-append glibc-utf8-locales "/lib/locale"))
 
           (for-each (lambda (texi)
-                      (unless (string=? "guix.texi" texi)
-                        ;; Create 'version-LL.texi'.
-                        (let* ((base (basename texi ".texi"))
-                               (dot  (string-index base #\.))
-                               (tag  (string-drop base (+ 1 dot))))
-                          (symlink "version.texi"
-                                   (string-append "version-" tag ".texi"))))
+                      (match (string-split (basename texi) #\.)
+                        (("guix" language "texi")
+                         ;; Create 'version-LL.texi'.
+                         (symlink "version.texi"
+                                  (string-append "version-" language
+                                                 ".texi")))
+                        (_ #f))
 
                       (invoke #+(file-append texinfo "/bin/makeinfo")
                               texi "-I" #$documentation
@@ -475,7 +535,10 @@ TRANSLATIONS, an alist of msgid and msgstr."
                                                   (basename texi ".texi")
                                                   ".info")))
                     (cons "guix.texi"
-                          (find-files "." "^guix\\.[a-z]{2}(_[A-Z]{2})?\\.texi$")))
+                          (append (find-files "."
+                                              "^guix\\.[a-z]{2}(_[A-Z]{2})?\\.texi$")
+                                  (find-files "."
+                                              "^guix-cookbook.*\\.texi$"))))
 
           ;; Compress Info files.
           (setenv "PATH"
@@ -485,6 +548,13 @@ TRANSLATIONS, an alist of msgid and msgstr."
                     (find-files #$output "\\.info(-[0-9]+)?$")))))
 
   (computed-file "guix-manual" build))
+
+(define-syntax-rule (prevent-inlining! identifier ...)
+  (begin (set! identifier identifier) ...))
+
+;; XXX: These procedures are actually used by 'doc/build.scm'.  Protect them
+;; from inlining on Guile 3.
+(prevent-inlining! file-append* translate-texi-manuals info-manual)
 
 (define* (guile-module-union things #:key (name "guix-module-union"))
   "Return the union of the subset of THINGS (packages, computed files, etc.)
@@ -577,13 +647,13 @@ load path."
                    ,(file-append* source "/etc/completion/zsh/_guix"))
                   ("share/fish/vendor_completions.d/guix.fish"
                    ,(file-append* source "/etc/completion/fish/guix.fish"))
-                  ("share/guix/berlin.guixsd.org.pub"
+                  ("share/guix/berlin.guix.gnu.org.pub"
                    ,(file-append* source
-                                  "/etc/substitutes/berlin.guixsd.org.pub"))
+                                  "/etc/substitutes/berlin.guix.gnu.org.pub"))
                   ("share/guix/ci.guix.gnu.org.pub"  ;alias
-                   ,(file-append* source "/etc/substitutes/berlin.guixsd.org.pub"))
+                   ,(file-append* source "/etc/substitutes/berlin.guix.gnu.org.pub"))
                   ("share/guix/ci.guix.info.pub"  ;alias
-                   ,(file-append* source "/etc/substitutes/berlin.guixsd.org.pub")))))
+                   ,(file-append* source "/etc/substitutes/berlin.guix.gnu.org.pub")))))
 
 (define* (whole-package name modules dependencies
                         #:key
@@ -729,6 +799,7 @@ Info manual."
                  (filter-map (match-lambda
                                (('guix 'scripts _ ..1) #f)
                                (('guix 'man-db) #f)
+                               (('guix 'tests _ ...) #f)
                                (name name))
                              (scheme-modules* source "guix"))
                  (list *core-modules*)
@@ -1116,9 +1187,9 @@ is not supported."
         version))
 
   (define guile
-    ;; When PULL-VERSION >= 1, produce a self-contained Guix and use Guile 2.2
-    ;; unconditionally.
-    (default-guile))
+    ;; When PULL-VERSION >= 1, produce a self-contained Guix and use the
+    ;; current Guile unconditionally.
+    (specification->package "guile"))
 
   (when (and (< pull-version 1)
              (not (string=? (package-version guile) guile-version)))
@@ -1137,7 +1208,7 @@ is not supported."
                                                      (shorten version))
                                #:pull-version pull-version
                                #:guile-version (if (>= pull-version 1)
-                                                   "2.2" guile-version)
+                                                   "3.0" guile-version)
                                #:guile-for-build guile)))
       (if guix
           (lower-object guix)

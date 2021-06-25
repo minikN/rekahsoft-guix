@@ -20,6 +20,7 @@
 (define-module (gnu packages opencl)
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system cmake)
+  #:use-module (guix build-system python)
   #:use-module (guix download)
   #:use-module (guix git-download)
   #:use-module ((guix licenses) #:prefix license:)
@@ -35,6 +36,7 @@
   #:use-module (gnu packages ncurses)
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages python)
+  #:use-module (gnu packages python-xyz)
   #:use-module (gnu packages ruby)
   #:use-module (gnu packages video)
   #:use-module (gnu packages xdisorg)
@@ -56,7 +58,7 @@
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/KhronosGroup/OpenCL-Headers.git")
+                      (url "https://github.com/KhronosGroup/OpenCL-Headers")
                       (commit commit)))
                 (file-name (git-file-name name version))
                 (sha256
@@ -107,7 +109,7 @@ programming.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/KhronosGroup/OpenCL-CLHPP.git")
+             (url "https://github.com/KhronosGroup/OpenCL-CLHPP")
              (commit (string-append "v" version))))
        (sha256
         (base32 "0h5kpg5cl8wzfnqmv6i26aig2apv06ffm9p3rh35938n9r8rladm"))
@@ -128,7 +130,7 @@ programming.")
        ;; The regression tests require a lot more dependencies.
        #:tests? #f))
     (build-system cmake-build-system)
-    (home-page "http://github.khronos.org/OpenCL-CLHPP/")
+    (home-page "https://github.khronos.org/OpenCL-CLHPP/")
     (synopsis "Khronos OpenCL-CLHPP")
     (description
      "This package provides the @dfn{host API} C++ headers for OpenCL.")
@@ -179,7 +181,7 @@ Loader as provided by this package.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/Oblomov/clinfo.git")
+             (url "https://github.com/Oblomov/clinfo")
              (commit version)))
        (file-name (git-file-name name version))
        (sha256
@@ -221,7 +223,7 @@ the system.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/intel/beignet.git")
+             (url "https://github.com/intel/beignet")
              (commit (string-append "Release_v" version))))
        (file-name (git-file-name name version))
        (sha256
@@ -296,15 +298,15 @@ back-end for the LLVM compiler framework.")
 (define-public pocl
   (package
     (name "pocl")
-    (version "1.2")
+    (version "1.4")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/pocl/pocl.git")
+             (url "https://github.com/pocl/pocl")
              (commit (string-append "v" version))))
        (sha256
-        (base32 "0fyiwd9nrqhl0jsac0bx17p9acpfzhyxp50mmp28mzn7psb9qidg"))
+        (base32 "1c4y69zks6hkq5fqh9waxgb8g4ka7y6h3vacmsm720kba0h57g8a"))
        (file-name (git-file-name name version))))
     (build-system cmake-build-system)
     (native-inputs
@@ -312,7 +314,7 @@ back-end for the LLVM compiler framework.")
        ("pkg-config" ,pkg-config)))
     (inputs
      `(("clang" ,clang)
-       ("hwloc" ,hwloc-2.0 "lib")
+       ("hwloc" ,hwloc-2 "lib")
        ("llvm" ,llvm)
        ("ocl-icd" ,ocl-icd)))
     (arguments
@@ -341,4 +343,93 @@ pocl uses Clang as an OpenCL C frontend and LLVM for kernel compiler
 implementation, and as a portability layer.  Thus, if your desired target has
 an LLVM backend, it should be able to get OpenCL support easily by using
 pocl.")
+    (license license:expat)))
+
+(define-public python-pytools
+  (package
+    (name "python-pytools")
+    (version "2020.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "pytools" version))
+       (sha256
+        (base32
+         "19h47pqfrq7ax7601i5g8icpb6b42h8zzwq0dqfdcjjqamwd2cn1"))))
+    (build-system python-build-system)
+    (propagated-inputs
+     `(("python-appdirs" ,python-appdirs)
+       ("python-decorator" ,python-decorator)
+       ("python-numpy" ,python-numpy)
+       ("python-six" ,python-six)
+       ("python-mpi4py" ,python-mpi4py)))
+    (home-page "https://pypi.org/project/pytools/")
+    (synopsis "Assorted tools for Python")
+    (description
+     "Pytools is a bag of things that are ``missing'' from the Python standard
+library:
+
+@itemize
+@item
+small helper functions such as @code{len_iterable}, @code{argmin},
+tuple generation, permutation generation, ASCII table pretty printing,
+GvR's @code{monkeypatch_xxx} hack, the elusive @code{flatten}, and much more.
+@item
+Michele Simionato's decorator module
+@item
+A time-series logging module, @code{pytools.log}.
+@item
+Batch job submission, @code{pytools.batchjob}.
+@item
+A lexer, @code{pytools.lex}.
+@end itemize\n")
+    (license license:expat)))
+
+(define-public python-pyopencl
+  (package
+    (name "python-pyopencl")
+    (version "2019.1.1")
+    (source
+     (origin
+       ;; The tarball on PyPI lacks test programs such as
+       ;; 'pygpu_language_opencl.cpp' so fetch it from Git.
+       ;; XXX: The server at git.tiker.net is unreliable.
+       (method git-fetch)
+       (uri (git-reference
+             (url "http://git.tiker.net/trees/pyopencl.git")
+             (commit (string-append "v" version))
+             (recursive? #t)))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32
+         "12q0rs8yla571vcfpsh0mfrjbdiayv0hi8r1rq0f178m3i3qjz80"))))
+    (build-system python-build-system)
+    (arguments
+     '(#:phases (modify-phases %standard-phases
+                  (add-before 'build 'set-home
+                    (lambda _
+                      ;; Some of the Python build scripts expect 'HOME' to be
+                      ;; set.
+                      (setenv "HOME" (getcwd))
+                      #t)))
+
+       ;; Tests in 'compyte/ndarray/setup_opencl.py' appear to rely on
+       ;; 'nvcc', which is not an option.
+       #:tests? #f))
+    (inputs
+     `(("opencl-headers" ,opencl-headers-1.2)   ;POCL only supports OpenCL 1.2
+       ("pybind11" ,pybind11)
+       ("ocl-icd" ,ocl-icd)))                     ;libOpenCL
+    (propagated-inputs
+     `(("python-appdirs" ,python-appdirs)
+       ("python-decorator" ,python-decorator)
+       ("python-numpy" ,python-numpy)
+       ("python-pytools" ,python-pytools)
+       ("python-six" ,python-six)
+       ("python-mako" ,python-mako)))
+    (home-page "http://mathema.tician.de/software/pyopencl")
+    (synopsis "Python wrapper for OpenCL")
+    (description
+     "PyOpenCL lets you access parallel computing devices such as GPUs from
+Python @i{via} OpenCL.")
     (license license:expat)))

@@ -1,14 +1,15 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2012 Stefan Handschuh <handschuh.stefan@googlemail.com>
 ;;; Copyright © 2015 Kai-Chung Yan <seamlikok@gmail.com>
-;;; Copyright © 2016 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2016, 2020 Marius Bakke <mbakke@fastmail.com>
 ;;; Copyright © 2017 Julien Lepiller <julien@lepiller.eu>
 ;;; Copyright © 2017 Hartmut Goebel <h.goebel@crazy-compilers.com>
 ;;; Copyright © 2017 Maxim Cournoyer <maxim.cournoyer@gmail.com>
-;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2019 Andreas Enge <andreas@enge.fr>
 ;;; Copyright © 2019 Ricardo Wurmus <rekado@elephly.net>
+;;; Copyright © 2020 Maxim Cournoyer <maxim.cournoyer@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -38,7 +39,9 @@
   #:use-module (gnu packages check)
   #:use-module (gnu packages compression)
   #:use-module (gnu packages docker)
+  #:use-module (gnu packages gcc)
   #:use-module (gnu packages gnupg)
+  #:use-module (gnu packages java)
   #:use-module (gnu packages linux)
   #:use-module (gnu packages pcre)
   #:use-module (gnu packages python)
@@ -62,7 +65,7 @@
      (origin
       (method git-fetch)
       (uri (git-reference
-            (url "https://github.com/daym/android-make-stub.git")
+            (url "https://github.com/daym/android-make-stub")
             (commit (string-append "v" version))))
       (file-name (string-append "android-make-stub-"
                                 version "-checkout"))
@@ -96,7 +99,7 @@ use their packages mostly unmodified in our Android NDK build system.")
      (origin
        (method git-fetch)
        (uri (git-reference
-              (url "https://github.com/google/googletest.git")
+              (url "https://github.com/google/googletest")
               (commit (string-append "release-" version))))
        (file-name (git-file-name name version))
        (sha256
@@ -215,7 +218,6 @@ in Main, System, Radio and Events sub-logs.")
     (build-system android-ndk-build-system)
     (arguments
      `(#:tests? #f ; Test failure: logging.UNIMPLEMENTED
-       #:make-flags '("CXXFLAGS=-std=gnu++11")
        #:phases
        (modify-phases %standard-phases
          (add-after 'unpack 'enter-source
@@ -255,7 +257,7 @@ various Android core host applications.")
                    "CC = gcc\n"
 
                    "CFLAGS += -fPIC\n"
-                   "CXXFLAGS += -std=gnu++11 -fPIC\n"
+                   "CXXFLAGS += -fPIC\n"
                    "CPPFLAGS += -Iinclude -I../include\n"
                    "LDFLAGS += -shared -Wl,-soname,$(NAME).so.0\n"
 
@@ -310,7 +312,7 @@ various Android core host applications.")
     (build-system android-ndk-build-system)
     (arguments
      `(#:make-flags '("CFLAGS=-Wno-error"
-                      "CXXFLAGS=-fpermissive -Wno-error -std=gnu++11")
+                      "CXXFLAGS=-fpermissive -Wno-error")
        #:phases
        (modify-phases %standard-phases
          (add-after 'unpack 'enter-source
@@ -374,7 +376,7 @@ various Android core host applications.")
      `(("android-libbase" ,android-libbase)
        ("android-libcutils" ,android-libcutils)
        ("android-liblog" ,android-liblog)
-       ("openssl" ,openssl)))
+       ("openssl" ,openssl-1.0)))
     (home-page "https://developer.android.com/studio/command-line/adb.html")
     (synopsis "Android Debug Bridge")
     (description
@@ -499,9 +501,14 @@ that is safe to use for user space.  It also includes
        ;; pcre is inlined by our package.
        ("pcre" ,pcre)))
     (home-page "https://developer.android.com/")
-    (synopsis (package-synopsis libselinux))
-    (description (package-description libselinux))
-    (license (package-license libselinux))))
+    (synopsis "Android version of the SELinux libraries and utilities")
+    (description
+     "The libselinux library provides an API for SELinux applications to get
+and set process and file security contexts, and to obtain security policy
+decisions.  It is required for any applications that use the SELinux API, and
+used by all applications that are SELinux-aware.  This package also includes
+the core SELinux management utilities.")
+    (license license:public-domain)))
 
 (define-public android-ext4-utils
   (package
@@ -604,9 +611,20 @@ file system.")
        #:make-flags '("CXXFLAGS=-std=gnu++11 -Wno-error")
        #:phases
        (modify-phases %standard-phases
+         (add-after 'set-paths 'augment-CPLUS_INCLUDE_PATH
+           (lambda* (#:key inputs #:allow-other-keys)
+             ;; Hide the default GCC from CPLUS_INCLUDE_PATH to prevent it from
+             ;; shadowing the version of GCC provided in native-inputs.
+             (let ((gcc (assoc-ref inputs "gcc")))
+               (setenv "CPLUS_INCLUDE_PATH"
+                       (string-join
+                        (delete (string-append gcc "/include/c++")
+                                (string-split (getenv "CPLUS_INCLUDE_PATH")
+                                              #\:))
+                        ":"))
+               #t)))
          (add-after 'unpack 'enter-source
            (lambda _ (chdir "libutils") #t))
-
          (add-after 'install 'install-headers
            (lambda* (#:key inputs outputs #:allow-other-keys)
              (copy-recursively "../include/utils" (string-append (assoc-ref outputs "out") "/include/utils")))))))
@@ -615,7 +633,8 @@ file system.")
        ("android-libcutils" ,android-libcutils)))
     (native-inputs
      `(("android-bionic-uapi" ,android-bionic-uapi)
-       ("android-liblog" ,android-liblog)))
+       ("android-liblog" ,android-liblog)
+       ("gcc@5" ,gcc-5))) ; XXX: fails to build with GCC 7
     (home-page "https://developer.android.com/")
     (synopsis "Android utility library")
     (description "@code{android-libutils} provides utilities for Android NDK developers.")
@@ -628,8 +647,7 @@ file system.")
     (source (android-platform-system-core version))
     (build-system android-ndk-build-system)
     (arguments
-     `(#:make-flags (list "CXXFLAGS=-std=gnu++11")
-       #:phases
+     `(#:phases
        (modify-phases %standard-phases
          (add-after 'unpack 'enter-source
            (lambda _
@@ -673,16 +691,16 @@ file system.")
 (define-public android-udev-rules
   (package
     (name "android-udev-rules")
-    (version "20180112")
+    (version "20191103")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
              (url "https://github.com/M0Rf30/android-udev-rules")
              (commit version)))
-       (file-name (string-append name "-" version "-checkout"))
+       (file-name (git-file-name name version))
        (sha256
-        (base32 "13gj79nnd04szqlrrzzkdr6wi1fky08pi7x8xfbg0jj3d3v0giah"))))
+        (base32 "0x2f2sv0x0ry7kccp47s0hlxps3hbpg37dj3xjjgpdm5hmn2cjq3"))))
     (build-system trivial-build-system)
     (native-inputs `(("source" ,source)))
     (arguments
@@ -710,7 +728,7 @@ to be passed to the @code{udev} service.")
 (define-public git-repo
   (package
     (name "git-repo")
-    (version "1.12.37")
+    (version "2.4.1")
     (source
      (origin
        (method git-fetch)
@@ -719,61 +737,66 @@ to be passed to the @code{udev} service.")
              (commit (string-append "v" version))))
        (file-name (string-append "git-repo-" version "-checkout"))
        (sha256
-        (base32 "0qp7jqhblv7xblfgpcq4n18dyjdv8shz7r60c3vnjxx2fngkj2jd"))))
+        (base32 "0khg1731927gvin73dcbw1657kbfq4k7agla5rpzqcnwkk5agzg3"))))
     (build-system python-build-system)
     (arguments
-     `(#:python ,python-2 ; code says: "Python 3 support is … experimental."
-       #:phases
+     `(#:phases
        (modify-phases %standard-phases
          (add-before 'build 'set-executable-paths
            (lambda* (#:key inputs outputs #:allow-other-keys)
              (let* ((out (assoc-ref outputs "out"))
                     (git (assoc-ref inputs "git"))
-                    (gpg (assoc-ref inputs "gnupg"))
                     (ssh (assoc-ref inputs "ssh")))
                (substitute* '("repo" "git_command.py")
-                 (("^GIT = 'git' ")
-                  (string-append "GIT = '" git "/bin/git' ")))
-               (substitute* "repo"
-                 ((" cmd = \\['gpg',")
-                  (string-append " cmd = ['" gpg "/bin/gpg',")))
+                 (("^GIT = 'git'")
+                  (string-append "GIT = '" git "/bin/git'")))
                (substitute* "git_config.py"
                  ((" command_base = \\['ssh',")
                   (string-append " command_base = ['" ssh "/bin/ssh',")))
                #t)))
-         (add-before 'build 'do-not-clone-this-source
+         (add-before 'build 'do-not-self-update
            (lambda* (#:key outputs #:allow-other-keys)
-             (let* ((out (assoc-ref outputs "out"))
-                    (repo-dir (string-append out "/share/" ,name)))
-               (substitute* "repo"
-                 (("^def _FindRepo\\(\\):.*")
-                  (format #f "
-def _FindRepo():
-  '''Look for a repo installation, starting at the current directory.'''
-  # Use the installed version of git-repo.
-  repo_main = '~a/main.py'
-  curdir = os.getcwd()
-  olddir = None
-  while curdir != '/' and curdir != olddir:
-    dot_repo = os.path.join(curdir, repodir)
-    if os.path.isdir(dot_repo):
-      return (repo_main, dot_repo)
-    else:
-      olddir = curdir
-      curdir = os.path.dirname(curdir)
-  return None, ''
+             ;; Setting the REPO_MAIN variable to an absolute file name is
+             ;; enough to have _FindRepo return the store main.py file.  The
+             ;; self update mechanism is activated with the call to _Init() in
+             ;; main(), so we bypass it.
 
-  # The remaining of this function is dead code.  It was used to
-  # find a git-checked-out version in the local project.\n" repo-dir))
-                 ;; Neither clone, check out, nor verify the git repository
-                 (("(^\\s+)_Clone\\(.*\\)") "")
-                 (("(^\\s+)_Checkout\\(.*\\)") "")
-                 ((" rev = _Verify\\(.*\\)") " rev = None"))
-               #t)))
+             ;; Ticket requesting upstream to provide a mean to disable the
+             ;; self update mechanism:
+             ;; https://bugs.chromium.org/p/gerrit/issues/detail?id=12407.
+             (let* ((out (assoc-ref outputs "out"))
+                    (repo-main (string-append out "/share/git-repo/main.py")))
+               (substitute* "repo"
+                 (("^REPO_MAIN = .*")
+                  (format #f "REPO_MAIN = ~s~%" repo-main))
+                 ((" _Init\\(args, gitc_init=\\(cmd ==.*" all)
+                  (string-append "True #" all)))
+               ;; Prevent repo from trying to git describe its version from
+               ;; the (disabled) self updated copy.
+               (substitute* "git_command.py"
+                 (("ver = getattr\\(RepoSourceVersion.*")
+                  (format #f "ver = ~s~%" ,version)))
+               (substitute* "subcmds/version.py"
+                 (("rp_ver = .*")
+                  (format #f "rp_ver = ~s~%" ,version)))
+               ;; Prevent repo from adding its (disabled) self update copy to
+               ;; the list of projects to fetch when using 'repo sync'.
+               (substitute* "subcmds/sync.py"
+                 (("to_fetch\\.extend\\(all_projects\\).*" all)
+                  (string-append "#" all))
+                 (("self\\._Fetch\\(to_fetch")
+                  "self._Fetch(all_projects")
+                 (("_PostRepoFetch\\(rp, opt\\.repo_verify).*" all)
+                  (string-append "#" all))))))
          (delete 'build) ; nothing to build
+         (add-before 'check 'configure-git
+           (lambda _
+             (setenv "HOME" (getcwd))
+             (invoke "git" "config" "--global" "user.email" "you@example.com")
+             (invoke "git" "config" "--global" "user.name" "Your Name")))
          (replace 'check
            (lambda _
-             (invoke "python" "-m" "nose")))
+             (invoke "./run_tests")))
          (replace 'install
            (lambda* (#:key outputs #:allow-other-keys)
              (let* ((out (assoc-ref outputs "out"))
@@ -789,10 +812,9 @@ def _FindRepo():
     (inputs
      ;; TODO: Add git-remote-persistent-https once it is available in guix
      `(("git" ,git)
-       ("gnupg" ,gnupg)
        ("ssh" ,openssh)))
     (native-inputs
-     `(("nose" ,python2-nose)))
+     `(("pytest" ,python-pytest)))
     (home-page "https://code.google.com/p/git-repo/")
     (synopsis "Helps to manage many Git repositories.")
     (description "Repo is a tool built on top of Git.  Repo helps manage many
@@ -829,7 +851,7 @@ script that you can put anywhere in your path.")
               (install-file "abootimg" bin)
               #t))))))
     (inputs
-     `(("libblkid" ,util-linux)))
+     `(("libblkid" ,util-linux "lib")))
     (home-page "https://ac100.grandou.net/abootimg")
     (synopsis "Tool for manipulating Android Boot Images")
     (description "This package provides a tool for manipulating old Android
@@ -934,3 +956,60 @@ these same tools to create your own additional or alternative repository for
 publishing, or to assist in creating, testing and submitting metadata to the
 main repository.")
     (license license:agpl3+)))
+
+(define-public enjarify
+  (package
+    (name "enjarify")
+    (version "1.0.3")
+    (home-page "https://github.com/Storyyeller/enjarify")
+    (source
+     (origin
+      (method git-fetch)
+      (uri (git-reference
+            (url home-page)
+            (commit version)))
+      (file-name (git-file-name name version))
+      (patches
+       (search-patches "enjarify-setup-py.patch"))
+      (sha256
+       (base32
+        "1nam7h1g4f1h6jla4qcjjagnyvd24dv6d5445w04q8hx07nxdapk"))))
+    (build-system python-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'enjarify-wrapper-inherit-pythonpath
+           ;; enjarify sets PYTHONPATH from a shell script, overwriting
+           ;; PYTHONPATH set from guix. Comment out this line.
+           (lambda _
+             (substitute* "enjarify.sh"
+               (("export PYTHONPATH") "# export PYTHONPATH"))
+             #t))
+         (add-before 'check 'fixup-expected-test-results
+           ;; Upstream adjusted this test in commit:
+           ;; 3ae884a6485af82d300515813f537685b08dd800
+           (lambda _
+             (substitute* "tests/test2/expected.txt"
+               (("^20") "0"))
+             #t))
+         (add-before 'check 'drop-java-xss-argument
+           ;; Upstream removed this argument in order to support 32-bit
+           ;; architectures.  commit: 4be0111d879aa95fdc0d9f24fe529f8c664d4093
+           (lambda _
+             (substitute* "enjarify/runtests.py"
+               (("java -Xss515m") "java "))
+             #t))
+         (add-after 'install 'install-enjarify-wrapper
+             (lambda* (#:key outputs #:allow-other-keys)
+               (let* ((out (assoc-ref outputs "out")))
+                 (mkdir-p (string-append out "/bin/"))
+                 (copy-file "enjarify.sh" (string-append out "/bin/enjarify"))
+                 #t))))))
+    (native-inputs `(("openjdk" ,openjdk12)))
+    (synopsis "Translate Dalvik bytecode to equivalent Java bytecode")
+    (description "Android applications are Java programs that run on a
+customized virtual machine, which is part of the Android operating system, the
+Dalvik VM.  Their bytecode differs from the bytecode of normal Java
+applications.  Enjarify can translate the Dalvik bytecode back to equivalent
+Java bytecode, which simplifies the analysis of Android applications.")
+    (license license:asl2.0)))

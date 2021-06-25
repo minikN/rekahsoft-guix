@@ -1,6 +1,6 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2014, 2015, 2018 David Thompson <davet@gnu.org>
-;;; Copyright © 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2018 Mike Gerwitz <mtg@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
@@ -29,7 +29,7 @@
   #:use-module (guix search-paths)
   #:use-module (guix build utils)
   #:use-module (guix monads)
-  #:use-module ((guix gexp) #:select (lower-inputs))
+  #:use-module ((guix gexp) #:select (lower-object))
   #:use-module (guix scripts)
   #:use-module (guix scripts build)
   #:use-module (gnu build linux-container)
@@ -38,9 +38,8 @@
   #:use-module (gnu system file-systems)
   #:use-module (gnu packages)
   #:use-module (gnu packages bash)
-  #:use-module (gnu packages commencement)
-  #:use-module (gnu packages guile)
-  #:use-module ((gnu packages bootstrap) #:select (%bootstrap-guile))
+  #:use-module ((gnu packages bootstrap)
+                #:select (bootstrap-executable %bootstrap-guile))
   #:use-module (ice-9 format)
   #:use-module (ice-9 match)
   #:use-module (ice-9 rdelim)
@@ -49,7 +48,8 @@
   #:use-module (srfi srfi-26)
   #:use-module (srfi srfi-37)
   #:use-module (srfi srfi-98)
-  #:export (guix-environment))
+  #:export (assert-container-features
+            guix-environment))
 
 ;; Protect some env vars from purification.  Borrowed from nix-shell.
 (define %precious-variables
@@ -190,7 +190,7 @@ COMMAND or an interactive shell in that environment.\n"))
 (define %default-options
   `((system . ,(%current-system))
     (substitutes? . #t)
-    (build-hook? . #t)
+    (offload? . #t)
     (graft? . #t)
     (print-build-trace? . #t)
     (print-extended-build-trace? . #t)
@@ -255,7 +255,7 @@ use '--preserve' instead~%"))
                    (alist-cons 'ad-hoc? #t result)))
          (option '(#\n "dry-run") #f #f
                  (lambda (opt name arg result)
-                   (alist-cons 'dry-run? #t (alist-cons 'graft? #f result))))
+                   (alist-cons 'dry-run? #t result)))
          (option '(#\s "system") #t #f
                  (lambda (opt name arg result)
                    (alist-cons 'system arg
@@ -363,19 +363,6 @@ for the corresponding packages."
                 opts)
     manifest-entry=?)))
 
-(define* (build-environment derivations opts)
-  "Build the DERIVATIONS required by the environment using the build options
-in OPTS."
-  (let ((substitutes? (assoc-ref opts 'substitutes?))
-        (dry-run?     (assoc-ref opts 'dry-run?)))
-    (mbegin %store-monad
-      (show-what-to-build* derivations
-                           #:use-substitutes? substitutes?
-                           #:dry-run? dry-run?)
-      (if dry-run?
-          (return #f)
-          (built-derivations derivations)))))
-
 (define (manifest->derivation manifest system bootstrap?)
   "Return the derivation for a profile of MANIFEST.
 BOOTSTRAP? specifies whether to use the bootstrap Guile to build the profile."
@@ -452,7 +439,7 @@ regexps in WHITE-LIST."
 
 (define* (launch-environment/container #:key command bash user user-mappings
                                        profile manifest link-profile? network?
-                                       map-cwd?)
+                                       map-cwd? (white-list '()))
   "Run COMMAND within a container that features the software in PROFILE.
 Environment variables are set according to the search paths of MANIFEST.
 The global shell is BASH, a file name for a GNU Bash binary in the
@@ -461,7 +448,14 @@ USER-MAPPINGS, a list of file system mappings, contains the user-specified
 host file systems to mount inside the container.  If USER is not #f, each
 target of USER-MAPPINGS will be re-written relative to '/home/USER', and USER
 will be used for the passwd entry.  LINK-PROFILE? creates a symbolic link from
-~/.guix-profile to the environment profile."
+~/.guix-profile to the environment profile.
+
+Preserve environment variables whose name matches the one of the regexps in
+WHILE-LIST."
+  (define (optional-mapping->fs mapping)
+    (and (file-exists? (file-system-mapping-source mapping))
+         (file-system-mapping->bind-mount mapping)))
+
   (mlet %store-monad ((reqs (inputs->requisites
                              (list (direct-store-path bash) profile))))
     (return
@@ -483,6 +477,11 @@ will be used for the passwd entry.  LINK-PROFILE? creates a symbolic link from
                             (group-entry (gid 65534) ;the overflow GID
                                          (name "overflow"))))
             (home-dir (password-entry-directory passwd))
+            (environ  (filter (match-lambda
+                                ((variable . value)
+                                 (find (cut regexp-exec <> variable)
+                                       white-list)))
+                              (get-environment-variables)))
             ;; Bind-mount all requisite store items, user-specified mappings,
             ;; /bin/sh, the current working directory, and possibly networking
             ;; configuration files within the container.
@@ -498,11 +497,6 @@ will be used for the passwd entry.  LINK-PROFILE? creates a symbolic link from
                                   (target cwd)
                                   (writable? #t)))
                            '())))
-              ;; When in Rome, do as Nix build.cc does: Automagically
-              ;; map common network configuration files.
-              (if network?
-                  %network-file-mappings
-                  '())
               ;; Mappings for the union closure of all inputs.
               (map (lambda (dir)
                      (file-system-mapping
@@ -511,6 +505,10 @@ will be used for the passwd entry.  LINK-PROFILE? creates a symbolic link from
                       (writable? #f)))
                    reqs)))
             (file-systems (append %container-file-systems
+                                  (if network?
+                                      (filter-map optional-mapping->fs
+                                                  %network-file-mappings)
+                                      '())
                                   (map file-system-mapping->bind-mount
                                        mappings))))
        (exit/status
@@ -551,6 +549,12 @@ will be used for the passwd entry.  LINK-PROFILE? creates a symbolic link from
             (chdir (if map-cwd?
                        (override-user-dir user home cwd)
                        home-dir))
+
+            ;; Set environment variables that match WHITE-LIST.
+            (for-each (match-lambda
+                        ((variable . value)
+                         (setenv variable value)))
+                      environ)
 
             (primitive-exit/status
              ;; A container's environment is already purified, so no need to
@@ -613,8 +617,7 @@ Otherwise, return the derivation for the Bash package."
       (package->derivation bash))
      ;; Use the bootstrap Bash instead.
      ((and container? bootstrap?)
-      (interned-file
-       (search-bootstrap-binary "bash" system)))
+      (lower-object (bootstrap-executable "bash" system)))
      (else
       (return #f)))))
 
@@ -703,66 +706,68 @@ message if any test fails."
 
 
       (with-store store
-        (with-status-verbosity (assoc-ref opts 'verbosity)
-          (define manifest
-            (options/resolve-packages store opts))
+        (with-build-handler (build-notifier #:use-substitutes?
+                                            (assoc-ref opts 'substitutes?)
+                                            #:dry-run?
+                                            (assoc-ref opts 'dry-run?))
+          (with-status-verbosity (assoc-ref opts 'verbosity)
+            (define manifest
+              (options/resolve-packages store opts))
 
-          (set-build-options-from-command-line store opts)
+            (set-build-options-from-command-line store opts)
 
-          ;; Use the bootstrap Guile when requested.
-          (parameterize ((%graft? (assoc-ref opts 'graft?))
-                         (%guile-for-build
-                          (package-derivation
-                           store
-                           (if bootstrap?
-                               %bootstrap-guile
-                               (canonical-package guile-2.2)))))
-            (run-with-store store
-              ;; Containers need a Bourne shell at /bin/sh.
-              (mlet* %store-monad ((bash       (environment-bash container?
-                                                                 bootstrap?
-                                                                 system))
-                                   (prof-drv   (manifest->derivation
-                                                manifest system bootstrap?))
-                                   (profile -> (derivation->output-path prof-drv))
-                                   (gc-root -> (assoc-ref opts 'gc-root)))
+            ;; Use the bootstrap Guile when requested.
+            (parameterize ((%graft? (assoc-ref opts 'graft?))
+                           (%guile-for-build
+                            (package-derivation
+                             store
+                             (if bootstrap?
+                                 %bootstrap-guile
+                                 (default-guile)))))
+              (run-with-store store
+                ;; Containers need a Bourne shell at /bin/sh.
+                (mlet* %store-monad ((bash       (environment-bash container?
+                                                                   bootstrap?
+                                                                   system))
+                                     (prof-drv   (manifest->derivation
+                                                  manifest system bootstrap?))
+                                     (profile -> (derivation->output-path prof-drv))
+                                     (gc-root -> (assoc-ref opts 'gc-root)))
 
-                ;; First build the inputs.  This is necessary even for
-                ;; --search-paths.  Additionally, we might need to build bash for
-                ;; a container.
-                (mbegin %store-monad
-                  (build-environment (if (derivation? bash)
-                                         (list prof-drv bash)
-                                         (list prof-drv))
-                                     opts)
-                  (mwhen gc-root
-                    (register-gc-root profile gc-root))
+                  ;; First build the inputs.  This is necessary even for
+                  ;; --search-paths.  Additionally, we might need to build bash for
+                  ;; a container.
+                  (mbegin %store-monad
+                    (built-derivations (if (derivation? bash)
+                                           (list prof-drv bash)
+                                           (list prof-drv)))
+                    (mwhen gc-root
+                      (register-gc-root profile gc-root))
 
-                  (cond
-                   ((assoc-ref opts 'dry-run?)
-                    (return #t))
-                   ((assoc-ref opts 'search-paths)
-                    (show-search-paths profile manifest #:pure? pure?)
-                    (return #t))
-                   (container?
-                    (let ((bash-binary
-                           (if bootstrap?
-                               bash
-                               (string-append (derivation->output-path bash)
-                                              "/bin/sh"))))
-                      (launch-environment/container #:command command
-                                                    #:bash bash-binary
-                                                    #:user user
-                                                    #:user-mappings mappings
-                                                    #:profile profile
-                                                    #:manifest manifest
-                                                    #:link-profile? link-prof?
-                                                    #:network? network?
-                                                    #:map-cwd? (not no-cwd?))))
+                    (cond
+                     ((assoc-ref opts 'search-paths)
+                      (show-search-paths profile manifest #:pure? pure?)
+                      (return #t))
+                     (container?
+                      (let ((bash-binary
+                             (if bootstrap?
+                                 (derivation->output-path bash)
+                                 (string-append (derivation->output-path bash)
+                                                "/bin/sh"))))
+                        (launch-environment/container #:command command
+                                                      #:bash bash-binary
+                                                      #:user user
+                                                      #:user-mappings mappings
+                                                      #:profile profile
+                                                      #:manifest manifest
+                                                      #:white-list white-list
+                                                      #:link-profile? link-prof?
+                                                      #:network? network?
+                                                      #:map-cwd? (not no-cwd?))))
 
-                   (else
-                    (return
-                     (exit/status
-                      (launch-environment/fork command profile manifest
-                                               #:white-list white-list
-                                               #:pure? pure?))))))))))))))
+                     (else
+                      (return
+                       (exit/status
+                        (launch-environment/fork command profile manifest
+                                                 #:white-list white-list
+                                                 #:pure? pure?)))))))))))))))

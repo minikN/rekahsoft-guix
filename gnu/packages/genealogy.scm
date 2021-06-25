@@ -1,5 +1,6 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2019 Guillaume Le Vaillant <glv@posteo.net>
+;;; Copyright © 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -38,23 +39,23 @@
 (define-public gramps
   (package
     (name "gramps")
-    (version "5.0.2")
+    (version "5.1.2")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/gramps-project/gramps.git")
+             (url "https://github.com/gramps-project/gramps")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
-        (base32
-         "0wg743q8ixy5dmwricgkl4zck4109vq5ppmkyi18qjmna9m0aq7r"))))
+        (base32 "175iwvdp6c1a8rskl2wpk4yvzl437j7hm23v481974a85qy43iv8"))))
     (build-system python-build-system)
     (native-inputs
      `(("gettext" ,gettext-minimal)
        ("intltool" ,intltool)))
     (inputs
-     `(("font-gnu-freefont-ttf" ,font-gnu-freefont-ttf)
+     `(("cairo" ,cairo)
+       ("font-gnu-freefont" ,font-gnu-freefont)
        ("geocode-glib" ,geocode-glib)
        ("gexiv2" ,gexiv2)
        ("ghostscript" ,ghostscript)

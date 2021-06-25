@@ -1,15 +1,16 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2013, 2014 Eric Bavier <bavier@member.fsf.org>
+;;; Copyright © 2013, 2014, 2020 Eric Bavier <bavier@posteo.net>
 ;;; Copyright © 2015 Mark H Weaver <mhw@netris.org>
-;;; Copyright © 2015, 2016, 2017, 2018 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2015, 2016, 2017, 2018, 2020 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2016 Pjotr Prins <pjotr.guix@thebird.nl>
 ;;; Copyright © 2016 Andreas Enge <andreas@enge.fr>
 ;;; Copyright © 2016 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2016 Ben Woodcroft <donttrustben@gmail.com>
 ;;; Copyright © 2017, 2018 Rutger Helling <rhelling@mykolab.com>
-;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018 Clément Lassieur <clement@lassieur.org>
 ;;; Copyright © 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2020 Roel Janssen <roel@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -32,6 +33,7 @@
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system python)
   #:use-module ((guix licenses) #:prefix license:)
+  #:use-module ((guix utils) #:select (target-64bit?))
   #:use-module (guix packages)
   #:use-module (gnu packages)
   #:use-module (gnu packages admin)
@@ -43,6 +45,7 @@
   #:use-module (gnu packages perl)
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages python)
+  #:use-module (gnu packages python-science)
   #:use-module (gnu packages python-xyz)
   #:use-module (gnu packages readline)
   #:use-module (gnu packages tcl)
@@ -52,14 +55,14 @@
 (define-public parallel
   (package
     (name "parallel")
-    (version "20190822")
+    (version "20200722")
     (source
      (origin
       (method url-fetch)
       (uri (string-append "mirror://gnu/parallel/parallel-"
                           version ".tar.bz2"))
       (sha256
-       (base32 "1mi3a18fdwcx50jg51pw1ks1fkmc2slyinff0yb3xhihi2szbskp"))))
+       (base32 "0vqd8nhf4lkvbfy7nnibxjkpzpfandpklqm0hrix5vki5x7x80a8"))))
     (build-system gnu-build-system)
     (arguments
      `(#:phases
@@ -105,7 +108,7 @@ and they are executed on lists of files, hosts, users or other items.")
 (define-public slurm
   (package
    (name "slurm")
-   (version "17.11.3")
+   (version "19.05.3-2")
    (source (origin
             (method url-fetch)
             (uri (string-append
@@ -113,24 +116,37 @@ and they are executed on lists of files, hosts, users or other items.")
                   version ".tar.bz2"))
             (sha256
              (base32
-              "1x3i6z03d9m46fvj1cslrapm1drvgyqch9pn4xf23kvbz4gkhaps"))
+              "0qj4blfymrd2ry2qmb58l3jbr4jwygc3adcfw7my27rippcijlyc"))
             (modules '((guix build utils)))
             (snippet
              '(begin
+                ;; According to
+                ;; <https://lists.gnu.org/archive/html/guix-devel/2016-02/msg00534.html>
+                ;; there are non-free bits under contribs/, though it's not
+                ;; clear which ones.  libpmi is clearly free (it used to be
+                ;; under src/api/), so remove all of contribs/ except
+                ;; contribs/pmi/.
                 (substitute* "configure.ac"
-                  (("^[[:space:]]+contribs/.*$") ""))
+                  (("^[[:space:]]+contribs/(.*)$" all directory)
+                   (if (and (string-prefix? "pmi" directory)
+                            (not (string-prefix? "pmi2" directory)))
+                       all
+                       "")))
+
+                (rename-file "contribs/pmi" "tmp-pmi")
                 (delete-file-recursively "contribs")
+                (mkdir "contribs")
+                (rename-file "tmp-pmi" "contribs/pmi")
                 #t))))
    ;; FIXME: More optional inputs could be added,
    ;; in particular mysql and gtk+.
    (inputs `(("expect" ,expect)
              ("freeipmi" ,freeipmi)
-             ("hwloc" ,hwloc "lib")
+             ("hwloc" ,hwloc-2 "lib")
              ("json-c" ,json-c)
              ("linux-pam" , linux-pam)
              ("munge" ,munge)
              ("numactl" ,numactl)
-             ("openssl" ,openssl)
              ("perl" ,perl)
              ("python" ,python-wrapper)
              ("readline" ,readline)))
@@ -141,15 +157,23 @@ and they are executed on lists of files, hosts, users or other items.")
    (arguments
     `(#:configure-flags
       (list "--enable-pam" "--sysconfdir=/etc/slurm"
+            "--disable-static"
             (string-append "--with-freeipmi=" (assoc-ref %build-inputs "freeipmi"))
             (string-append "--with-hwloc=" (assoc-ref %build-inputs "hwloc"))
             (string-append "--with-json=" (assoc-ref %build-inputs "json-c"))
             (string-append "--with-munge=" (assoc-ref %build-inputs "munge"))
-            (string-append "--with-ssl=" (assoc-ref %build-inputs "openssl")))
+
+            ;; 32-bit support is marked as deprecated and needs to be
+            ;; explicitly enabled.
+            ,@(if (target-64bit?) '() '("--enable-deprecated")))
       #:phases
       (modify-phases %standard-phases
         (add-after 'unpack 'autoconf
-          (lambda _ (invoke "autoconf")))))) ; configure.ac was patched
+          (lambda _ (invoke "autoconf")))         ;configure.ac was patched
+        (add-after 'install 'install-libpmi
+          (lambda _
+            ;; Open MPI expects libpmi to be provided by Slurm so install it.
+            (invoke "make" "install" "-C" "contribs/pmi"))))))
    (home-page "https://slurm.schedmd.com/")
    (synopsis "Workload manager for cluster computing")
    (description
@@ -169,20 +193,22 @@ by managing a queue of pending work.")
 (define-public slurm-drmaa
   (package
     (name "slurm-drmaa")
-    (version "1.0.7")
+    (version "1.1.1")
     (source (origin
               (method url-fetch)
-              (uri "http://apps.man.poznan.pl/trac/slurm-drmaa/downloads/9")
-              (file-name (string-append name "-" version ".tar.gz"))
+              (uri (string-append
+                    "https://github.com/natefoo/slurm-drmaa/releases/download/"
+                    version "/slurm-drmaa-" version ".tar.gz"))
               (sha256
                (base32
-                "0grw55hmny2mc4nc0y1arnvxd2k0dcdfn476kzs180fibjxgfw14"))))
+                "19r4cm88pcpm3wli4cc61zq7354pg67cg866f3a430p15hm1knrn"))))
     (build-system gnu-build-system)
+    (arguments `(#:tests? #f)) ; The tests require "bats".
     (inputs
      `(("slurm" ,slurm)))
     (native-inputs
      `(("which" ,which)))
-    (home-page "http://apps.man.poznan.pl/trac/slurm-drmaa")
+    (home-page "https://github.com/natefoo/slurm-drmaa")
     (synopsis "Distributed resource management application API for SLURM")
     (description
      "PSNC DRMAA for Simple Linux Utility for Resource Management (SLURM) is

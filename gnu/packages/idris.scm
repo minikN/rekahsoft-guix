@@ -38,7 +38,7 @@
 (define-public idris
   (package
     (name "idris")
-    (version "1.3.1")
+    (version "1.3.2")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -46,8 +46,7 @@
                     "idris-" version "/idris-" version ".tar.gz"))
               (sha256
                (base32
-                "0fn9h58l592j72njwma1ia48h8h87wi2rjqfxs7j2lfmvgfv18fi"))
-              (patches (search-patches "idris-test-no-node.patch"))))
+                "0wychzkg0yghd2pp8fqz78vp1ayzks191knfpl7mhh8igsmb6bc7"))))
     (build-system haskell-build-system)
     (native-inputs                      ;For tests
      `(("perl" ,perl)
@@ -91,6 +90,11 @@
              "-fFFI" "-fGMP")
        #:phases
        (modify-phases %standard-phases
+         (add-after 'unpack 'update-constraints
+           (lambda _
+             (substitute* "idris.cabal"
+               (("ansi-terminal < 0\\.9") "ansi-terminal < 0.10"))
+             #t))
          (add-before 'configure 'set-cc-command
            (lambda _
              (setenv "CC" "gcc")
@@ -117,7 +121,7 @@
      (list (search-path-specification
             (variable "IDRIS_LIBRARY_PATH")
             (files '("lib/idris")))))
-    (home-page "http://www.idris-lang.org")
+    (home-page "https://www.idris-lang.org")
     (synopsis "General purpose language with full dependent types")
     (description "Idris is a general purpose language with full dependent
 types.  It is compiled, with eager evaluation.  Dependent types allow types to
