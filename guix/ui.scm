@@ -1,5 +1,5 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2013, 2018 Mark H Weaver <mhw@netris.org>
 ;;; Copyright © 2013 Nikita Karetnikov <nikita@karetnikov.org>
 ;;; Copyright © 2014 Cyril Roelandt <tipecaml@gmail.com>
@@ -13,6 +13,8 @@
 ;;; Copyright © 2018 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2019 Chris Marusich <cmmarusich@gmail.com>
 ;;; Copyright © 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2019 Simon Tournier <zimon.toutoune@gmail.com>
+;;; Copyright © 2020 Arun Isaac <arunisaac@systemreboot.net>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -43,17 +45,20 @@
   #:use-module (guix derivations)
   #:use-module (guix build-system)
   #:use-module (guix serialization)
-  #:use-module ((guix licenses) #:select (license? license-name))
+  #:use-module ((guix licenses)
+                #:select (license? license-name license-uri))
   #:use-module ((guix build syscalls)
-                #:select (free-disk-space terminal-columns
-                                          terminal-rows))
+                #:select (free-disk-space terminal-columns terminal-rows
+                          with-file-lock/no-wait))
   #:use-module ((guix build utils)
                 ;; XXX: All we need are the bindings related to
                 ;; '&invoke-error'.  However, to work around the bug described
                 ;; in 5d669883ecc104403c5d3ba7d172e9c02234577c, #:hide
                 ;; unwanted bindings instead of #:select'ing the needed
                 ;; bindings.
-                #:hide (package-name->name+version))
+                #:hide (package-name->name+version
+                        ;; Avoid "overrides core binding" warning.
+                        delete))
   #:use-module (srfi srfi-1)
   #:use-module (srfi srfi-11)
   #:use-module (srfi srfi-19)
@@ -65,9 +70,11 @@
   #:use-module (ice-9 match)
   #:use-module (ice-9 format)
   #:use-module (ice-9 regex)
+  #:autoload   (ice-9 popen) (open-pipe* close-pipe)
   #:autoload   (system base compile) (compile-file)
   #:autoload   (system repl repl)  (start-repl)
   #:autoload   (system repl debug) (make-debug stack->vector)
+  #:autoload   (web uri) (encode-and-join-uri-path)
   #:use-module (texinfo)
   #:use-module (texinfo plain-text)
   #:use-module (texinfo string-utils)
@@ -88,6 +95,7 @@
             string->number*
             size->number
             show-derivation-outputs
+            build-notifier
             show-what-to-build
             show-what-to-build*
             show-manifest-transaction
@@ -98,6 +106,7 @@
             read/eval
             read/eval-package-expression
             check-available-space
+            indented-string
             fill-paragraph
             %text-width
             texi->plain-text
@@ -107,10 +116,17 @@
             package->recutils
             package-specification->name+version+output
 
+            supports-hyperlinks?
+            hyperlink
+            file-hyperlink
+            location->hyperlink
+
+            with-paginated-output-port
             relevance
             package-relevance
             display-search-results
 
+            with-profile-lock
             string->generations
             string->duration
             matching-generations
@@ -120,6 +136,10 @@
             roll-back*
             switch-to-generation*
             delete-generation*
+
+            %default-message-language
+            current-message-language
+
             run-guix-command
             run-guix
             guix-main))
@@ -160,7 +180,11 @@ information, or #f if it could not be found."
                (previous frame))
       (if (not frame)
           previous
-          (if (frame-source frame)
+
+          ;; On Guile 3, the latest frame with source may be that of
+          ;; 'raise-exception' in boot-9.scm.  Skip it.
+          (if (and (frame-source frame)
+                   (not (eq? 'raise-exception (frame-procedure-name frame))))
               frame
               (loop (frame-previous frame) frame)))))
 
@@ -213,8 +237,8 @@ information, or #f if it could not be found."
 
                ;; Give 'load' an absolute file name so that it doesn't try to
                ;; search for FILE in %LOAD-PATH.  Note: use 'load', not
-               ;; 'primitive-load', so that FILE is compiled, which then allows us
-               ;; to provide better error reporting with source line numbers.
+               ;; 'primitive-load', so that FILE is compiled, which then allows
+               ;; us to provide better error reporting with source line numbers.
                (load (canonicalize-path file)))
              (const #f))))))
     (lambda _
@@ -357,18 +381,25 @@ ARGS is the list of arguments received by the 'throw' handler."
            (format (current-error-port) (G_ "~amissing closing parenthesis~%")
                    location))
          (apply throw args)))
-    (('syntax-error proc message properties form . rest)
+    (('syntax-error proc message properties form subform . rest)
      (let ((loc (source-properties->location properties)))
-       (report-error loc (G_ "~a~%") message)))
+       (report-error loc (G_ "~s: ~a~%")
+                     (or subform form) message)))
     (('unbound-variable _ ...)
      (report-unbound-variable-error args #:frame frame))
-    (('srfi-34 obj)
-     (if (message-condition? obj)
-         (report-error (and (error-location? obj)
-                            (error-location obj))
-                       (G_ "~a~%")
-                       (gettext (condition-message obj) %gettext-domain))
-         (report-error (G_ "exception thrown: ~s~%") obj))
+    (((or 'srfi-34 '%exception) obj)
+     (cond ((message-condition? obj)
+            (report-error (and (error-location? obj)
+                               (error-location obj))
+                          (G_ "~a~%")
+                          (gettext (condition-message obj) %gettext-domain)))
+           ((formatted-message? obj)
+            (apply report-error
+                   (and (error-location? obj) (error-location obj))
+                   (gettext (formatted-message-string obj) %gettext-domain)
+                   (formatted-message-arguments obj)))
+           (else
+            (report-error (G_ "exception thrown: ~s~%") obj)))
      (when (fix-hint? obj)
        (display-hint (condition-fix-hint obj))))
     ((key args ...)
@@ -394,13 +425,20 @@ exiting.  ARGS is the list of arguments received by the 'throw' handler."
        (warning loc (G_ "~a~%") message)))
     (('unbound-variable _ ...)
      (report-unbound-variable-error args))
-    (('srfi-34 obj)
-     (if (message-condition? obj)
-         (warning (G_ "failed to load '~a': ~a~%")
-                  file
-                  (gettext (condition-message obj) %gettext-domain))
-         (warning (G_ "failed to load '~a': exception thrown: ~s~%")
-                  file obj)))
+    (((or 'srfi-34 '%exception) obj)
+     (cond ((message-condition? obj)
+            (warning (G_ "failed to load '~a': ~a~%")
+                     file
+                     (gettext (condition-message obj) %gettext-domain)))
+           ((formatted-message? obj)
+            (warning (G_ "failed to load '~a': ~a~%")
+                     (apply format #f
+                            (gettext (formatted-message-string obj)
+                                     %gettext-domain)
+                            (formatted-message-arguments obj))))
+           (else
+            (warning (G_ "failed to load '~a': exception thrown: ~s~%")
+                     file obj))))
     ((error args ...)
      (warning (G_ "failed to load '~a':~%") module)
      (apply display-error #f (current-error-port) args)
@@ -426,6 +464,20 @@ exiting.  ARGS is the list of arguments received by the 'throw' handler."
   "Capture 'unbound-variable' exceptions in the dynamic extent of EXP... and
 report them in a user-friendly way."
   (call-with-unbound-variable-handling (lambda () exp ...)))
+
+(define %default-message-language
+  ;; Default language to use for messages.
+  (make-parameter "en"))
+
+(define (current-message-language)
+  "Return the language used for messages according to the current locale.
+Return %DEFAULT-MESSAGE-LANGUAGE if that information could not be obtained.  The
+result is an ISO-639-2 language code such as \"ar\", without the territory
+part."
+  (let ((locale (setlocale LC_MESSAGES)))
+    (match (string-index locale #\_)
+      (#f    locale)
+      (index (string-take locale index)))))
 
 (define (install-locale)
   "Install the current locale settings."
@@ -467,7 +519,7 @@ See the \"Application Setup\" section in the manual, for more info.\n")))))
   "Display version information for COMMAND and `(exit 0)'."
   (simple-format #t "~a (~a) ~a~%"
                  command %guix-package-name %guix-version)
-  (format #t "Copyright ~a 2019 ~a"
+  (format #t "Copyright ~a 2020 ~a"
           ;; TRANSLATORS: Translate "(C)" to the copyright symbol
           ;; (C-in-a-circle), if this symbol is available in the user's
           ;; locale.  Otherwise, do not translate "(C)"; leave it as-is.  */
@@ -557,7 +609,8 @@ nicely."
 \"1MiB\", to a number of bytes.  Raise an error if STR could not be
 interpreted."
   (define unit-pos
-    (string-rindex str char-set:digit))
+    (string-rindex str
+                   (char-set-union (char-set #\.) char-set:digit)))
 
   (define unit
     (and unit-pos (substring str (+ 1 unit-pos))))
@@ -612,6 +665,23 @@ or variants of @code{~a} in the same profile.")
 or remove one of them from the profile.")
                               name1 name2)))))
 
+(cond-expand
+  (guile-3
+   ;; On Guile 3.0, in 'call-with-error-handling' we need to re-raise.  To
+   ;; preserve useful backtraces in case of unhandled errors, we want that to
+   ;; happen before the stack has been unwound, hence 'guard*'.
+   (define-syntax-rule (guard* (var clauses ...) exp ...)
+     "This variant of SRFI-34 'guard' does not unwind the stack before
+evaluating the tests and bodies of CLAUSES."
+     (with-exception-handler
+         (lambda (var)
+           (cond clauses ... (else (raise var))))
+       (lambda () exp ...)
+       #:unwind? #f)))
+  (else
+   (define-syntax-rule (guard* (var clauses ...) exp ...)
+     (guard (var clauses ...) exp ...))))
+
 (define (call-with-error-handling thunk)
   "Call THUNK within a user-friendly error handler."
   (define (port-filename* port)
@@ -620,135 +690,151 @@ or remove one of them from the profile.")
     (and (not (port-closed? port))
          (port-filename port)))
 
-  (guard (c ((package-input-error? c)
-             (let* ((package  (package-error-package c))
-                    (input    (package-error-invalid-input c))
-                    (location (package-location package))
-                    (file     (location-file location))
-                    (line     (location-line location))
-                    (column   (location-column location)))
-               (leave (G_ "~a:~a:~a: package `~a' has an invalid input: ~s~%")
-                      file line column
-                      (package-full-name package) input)))
-            ((package-cross-build-system-error? c)
-             (let* ((package (package-error-package c))
-                    (loc     (package-location package))
-                    (system  (package-build-system package)))
-               (leave (G_ "~a: ~a: build system `~a' does not support cross builds~%")
-                      (location->string loc)
-                      (package-full-name package)
-                      (build-system-name system))))
-            ((gexp-input-error? c)
-             (let ((input (package-error-invalid-input c)))
-               (leave (G_ "~s: invalid G-expression input~%")
-                      (gexp-error-invalid-input c))))
-            ((profile-not-found-error? c)
-             (leave (G_ "profile '~a' does not exist~%")
-                    (profile-error-profile c)))
-            ((missing-generation-error? c)
-             (leave (G_ "generation ~a of profile '~a' does not exist~%")
-                    (missing-generation-error-generation c)
-                    (profile-error-profile c)))
-            ((unmatched-pattern-error? c)
-             (let ((pattern (unmatched-pattern-error-pattern c)))
-               (leave (G_ "package '~a~@[@~a~]~@[:~a~]' not found in profile~%")
-                      (manifest-pattern-name pattern)
-                      (manifest-pattern-version pattern)
-                      (match (manifest-pattern-output pattern)
-                        ("out" #f)
-                        (output output)))))
-            ((profile-collision-error? c)
-             (let ((entry    (profile-collision-error-entry c))
-                   (conflict (profile-collision-error-conflict c)))
-               (define (report-parent-entries entry)
-                 (let ((parent (force (manifest-entry-parent entry))))
-                   (when (manifest-entry? parent)
-                     (report-error (G_ "   ... propagated from ~a@~a~%")
-                                   (manifest-entry-name parent)
-                                   (manifest-entry-version parent))
-                     (report-parent-entries parent))))
+  (guard* (c ((package-input-error? c)
+              (let* ((package  (package-error-package c))
+                     (input    (package-error-invalid-input c))
+                     (location (package-location package))
+                     (file     (location-file location))
+                     (line     (location-line location))
+                     (column   (location-column location)))
+                (leave (G_ "~a:~a:~a: package `~a' has an invalid input: ~s~%")
+                       file line column
+                       (package-full-name package) input)))
+             ((package-cross-build-system-error? c)
+              (let* ((package (package-error-package c))
+                     (loc     (package-location package))
+                     (system  (package-build-system package)))
+                (leave (G_ "~a: ~a: build system `~a' does not support cross builds~%")
+                       (location->string loc)
+                       (package-full-name package)
+                       (build-system-name system))))
+             ((gexp-input-error? c)
+              (let ((input (package-error-invalid-input c)))
+                (leave (G_ "~s: invalid G-expression input~%")
+                       (gexp-error-invalid-input c))))
+             ((profile-not-found-error? c)
+              (leave (G_ "profile '~a' does not exist~%")
+                     (profile-error-profile c)))
+             ((missing-generation-error? c)
+              (leave (G_ "generation ~a of profile '~a' does not exist~%")
+                     (missing-generation-error-generation c)
+                     (profile-error-profile c)))
+             ((unmatched-pattern-error? c)
+              (let ((pattern (unmatched-pattern-error-pattern c)))
+                (leave (G_ "package '~a~@[@~a~]~@[:~a~]' not found in profile~%")
+                       (manifest-pattern-name pattern)
+                       (manifest-pattern-version pattern)
+                       (match (manifest-pattern-output pattern)
+                         ("out" #f)
+                         (output output)))))
+             ((profile-collision-error? c)
+              (let ((entry    (profile-collision-error-entry c))
+                    (conflict (profile-collision-error-conflict c)))
+                (define (report-parent-entries entry)
+                  (let ((parent (force (manifest-entry-parent entry))))
+                    (when (manifest-entry? parent)
+                      (report-error (G_ "   ... propagated from ~a@~a~%")
+                                    (manifest-entry-name parent)
+                                    (manifest-entry-version parent))
+                      (report-parent-entries parent))))
 
-               (define (manifest-entry-output* entry)
-                 (match (manifest-entry-output entry)
-                   ("out"   "")
-                   (output (string-append ":" output))))
+                (define (manifest-entry-output* entry)
+                  (match (manifest-entry-output entry)
+                    ("out"   "")
+                    (output (string-append ":" output))))
 
-               (report-error (G_ "profile contains conflicting entries for ~a~a~%")
-                             (manifest-entry-name entry)
-                             (manifest-entry-output* entry))
-               (report-error (G_ "  first entry: ~a@~a~a ~a~%")
-                             (manifest-entry-name entry)
-                             (manifest-entry-version entry)
-                             (manifest-entry-output* entry)
-                             (manifest-entry-item entry))
-               (report-parent-entries entry)
-               (report-error (G_ "  second entry: ~a@~a~a ~a~%")
-                             (manifest-entry-name conflict)
-                             (manifest-entry-version conflict)
-                             (manifest-entry-output* conflict)
-                             (manifest-entry-item conflict))
-               (report-parent-entries conflict)
-               (display-collision-resolution-hint c)
-               (exit 1)))
-            ((nar-error? c)
-             (let ((file (nar-error-file c))
-                   (port (nar-error-port c)))
-               (if file
-                   (leave (G_ "corrupt input while restoring '~a' from ~s~%")
-                          file (or (port-filename* port) port))
-                   (leave (G_ "corrupt input while restoring archive from ~s~%")
-                          (or (port-filename* port) port)))))
-            ((store-connection-error? c)
-             (leave (G_ "failed to connect to `~a': ~a~%")
-                    (store-connection-error-file c)
-                    (strerror (store-connection-error-code c))))
-            ((store-protocol-error? c)
-             ;; FIXME: Server-provided error messages aren't i18n'd.
-             (leave (G_ "~a~%")
-                    (store-protocol-error-message c)))
-            ((derivation-missing-output-error? c)
-             (leave (G_ "reference to invalid output '~a' of derivation '~a'~%")
-                    (derivation-missing-output c)
-                    (derivation-file-name (derivation-error-derivation c))))
-            ((file-search-error? c)
-             (leave (G_ "file '~a' could not be found in these \
+                (report-error (G_ "profile contains conflicting entries for ~a~a~%")
+                              (manifest-entry-name entry)
+                              (manifest-entry-output* entry))
+                (report-error (G_ "  first entry: ~a@~a~a ~a~%")
+                              (manifest-entry-name entry)
+                              (manifest-entry-version entry)
+                              (manifest-entry-output* entry)
+                              (manifest-entry-item entry))
+                (report-parent-entries entry)
+                (report-error (G_ "  second entry: ~a@~a~a ~a~%")
+                              (manifest-entry-name conflict)
+                              (manifest-entry-version conflict)
+                              (manifest-entry-output* conflict)
+                              (manifest-entry-item conflict))
+                (report-parent-entries conflict)
+                (display-collision-resolution-hint c)
+                (exit 1)))
+             ((nar-error? c)
+              (let ((file (nar-error-file c))
+                    (port (nar-error-port c)))
+                (if file
+                    (leave (G_ "corrupt input while restoring '~a' from ~s~%")
+                           file (or (port-filename* port) port))
+                    (leave (G_ "corrupt input while restoring archive from ~s~%")
+                           (or (port-filename* port) port)))))
+             ((store-connection-error? c)
+              (leave (G_ "failed to connect to `~a': ~a~%")
+                     (store-connection-error-file c)
+                     (strerror (store-connection-error-code c))))
+             ((store-protocol-error? c)
+              ;; FIXME: Server-provided error messages aren't i18n'd.
+              (leave (G_ "~a~%")
+                     (store-protocol-error-message c)))
+             ((derivation-missing-output-error? c)
+              (leave (G_ "reference to invalid output '~a' of derivation '~a'~%")
+                     (derivation-missing-output c)
+                     (derivation-file-name (derivation-error-derivation c))))
+             ((file-search-error? c)
+              (leave (G_ "file '~a' could not be found in these \
 directories:~{ ~a~}~%")
-                    (file-search-error-file-name c)
-                    (file-search-error-search-path c)))
-            ((invoke-error? c)
-             (leave (G_ "program exited\
+                     (file-search-error-file-name c)
+                     (file-search-error-search-path c)))
+             ((invoke-error? c)
+              (leave (G_ "program exited\
 ~@[ with non-zero exit status ~a~]\
 ~@[ terminated by signal ~a~]\
 ~@[ stopped by signal ~a~]: ~s~%")
-                    (invoke-error-exit-status c)
-                    (invoke-error-term-signal c)
-                    (invoke-error-stop-signal c)
-                    (cons (invoke-error-program c)
-                          (invoke-error-arguments c))))
-            ((and (error-location? c) (message-condition? c))
-             (report-error (error-location c) (G_ "~a~%")
-                           (gettext (condition-message c) %gettext-domain))
-             (when (fix-hint? c)
-               (display-hint (condition-fix-hint c)))
-             (exit 1))
-            ((and (message-condition? c) (fix-hint? c))
-             (report-error (G_ "~a~%")
-                           (gettext (condition-message c) %gettext-domain))
-             (display-hint (condition-fix-hint c))
-             (exit 1))
-            ((message-condition? c)
-             ;; Normally '&message' error conditions have an i18n'd message.
-             (leave (G_ "~a~%")
-                    (gettext (condition-message c) %gettext-domain))))
-    ;; Catch EPIPE and the likes.
-    (catch 'system-error
-      thunk
-      (lambda (key proc format-string format-args . rest)
-        (leave (G_ "~a: ~a~%") proc
-               (apply format #f format-string format-args))))))
+                     (invoke-error-exit-status c)
+                     (invoke-error-term-signal c)
+                     (invoke-error-stop-signal c)
+                     (cons (invoke-error-program c)
+                           (invoke-error-arguments c))))
+             ((message-condition? c)
+              ;; Normally '&message' error conditions have an i18n'd message.
+              (report-error (and (error-location? c) (error-location c))
+                            (G_ "~a~%")
+                            (gettext (condition-message c) %gettext-domain))
+              (when (fix-hint? c)
+                (display-hint (condition-fix-hint c)))
+              (exit 1))
+
+             ((formatted-message? c)
+              (apply report-error
+                     (and (error-location? c) (error-location c))
+                     (gettext (formatted-message-string c) %gettext-domain)
+                     (formatted-message-arguments c))
+              (when (fix-hint? c)
+                (display-hint (condition-fix-hint c)))
+              (exit 1))
+
+             ;; On Guile 3.0.0, exceptions such as 'unbound-variable' are
+             ;; compound and include a '&message'.  However, that message only
+             ;; contains the format string.  Thus, special-case it here to
+             ;; avoid displaying a bare format string.
+             ;;
+             ;; Furthermore, use of 'guard*' ensures that the stack has not
+             ;; been unwound when we re-raise, since that would otherwise show
+             ;; useless backtraces.
+             ((cond-expand
+                (guile-3
+                 ((exception-predicate &exception-with-kind-and-args) c))
+                (else #f))
+              (raise c)))
+      ;; Catch EPIPE and the likes.
+      (catch 'system-error
+        thunk
+        (lambda (key proc format-string format-args . rest)
+          (leave (G_ "~a: ~a~%") proc
+                 (apply format #f format-string format-args))))))
 
 (define-syntax-rule (leave-on-EPIPE exp ...)
-  "Run EXP... in a context when EPIPE errors are caught and lead to 'exit'
+  "Run EXP... in a context where EPIPE errors are caught and lead to 'exit'
 with successful exit code.  This is useful when writing to the standard output
 may lead to EPIPE, because the standard output is piped through 'head' or
 similar."
@@ -789,12 +875,18 @@ similar."
         (match args
           (('syntax-error proc message properties form . rest)
            (report-error (G_ "syntax error: ~a~%") message))
-          (('srfi-34 obj)
-           (if (message-condition? obj)
-               (report-error (G_ "~a~%")
-                             (gettext (condition-message obj)
-                                      %gettext-domain))
-               (report-error (G_ "exception thrown: ~s~%") obj)))
+          (((or 'srfi-34 '%exception) obj)
+           (cond ((message-condition? obj)
+                  (report-error (G_ "~a~%")
+                                (gettext (condition-message obj)
+                                         %gettext-domain)))
+                 ((formatted-message? obj)
+                  (apply report-error #f
+                         (gettext (formatted-message-string obj)
+                                  %gettext-domain)
+                         (formatted-message-arguments obj)))
+                 (else
+                  (report-error (G_ "exception thrown: ~s~%") obj))))
           ((error args ...)
            (apply display-error #f (current-error-port) args))
           (what? #f))
@@ -848,6 +940,17 @@ warning."
     ('profile-hook #t)
     (_ #f)))
 
+(define (colorize-store-file-name file)
+  "Colorize FILE, a store file name, such that the hash part is less prominent
+that the rest."
+  (let ((len    (string-length file))
+        (prefix (+ (string-length (%store-prefix)) 32 2)))
+    (if (< len prefix)
+        file
+        (string-append (colorize-string (string-take file prefix)
+                                        (color DARK))
+                       (string-drop file prefix)))))
+
 (define* (show-what-to-build store drv
                              #:key dry-run? (use-substitutes? #t)
                              (mode (build-mode normal)))
@@ -855,8 +958,10 @@ warning."
 derivations listed in DRV using MODE, a 'build-mode' value.  The elements of
 DRV can be either derivations or derivation inputs.
 
-Return #t if there's something to build, #f otherwise.  When USE-SUBSTITUTES?,
-check and report what is prerequisites are available for download."
+Return two values: a Boolean indicating whether there's something to build,
+and a Boolean indicating whether there's something to download.  When
+USE-SUBSTITUTES?, check and report what is prerequisites are available for
+download."
   (define inputs
     (map (match-lambda
            ((? derivation? drv) (derivation-input drv))
@@ -864,14 +969,19 @@ check and report what is prerequisites are available for download."
          drv))
 
   (define substitutable-info
-    ;; Call 'substitutation-oracle' upfront so we don't end up launching the
+    ;; Call 'substitution-oracle' upfront so we don't end up launching the
     ;; substituter many times.  This makes a big difference, especially when
     ;; DRV is a long list as is the case with 'guix environment'.
     (if use-substitutes?
         (substitution-oracle store inputs #:mode mode)
         (const #f)))
 
-  (let*-values (((build download)
+  (define colorized-store-item
+    (if (color-output? (current-error-port))
+        colorize-store-file-name
+        identity))
+
+  (let*-values (((build/full download)
                  (derivation-build-plan store inputs
                                         #:mode mode
                                         #:substitutable-info
@@ -895,7 +1005,7 @@ check and report what is prerequisites are available for download."
                                          #:hook ,hook
                                          #:build ,(cons file build))))))))
                               '(#:graft () #:hook () #:build ())
-                              build)
+                              build/full)
                    ((#:graft graft #:hook hook #:build build)
                     (values graft hook build)))))
     (define installed-size
@@ -916,7 +1026,7 @@ check and report what is prerequisites are available for download."
                   (N_ "~:[The following derivation would be built:~%~{   ~a~%~}~;~]"
                       "~:[The following derivations would be built:~%~{   ~a~%~}~;~]"
                       (length build))
-                  (null? build) build)
+                  (null? build) (map colorized-store-item build))
           (if display-download-size?
               (format (current-error-port)
                       ;; TRANSLATORS: "MB" is for "megabyte"; it should be
@@ -924,29 +1034,31 @@ check and report what is prerequisites are available for download."
                       (G_ "~:[~,1h MB would be downloaded:~%~{   ~a~%~}~;~]")
                       (null? download)
                       download-size
-                      (map substitutable-path download))
+                      (map (compose colorized-store-item substitutable-path)
+                           download))
               (format (current-error-port)
                       (N_ "~:[The following file would be downloaded:~%~{   ~a~%~}~;~]"
                           "~:[The following files would be downloaded:~%~{   ~a~%~}~;~]"
                           (length download))
                       (null? download)
-                      (map substitutable-path download)))
+                      (map (compose colorized-store-item substitutable-path)
+                           download)))
           (format (current-error-port)
                   (N_ "~:[The following graft would be made:~%~{   ~a~%~}~;~]"
                       "~:[The following grafts would be made:~%~{   ~a~%~}~;~]"
                       (length graft))
-                  (null? graft) graft)
+                  (null? graft) (map colorized-store-item graft))
           (format (current-error-port)
                   (N_ "~:[The following profile hook would be built:~%~{   ~a~%~}~;~]"
                       "~:[The following profile hooks would be built:~%~{   ~a~%~}~;~]"
                       (length hook))
-                  (null? hook) hook))
+                  (null? hook) (map colorized-store-item hook)))
         (begin
           (format (current-error-port)
                   (N_ "~:[The following derivation will be built:~%~{   ~a~%~}~;~]"
                       "~:[The following derivations will be built:~%~{   ~a~%~}~;~]"
                       (length build))
-                  (null? build) build)
+                  (null? build) (map colorized-store-item build))
           (if display-download-size?
               (format (current-error-port)
                       ;; TRANSLATORS: "MB" is for "megabyte"; it should be
@@ -954,30 +1066,72 @@ check and report what is prerequisites are available for download."
                       (G_ "~:[~,1h MB will be downloaded:~%~{   ~a~%~}~;~]")
                       (null? download)
                       download-size
-                      (map substitutable-path download))
+                      (map (compose colorized-store-item substitutable-path)
+                           download))
               (format (current-error-port)
                       (N_ "~:[The following file will be downloaded:~%~{   ~a~%~}~;~]"
                           "~:[The following files will be downloaded:~%~{   ~a~%~}~;~]"
                           (length download))
                       (null? download)
-                      (map substitutable-path download)))
+                      (map (compose colorized-store-item substitutable-path)
+                           download)))
           (format (current-error-port)
                   (N_ "~:[The following graft will be made:~%~{   ~a~%~}~;~]"
                       "~:[The following grafts will be made:~%~{   ~a~%~}~;~]"
                       (length graft))
-                  (null? graft) graft)
+                  (null? graft) (map colorized-store-item graft))
           (format (current-error-port)
                   (N_ "~:[The following profile hook will be built:~%~{   ~a~%~}~;~]"
                       "~:[The following profile hooks will be built:~%~{   ~a~%~}~;~]"
                       (length hook))
-                  (null? hook) hook)))
+                  (null? hook) (map colorized-store-item hook))))
 
     (check-available-space installed-size)
 
-    (pair? build)))
+    (values (pair? build/full) (pair? download))))
 
 (define show-what-to-build*
   (store-lift show-what-to-build))
+
+(define* (build-notifier #:key (dry-run? #f) (use-substitutes? #t))
+  "Return a procedure suitable for 'with-build-handler' that, when
+'build-things' is called, invokes 'show-what-to-build' to display the build
+plan.  When DRY-RUN? is true, the 'with-build-handler' form returns without
+any build happening."
+  (define not-comma
+    (char-set-complement (char-set #\,)))
+
+  (define (read-derivation-from-file* item)
+    (catch 'system-error
+      (lambda ()
+        (read-derivation-from-file item))
+      (const #f)))
+
+  (lambda (continue store things mode)
+    (define inputs
+      ;; List of derivation inputs to build.  Filter out non-existent '.drv'
+      ;; files because the daemon transparently tries to substitute them.
+      (filter-map (match-lambda
+                    (((? derivation-path? drv) . output)
+                     (let ((drv     (read-derivation-from-file* drv))
+                           (outputs (string-tokenize output not-comma)))
+                       (and drv (derivation-input drv outputs))))
+                    ((? derivation-path? drv)
+                     (and=> (read-derivation-from-file* drv)
+                            derivation-input))
+                    (_
+                     #f))
+                  things))
+
+    (let-values (((build? download?)
+                  (show-what-to-build store inputs
+                                      #:dry-run? dry-run?
+                                      #:use-substitutes? use-substitutes?
+                                      #:mode mode)))
+
+      (unless (and (or build? download?)
+                   dry-run?)
+        (continue #t)))))
 
 (define (right-arrow port)
   "Return either a string containing the 'RIGHT ARROW' character, or an ASCII
@@ -994,36 +1148,77 @@ replacement if PORT is not Unicode-capable."
       (lambda (key . args)
         "->"))))
 
+(define* (tabulate rows #:key (initial-indent 0) (max-width 25)
+                   (inter-column " "))
+  "Return a list of strings where each string is a tabulated representation of
+an element of ROWS.  All the ROWS must be lists of the same number of cells.
+
+Add INITIAL-INDENT white space at the beginning of each row.  Ensure that
+columns are at most MAX-WIDTH characters wide.  Use INTER-COLUMN as a
+separator between subsequent columns."
+  (define column-widths
+    ;; List of column widths.
+    (let loop ((rows rows)
+               (widths '()))
+      (match rows
+        (((? null?) ...)
+         (reverse widths))
+        (((column rest ...) ...)
+         (loop rest
+               (cons (min (apply max (map string-length column))
+                          max-width)
+                     widths))))))
+
+  (define indent
+    (make-string initial-indent #\space))
+
+  (define (string-pad-right* str len)
+    (if (> (string-length str) len)
+        str
+        (string-pad-right str len)))
+
+  (map (lambda (row)
+         (string-trim-right
+          (string-append indent
+                         (string-join
+                          (map string-pad-right* row column-widths)
+                          inter-column))))
+       rows))
+
 (define* (show-manifest-transaction store manifest transaction
                                     #:key dry-run?)
   "Display what will/would be installed/removed from MANIFEST by TRANSACTION."
-  (define (package-strings name version output item)
-    (map (lambda (name version output item)
-           (format #f "   ~a~:[:~a~;~*~]\t~a\t~a"
-                   name
-                   (equal? output "out") output version
-                   (if (package? item)
-                       (package-output store item output)
-                       item)))
-         name version output item))
+  (define (package-strings names versions outputs)
+    (tabulate (zip (map (lambda (name output)
+                          (if (string=? output "out")
+                              name
+                              (string-append name ":" output)))
+                        names outputs)
+                   versions)
+              #:initial-indent 3))
 
   (define →                        ;an arrow that can be represented on stderr
     (right-arrow (current-error-port)))
 
-  (define (upgrade-string name old-version new-version output item)
-    (format #f "   ~a~:[:~a~;~*~]\t~a ~a ~a\t~a"
-            name (equal? output "out") output
-            old-version → new-version
-            (if (package? item)
-                (package-output store item output)
-                item)))
+  (define (upgrade-string names old-version new-version outputs)
+    (tabulate (zip (map (lambda (name output)
+                          (if (string=? output "out")
+                              name
+                              (string-append name ":" output)))
+                        names outputs)
+                   (map (lambda (old new)
+                          (if (string=? old new)
+                              (G_ "(dependencies or package changed)")
+                              (string-append old " " → " " new)))
+                        old-version new-version))
+              #:initial-indent 3))
 
   (let-values (((remove install upgrade downgrade)
                 (manifest-transaction-effects manifest transaction)))
     (match remove
       ((($ <manifest-entry> name version output item) ..1)
        (let ((len    (length name))
-             (remove (package-strings name version output item)))
+             (remove (package-strings name version output)))
          (if dry-run?
              (format (current-error-port)
                      (N_ "The following package would be removed:~%~{~a~%~}~%"
@@ -1040,8 +1235,8 @@ replacement if PORT is not Unicode-capable."
       (((($ <manifest-entry> name old-version)
          . ($ <manifest-entry> _ new-version output item)) ..1)
        (let ((len       (length name))
-             (downgrade (map upgrade-string
-                             name old-version new-version output item)))
+             (downgrade (upgrade-string name old-version new-version
+                                        output)))
          (if dry-run?
              (format (current-error-port)
                      (N_ "The following package would be downgraded:~%~{~a~%~}~%"
@@ -1058,8 +1253,9 @@ replacement if PORT is not Unicode-capable."
       (((($ <manifest-entry> name old-version)
          . ($ <manifest-entry> _ new-version output item)) ..1)
        (let ((len     (length name))
-             (upgrade (map upgrade-string
-                           name old-version new-version output item)))
+             (upgrade (upgrade-string name
+                                      old-version new-version
+                                      output)))
          (if dry-run?
              (format (current-error-port)
                      (N_ "The following package would be upgraded:~%~{~a~%~}~%"
@@ -1075,7 +1271,7 @@ replacement if PORT is not Unicode-capable."
     (match install
       ((($ <manifest-entry> name version output item _) ..1)
        (let ((len     (length name))
-             (install (package-strings name version output item)))
+             (install (package-strings name version output)))
          (if dry-run?
              (format (current-error-port)
                      (N_ "The following package would be installed:~%~{~a~%~}~%"
@@ -1096,6 +1292,23 @@ replacement if PORT is not Unicode-capable."
      (call-with-error-handling
       (lambda ()
         body ...)))))
+
+(define* (indented-string str indent
+                          #:key (initial-indent? #t))
+  "Return STR with each newline preceded by INDENT spaces.  When
+INITIAL-INDENT? is true, the first line is also indented."
+  (define indent-string
+    (make-list indent #\space))
+
+  (list->string
+   (string-fold-right (lambda (chr result)
+                        (if (eqv? chr #\newline)
+                            (cons chr (append indent-string result))
+                            (cons chr result)))
+                      '()
+                      (if initial-indent?
+                          (string-append (list->string indent-string) str)
+                          str))))
 
 (define* (fill-paragraph str width #:optional (column 0))
   "Fill STR such that each line contains at most WIDTH characters, assuming
@@ -1152,16 +1365,23 @@ converted to a space; sequences of more than one line break are preserved."
 ;;;
 
 (define %text-width
-  (make-parameter (terminal-columns)))
+  ;; '*line-width*' was introduced in Guile 2.2.7/3.0.1.  On older versions of
+  ;; Guile, monkey-patch 'wrap*' below.
+  (if (defined? '*line-width*)
+      (let ((parameter (fluid->parameter *line-width*)))
+        (parameter (terminal-columns))
+        parameter)
+      (make-parameter (terminal-columns))))
 
-(set! (@@ (texinfo plain-text) wrap*)
-      ;; XXX: Monkey patch this private procedure to let 'package->recutils'
-      ;; parameterize the fill of description field correctly.
-      (lambda strings
-        (let ((indent (fluid-ref (@@ (texinfo plain-text) *indent*))))
-          (fill-string (string-concatenate strings)
-                       #:line-width (%text-width) #:initial-indent indent
-                       #:subsequent-indent indent))))
+(unless (defined? '*line-width*)                  ;Guile < 2.2.7
+  (set! (@@ (texinfo plain-text) wrap*)
+    ;; XXX: Monkey patch this private procedure to let 'package->recutils'
+    ;; parameterize the fill of description field correctly.
+    (lambda strings
+      (let ((indent (fluid-ref (@@ (texinfo plain-text) *indent*))))
+        (fill-string (string-concatenate strings)
+                     #:line-width (%text-width) #:initial-indent indent
+                     #:subsequent-indent indent)))))
 
 (define (texi->plain-text str)
   "Return a plain-text representation of texinfo fragment STR."
@@ -1195,10 +1415,46 @@ followed by \"+ \", which makes for a valid multi-line field value in the
                       '()
                       str)))
 
+(define (hyperlink uri text)
+  "Return a string that denotes a hyperlink using an OSC escape sequence as
+documented at
+<https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda>."
+  (string-append "\x1b]8;;" uri "\x1b\\"
+                 text "\x1b]8;;\x1b\\"))
+
+(define* (supports-hyperlinks? #:optional (port (current-output-port)))
+  "Return true if PORT is a terminal that supports hyperlink escapes."
+  ;; Note that terminals are supposed to ignore OSC escapes they don't
+  ;; understand (this is the case of xterm as of version 349, for instance.)
+  ;; However, Emacs comint as of 26.3 does not ignore it and instead lets it
+  ;; through, hence the 'INSIDE_EMACS' special case below.
+  (and (isatty?* port)
+       (not (getenv "INSIDE_EMACS"))))
+
+(define* (file-hyperlink file #:optional (text file))
+  "Return TEXT with escapes for a hyperlink to FILE."
+  (hyperlink (string-append "file://" (gethostname)
+                            (encode-and-join-uri-path
+                             (string-split file #\/)))
+             text))
+
+(define (location->hyperlink location)
+  "Return a string corresponding to LOCATION, with escapes for a hyperlink."
+  (let ((str  (location->string location))
+        (file (if (string-prefix? "/" (location-file location))
+                  (location-file location)
+                  (search-path %load-path (location-file location)))))
+    (if file
+        (file-hyperlink file str)
+        str)))
+
 (define* (package->recutils p port #:optional (width (%text-width))
-                            #:key (extra-fields '()))
+                            #:key
+                            (hyperlinks? (supports-hyperlinks? port))
+                            (extra-fields '()))
   "Write to PORT a `recutils' record of package P, arranging to fit within
-WIDTH columns.  EXTRA-FIELDS is a list of symbol/value pairs to emit."
+WIDTH columns.  EXTRA-FIELDS is a list of symbol/value pairs to emit.  When
+HYPERLINKS? is true, emit hyperlink escape sequences when appropriate."
   (define width*
     ;; The available number of columns once we've taken into account space for
     ;; the initial "+ " prefix.
@@ -1226,7 +1482,8 @@ WIDTH columns.  EXTRA-FIELDS is a list of symbol/value pairs to emit."
             (((labels inputs . _) ...)
              (dependencies->recutils (filter package? inputs)))))
   (format port "location: ~a~%"
-          (or (and=> (package-location p) location->string)
+          (or (and=> (package-location p)
+                     (if hyperlinks? location->hyperlink location->string))
               (G_ "unknown")))
 
   ;; Note: Starting from version 1.6 or recutils, hyphens are not allowed in
@@ -1239,19 +1496,24 @@ WIDTH columns.  EXTRA-FIELDS is a list of symbol/value pairs to emit."
              (string-join (map license-name licenses)
                           ", "))
             ((? license? license)
-             (license-name license))
+             (let ((text (license-name license))
+                   (uri  (license-uri license)))
+               (if (and hyperlinks? uri (string-prefix? "http" uri))
+                   (hyperlink uri text)
+                   text)))
             (x
              (G_ "unknown"))))
   (format port "synopsis: ~a~%"
           (string-map (match-lambda
                         (#\newline #\space)
                         (chr       chr))
-                      (or (and=> (package-synopsis-string p) P_)
-                          "")))
+                      (or (package-synopsis-string p) "")))
   (format port "~a~%"
           (string->recutils
            (string-trim-right
             (parameterize ((%text-width width*))
+              ;; Call 'texi->plain-text' on the concatenated string to account
+              ;; for the width of "description:" in paragraph filling.
               (texi->plain-text
                (string-append "description: "
                               (or (and=> (package-description p) P_)
@@ -1281,33 +1543,37 @@ weight of this field in the final score.
 
 A score of zero means that OBJ does not match any of REGEXPS.  The higher the
 score, the more relevant OBJ is to REGEXPS."
-  (define (score str)
-    (define scores
-      (map (lambda (regexp)
-             (fold-matches regexp str 0
-                           (lambda (m score)
-                             (+ score
-                                (if (string=? (match:substring m) str)
-                                    5             ;exact match
-                                    1)))))
-           regexps))
+  (define (score regexp str)
+    (fold-matches regexp str 0
+                  (lambda (m score)
+                    (+ score
+                       (if (string=? (match:substring m) str)
+                           5             ;exact match
+                           1)))))
 
-    ;; Return zero if one of REGEXPS doesn't match.
-    (if (any zero? scores)
-        0
-        (reduce + 0 scores)))
+  (define (regexp->score regexp)
+    (let ((score-regexp (lambda (str) (score regexp str))))
+      (fold (lambda (metric relevance)
+              (match metric
+                ((field . weight)
+                 (match (field obj)
+                   (#f  relevance)
+                   ((? string? str)
+                    (+ relevance (* (score-regexp str) weight)))
+                   ((lst ...)
+                    (+ relevance (* weight (apply + (map score-regexp lst)))))))))
+            0 metrics)))
 
-  (fold (lambda (metric relevance)
-          (match metric
-            ((field . weight)
-             (match (field obj)
-               (#f  relevance)
-               ((? string? str)
-                (+ relevance (* (score str) weight)))
-               ((lst ...)
-                (+ relevance (* weight (apply + (map score lst)))))))))
-        0
-        metrics))
+  (let loop ((regexps regexps)
+             (total-score 0))
+    (match regexps
+      ((head . tail)
+       (let ((score (regexp->score head)))
+         ;; Return zero if one of PATTERNS doesn't match.
+         (if (zero? score)
+             0
+             (loop tail (+ total-score score)))))
+      (() total-score))))
 
 (define %package-metrics
   ;; Metrics used to compute the "relevance score" of a package against a set
@@ -1318,7 +1584,7 @@ score, the more relevant OBJ is to REGEXPS."
     (,(lambda (package)
         (filter (lambda (output)
                   (not (member output
-                               ;; Some common outpus shared by many packages.
+                               ;; Some common outputs shared by many packages.
                                '("out" "doc" "debug" "lib" "include" "bin"))))
                 (package-outputs package)))
      . 1)
@@ -1341,6 +1607,37 @@ score, the more relevant OBJ is to REGEXPS."
 zero means that PACKAGE does not match any of REGEXPS."
   (relevance package regexps %package-metrics))
 
+(define* (call-with-paginated-output-port proc
+                                          #:key (less-options "FrX"))
+  (if (isatty?* (current-output-port))
+      ;; Set 'LESS' so that 'less' exits if everything fits on the screen (F),
+      ;; lets ANSI escapes through (r), does not send the termcap
+      ;; initialization string (X).  Set it unconditionally because some
+      ;; distros set it to something that doesn't work here.
+      ;;
+      ;; For things that produce long lines, such as 'guix processes', use 'R'
+      ;; instead of 'r': this strips hyperlinks but allows 'less' to make a
+      ;; good estimate of the line length.
+      (let ((pager (with-environment-variables `(("LESS" ,less-options))
+                     (open-pipe* OPEN_WRITE
+                                 (or (getenv "GUIX_PAGER") (getenv "PAGER")
+                                     "less")))))
+        (dynamic-wind
+          (const #t)
+          (lambda () (proc pager))
+          (lambda () (close-pipe pager))))
+      (proc (current-output-port))))
+
+(define-syntax with-paginated-output-port
+  (syntax-rules ()
+    "Evaluate EXP... with PORT bound to a port that talks to the pager if
+standard output is a tty, or with PORT set to the current output port."
+    ((_ port exp ... #:less-options opts)
+     (call-with-paginated-output-port (lambda (port) exp ...)
+                                      #:less-options opts))
+    ((_ port exp ...)
+     (call-with-paginated-output-port (lambda (port) exp ...)))))
+
 (define* (display-search-results matches port
                                  #:key
                                  (command "guix search")
@@ -1357,27 +1654,17 @@ them.  If PORT is a terminal, print at most a full screen of results."
   (define (line-count str)
     (string-count str #\newline))
 
-  (let loop ((matches matches))
-    (match matches
-      (((package . score) rest ...)
-       (let ((text (call-with-output-string
-                     (lambda (port)
-                       (print package port
-                              #:extra-fields
-                              `((relevance . ,score)))))))
-         (if (and max-rows
-                  (> (port-line port) first-line) ;print at least one result
-                  (> (+ 4 (line-count text) (port-line port))
-                     max-rows))
-             (unless (null? rest)
-               (display-hint (format #f (G_ "Run @code{~a ... | less} \
-to view all the results.")
-                                     command)))
-             (begin
-               (display text port)
-               (loop rest)))))
-      (()
-       #t))))
+  (with-paginated-output-port paginated
+    (let loop ((matches matches))
+      (match matches
+        (((package . score) rest ...)
+         (let* ((links? (supports-hyperlinks? port)))
+           (print package paginated
+                  #:hyperlinks? links?
+                  #:extra-fields `((relevance . ,score)))
+           (loop rest)))
+        (()
+         #t)))))
 
 
 (define (string->generations str)
@@ -1519,24 +1806,27 @@ DURATION-RELATION with the current time."
          filter-by-duration)
         (else
          (raise
-          (condition (&message
-                      (message (format #f (G_ "invalid syntax: ~a~%")
-                                       str))))))))
+          (formatted-message (G_ "invalid syntax: ~a~%") str)))))
 
 (define (display-generation profile number)
   "Display a one-line summary of generation NUMBER of PROFILE."
   (unless (zero? number)
-    (let ((header (format #f (highlight (G_ "Generation ~a\t~a")) number
-                          (date->string
-                           (time-utc->date
-                            (generation-time profile number))
-                           ;; TRANSLATORS: This is a format-string for date->string.
-                           ;; Please choose a format that corresponds to the
-                           ;; usual way of presenting dates in your locale.
-                           ;; See https://www.gnu.org/software/guile/manual/html_node/SRFI_002d19-Date-to-string.html
-                           ;; for details.
-                           (G_ "~b ~d ~Y ~T"))))
-          (current (generation-number profile)))
+    (let* ((file   (generation-file-name profile number))
+           (link   (if (supports-hyperlinks?)
+                       (cut file-hyperlink file <>)
+                       identity))
+           (header (format #f (link (highlight (G_ "Generation ~a\t~a")))
+                           number
+                           (date->string
+                            (time-utc->date
+                             (generation-time profile number))
+                            ;; TRANSLATORS: This is a format-string for date->string.
+                            ;; Please choose a format that corresponds to the
+                            ;; usual way of presenting dates in your locale.
+                            ;; See https://www.gnu.org/software/guile/manual/html_node/SRFI_002d19-Date-to-string.html
+                            ;; for details.
+                            (G_ "~b ~d ~Y ~T"))))
+           (current (generation-number profile)))
       (if (= number current)
           ;; TRANSLATORS: The word "current" here is an adjective for
           ;; "Generation", as in "current generation".  Use the appropriate
@@ -1569,6 +1859,26 @@ DURATION-RELATION with the current time."
       (newline)))
 
   (display-diff profile gen1 gen2))
+
+(define (profile-lock-handler profile errno . _)
+  "Handle failure to acquire PROFILE's lock."
+  ;; NFS mounts can return ENOLCK.  When that happens, there's not much that
+  ;; can be done, so warn the user and keep going.
+  (if (= errno ENOLCK)
+      (warning (G_ "cannot lock profile ~a: ~a~%")
+               profile (strerror errno))
+      (leave (G_ "profile ~a is locked by another process~%")
+             profile)))
+
+(define profile-lock-file
+  (cut string-append <> ".lock"))
+
+(define-syntax-rule (with-profile-lock profile exp ...)
+  "Grab PROFILE's lock and evaluate EXP...  Call 'leave' if the lock is
+already taken."
+  (with-file-lock/no-wait (profile-lock-file profile)
+    (cut profile-lock-handler profile <...>)
+    exp ...))
 
 (define (display-profile-content profile number)
   "Display the packages in PROFILE, generation NUMBER, in a human-readable
@@ -1698,7 +2008,7 @@ found."
 (define (run-guix . args)
   "Run the 'guix' command defined by command line ARGS.
 Unlike 'guix-main', this procedure assumes that locale, i18n support,
-and signal handling has already been set up."
+and signal handling have already been set up."
   (define option? (cut string-prefix? "-" <>))
 
   ;; The default %LOAD-EXTENSIONS includes the empty string, which doubles the
@@ -1731,5 +2041,9 @@ and signal handling has already been set up."
 (define (guix-main arg0 . args)
   (initialize-guix)
   (apply run-guix args))
+
+;;; Local Variables:
+;;; eval: (put 'guard* 'scheme-indent-function 2)
+;;; End:
 
 ;;; ui.scm ends here

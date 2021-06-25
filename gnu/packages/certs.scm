@@ -76,7 +76,7 @@
 (define-public nss-certs
   (package
     (name "nss-certs")
-    (version "3.45")
+    (version "3.52.1")
     (source (origin
               (method url-fetch)
               (uri (let ((version-with-underscores
@@ -87,7 +87,7 @@
                       "nss-" version ".tar.gz")))
               (sha256
                (base32
-                "12sfq9xvpwpc22qnjsg1if1lmchiy33byrh92wn91phz7li0abqi"))))
+                "0y4jb9095f7bbgw7d7kvzm4c3g4p5i6y68fwhb8wlkpb7b1imj5w"))))
     (build-system gnu-build-system)
     (outputs '("out"))
     (native-inputs
@@ -185,7 +185,7 @@ taken from the NSS package and thus ultimately from the Mozilla project.")
            (uri "https://letsencrypt.org/certs/isrgrootx1.pem")
            (sha256
             (base32
-             "0zycy85ff9ga53z1q03df89ka9iihb9p8bjhw056rq2y4rn3b6ac"))))
+             "1la36n2f31j9s03v847ig6ny9lr875q3g7smnq33dcsmf2i5gd92"))))
        ;; "Let’s Encrypt Authority X3", the active Let's Encrypt intermediate
        ;; certificate.
        ("letsencryptauthorityx3.pem"
@@ -194,7 +194,7 @@ taken from the NSS package and thus ultimately from the Mozilla project.")
            (uri "https://letsencrypt.org/certs/letsencryptauthorityx3.pem")
            (sha256
             (base32
-             "1kvac1dhm1d02bhrfj6l1cz1dpldz6ishb78zzvy8245zgvh7pdn"))))
+             "100lxxvqv4fj563bm03zzk5r36hq5jx9nnrajzs38g825c5k0cg2"))))
        ;; "Let’s Encrypt Authority X4", the backup Let's Encrypt intermediate
        ;; certificate.  This will be used for disaster recovery and will only be
        ;; used should Let's Encrypt lose the ability to issue with "Let’s
@@ -205,7 +205,7 @@ taken from the NSS package and thus ultimately from the Mozilla project.")
            (uri "https://letsencrypt.org/certs/letsencryptauthorityx4.pem")
            (sha256
             (base32
-             "0giiixknr0mls2ir6qqzb42mq7x9a7vz79gbn7fjszbf87pqhpzm"))))))
+             "0d5256gwf73drq6q6jala28rfzhrgbk5pjfq27vc40ly91pdyh8m"))))))
     (home-page "https://letsencrypt.org/certificates/")
     (synopsis "Let's Encrypt root and intermediate certificates")
     (description "This package provides a certificate store containing only the

@@ -1,6 +1,6 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2019 David Thompson <davet@gnu.org>
-;;; Copyright © 2019 Jakob L. Kreuze <zerodaysfordays@sdf.lonestar.org>
+;;; Copyright © 2019 Jakob L. Kreuze <zerodaysfordays@sdf.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -23,7 +23,7 @@
   #:use-module (guix monads)
   #:use-module (guix records)
   #:use-module (guix store)
-  #:use-module ((guix utils) #:select (source-properties->location))
+  #:use-module ((guix diagnostics) #:select (source-properties->location))
   #:use-module (srfi srfi-35)
   #:export (environment-type
             environment-type?
@@ -33,7 +33,6 @@
 
             machine
             machine?
-            this-machine
 
             machine-operating-system
             machine-environment
@@ -89,14 +88,17 @@
 ;;; Declarations for machines in a deployment.
 ;;;
 
-(define-record-type* <machine> machine
-  make-machine
+(define-record-type* <machine> machine make-machine
   machine?
-  this-machine
-  (operating-system machine-operating-system) ; <operating-system>
+  (operating-system %machine-operating-system); <operating-system>
   (environment      machine-environment)      ; symbol
   (configuration    machine-configuration     ; configuration object
                     (default #f)))            ; specific to environment
+
+(define (machine-operating-system machine)
+  "Return the operating system of MACHINE."
+  (operating-system-with-provenance
+   (%machine-operating-system machine)))
 
 (define (machine-display-name machine)
   "Return the host-name identifying MACHINE."

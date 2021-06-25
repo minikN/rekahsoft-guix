@@ -1,12 +1,13 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2015 Taylan Ulrich Bayırlı/Kammer <taylanbayirli@gmail.com>
-;;; Copyright © 2016, 2018 Ricardo Wurmus <rekado@elephly.net>
+;;; Copyright © 2016, 2018, 2020 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2016 Theodoros Foradis <theodoros@foradis.org>
 ;;; Copyright © 2016 Danny Milosavljevic <dannym@scratchpost.org>
 ;;; Copyright © 2017 Rene Saavedra <rennes@openmailbox.org>
 ;;; Copyright © 2017 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2017 Thomas Danckaert <post@thomasdanckaert.be>
-;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2019 Arun Isaac <arunisaac@systemreboot.net>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -34,6 +35,7 @@
   #:use-module (gnu packages)
   #:use-module (gnu packages compression)
   #:use-module (gnu packages databases)
+  #:use-module (gnu packages freedesktop)
   #:use-module (gnu packages gl)
   #:use-module (gnu packages gstreamer)
   #:use-module (gnu packages gtk)
@@ -42,6 +44,7 @@
   #:use-module (gnu packages video)
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages python)
+  #:use-module (gnu packages python-xyz)
   #:use-module (gnu packages sdl)
   #:use-module (gnu packages webkit)
   #:use-module (gnu packages xorg)
@@ -50,7 +53,7 @@
 (define-public wxwidgets
   (package
     (name "wxwidgets")
-    (version "3.0.4")
+    (version "3.0.5.1")
     (source
      (origin
        (method url-fetch)
@@ -58,20 +61,21 @@
                            "releases/download/v" version
                            "/wxWidgets-" version ".tar.bz2"))
        (sha256
-        (base32 "1w7pgfqjab7n84lc4aarydl3g55d1hdgl2ilwml766r6inc7y5cn"))))
+        (base32 "01y89999jw5q7njrhxajincx7lydls6yq37ikazjryssrxrnw3s4"))))
     (build-system glib-or-gtk-build-system)
     (inputs
      `(("glu" ,glu)
        ;; XXX gstreamer-0.10 builds fail
        ;; ("gstreamer" ,gstreamer-0.10)
        ("gtk" ,gtk+)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libmspack" ,libmspack)
        ("libsm" ,libsm)
        ("libtiff" ,libtiff)
        ("mesa" ,mesa)
        ("webkitgtk" ,webkitgtk)
-       ("sdl" ,sdl)))
+       ("sdl" ,sdl)
+       ("xdg-utils" ,xdg-utils)))
     (native-inputs
      `(("pkg-config" ,pkg-config)))
     (arguments
@@ -89,7 +93,15 @@
        (list (string-append "LDFLAGS=-Wl,-rpath="
                             (assoc-ref %outputs "out") "/lib"))
        ;; No 'check' target.
-       #:tests? #f))
+       #:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'refer-to-inputs
+           (lambda _
+             (substitute* "src/unix/utilsx11.cpp"
+               (("wxExecute\\(xdg_open \\+")
+                (string-append "wxExecute(\"" (which "xdg-open") "\"")))
+             #t)))))
     (home-page "https://www.wxwidgets.org/")
     (synopsis "Widget toolkit for creating graphical user interfaces")
     (description
@@ -112,7 +124,7 @@ and many other languages.")
         (base32 "1gjs9vfga60mk4j4ngiwsk9h6c7j22pw26m3asxr1jwvqbr8kkqk"))))
     (inputs
      `(("gtk" ,gtk+-2)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libtiff" ,libtiff)
        ("libmspack" ,libmspack)
        ("sdl" ,sdl)
@@ -124,7 +136,14 @@ and many other languages.")
        (list (string-append "LDFLAGS=-Wl,-rpath="
                             (assoc-ref %outputs "out") "/lib"))
        ;; No 'check' target.
-       #:tests? #f))))
+       #:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'ignore-narrowing-errors
+           (lambda _
+             (substitute* "configure"
+               (("-Wall") "-Wall -Wno-narrowing"))
+             #t)))))))
 
 (define-public wxwidgets-gtk2
   (package (inherit wxwidgets)
@@ -143,7 +162,7 @@ and many other languages.")
             (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/wxWidgets/wxWidgets.git")
+                    (url "https://github.com/wxWidgets/wxWidgets")
                     (commit (string-append "v" version))))
               (file-name (git-file-name "wxwidgets" version))
               (sha256
@@ -164,6 +183,66 @@ and many other languages.")
                         "gtk+"
                         (package-inputs wxwidgets-3.1))))
            (name "wxwidgets-gtk2")))
+
+(define-public python-wxpython
+  (package
+    (name "python-wxpython")
+    (version "4.0.7.post1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "wxPython" version))
+       (sha256
+        (base32
+         "1jppcr3n428m8pgwb9q3g0iiqydxd451ncri4njk8b53xsiflhys"))
+       (modules '((guix build utils)))
+       (snippet
+        '(begin
+           ;; Remove bundled wxwidgets
+           (delete-file-recursively "ext/wxWidgets")
+           #t))))
+    (build-system python-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-before 'build 'configure
+           (lambda* (#:key inputs #:allow-other-keys)
+             (setenv "WXWIN" (assoc-ref inputs "wxwidgets"))
+             ;; Copy the waf executable to the source directory since it needs
+             ;; to be in a writable directory.
+             (copy-file (string-append (assoc-ref inputs "python-waf") "/bin/waf")
+                        "bin/waf")
+             (setenv "WAF" "bin/waf")
+             ;; The build script tries to copy license files from the
+             ;; wxwidgets source tree. Prevent it.
+             (substitute* "wscript"
+               (("updateLicenseFiles\\(cfg\\)" all)
+                (string-append "#" all)))
+             ;; The build script tries to write to demo/version.py. So, we set
+             ;; correct write permissions.
+             (chmod "demo/version.py" #o644)
+             ;; Build only the python bindings, not wxwidgets also.
+             (substitute* "setup.py"
+               (("'build']") "'build_py', '--use_syswx']"))
+             #t)))))
+    (inputs
+     `(("gtk+" ,gtk+)
+       ("wxwidgets" ,wxwidgets)))
+    (native-inputs
+     `(("pkg-config" ,pkg-config)
+       ("python-waf" ,python-waf)))
+    (propagated-inputs
+     `(("python-numpy" ,python-numpy)
+       ("python-pillow" ,python-pillow)
+       ("python-six" ,python-six)))
+    (home-page "https://wxpython.org/")
+    (synopsis "Cross platform GUI toolkit for Python")
+    (description "wxPython is a cross-platform GUI toolkit for the Python
+programming language.  It is implemented as a set of Python extension modules
+that wrap the GUI components of the popular wxWidgets cross platform C++
+library.  In most cases, wxPython uses the native widgets on each platform to
+provide a 100% native look and feel for the application.")
+    (license l:wxwindows3.1+)))
 
 (define-public python2-wxpython
   (package
@@ -234,7 +313,7 @@ and many other languages.")
        ("wxwidgets" ,wxwidgets-gtk2)))
     (synopsis "Python 2 Bindings for wxWidgets")
     (description "@code{wxpython} provides Python 2 bindings for wxWidgets.")
-    (home-page "http://wxpython.org/")
+    (home-page "https://wxpython.org/")
     (license (package-license wxwidgets))))
 
 (define-public wxsvg

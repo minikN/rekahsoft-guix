@@ -1,9 +1,15 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2016, 2018 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2016, 2017, 2018, 2019 Ricardo Wurmus <rekado@elephly.net>
-;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018, 2019 Pierre Neidhardt <mail@ambrevar.xyz>
 ;;; Copyright © 2019 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2019 Guillaume Le Vaillant <glv@posteo.net>
+;;; Copyright © 2019 Andreas Enge <andreas@enge.fr>
+;;; Copyright © 2020 Jan (janneke) Nieuwenhuizen <janneke@gnu.org>
+;;; Copyright © 2020 Marius Bakke <marius@gnu.org>
+;;; Copyright @ 2020 Katherine Cox-Buday <cox.katherine.e@gmail.com>
+;;; Copyright © 2020 Maxim Cournoyer <maxim.cournoyer@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -37,6 +43,7 @@
   #:use-module (gnu packages multiprecision)
   #:use-module (gnu packages pcre)
   #:use-module (gnu packages python)
+  #:use-module (gnu packages python-xyz)
   #:use-module (gnu packages autotools)
   #:use-module (gnu packages gettext)
   #:use-module (gnu packages pkg-config)
@@ -78,6 +85,13 @@
                                      `("--triplet=arm-linux-gnueabihf")
                                      '()))
        #:test-target "test"))
+    (native-search-paths
+     (list (search-path-specification
+            (variable "CPATH")
+            (files '("include")))
+           (search-path-specification
+            (variable "LIBRARY_PATH")
+            (files '("lib" "lib64")))))
     ;; Fails to build on MIPS: "Unsupported CPU"
     (supported-systems (delete "mips64el-linux" %supported-systems))
     (synopsis "Tiny and fast C compiler")
@@ -89,66 +103,6 @@ standard.")
     ;; An attempt to re-licence tcc under the Expat licence is underway but not
     ;; (if ever) complete.  See the RELICENSING file for more information.
     (license license:lgpl2.1+)))
-
-(define-public tcc-wrapper
-  (package
-    (inherit tcc)
-    (name "tcc-wrapper")
-    (build-system trivial-build-system)
-    (native-inputs '())
-    (inputs `(("tcc" ,tcc)
-              ("guile" ,guile-2.2)))
-
-    ;; By default TCC does not honor any search path environment variable.
-    ;; This wrapper adds them.
-    ;;
-    ;; FIXME: TCC includes its own linker so our 'ld-wrapper' hack to set the
-    ;; RUNPATH is ineffective here.  We should modify TCC itself.
-    (native-search-paths
-     (list (search-path-specification
-            (variable "TCC_CPATH")
-            (files '("include")))
-           (search-path-specification
-            (variable "TCC_LIBRARY_PATH")
-            (files '("lib" "lib64")))))
-
-    (arguments
-     '(#:builder
-       (let* ((out   (assoc-ref %outputs "out"))
-              (bin   (string-append out "/bin"))
-              (tcc   (assoc-ref %build-inputs "tcc"))
-              (guile (assoc-ref %build-inputs "guile")))
-         (mkdir out)
-         (mkdir bin)
-         (call-with-output-file (string-append bin "/cc")
-           (lambda (port)
-             (format port "#!~a/bin/guile --no-auto-compile~%!#~%" guile)
-             (write
-              `(begin
-                 (use-modules (ice-9 match)
-                              (srfi srfi-26))
-
-                 (define (split path)
-                   (string-tokenize path (char-set-complement
-                                          (char-set #\:))))
-
-                 (apply execl ,(string-append tcc "/bin/tcc")
-                        ,(string-append tcc "/bin/tcc") ;argv[0]
-                        (append (cdr (command-line))
-                                (match (getenv "TCC_CPATH")
-                                  (#f '())
-                                  (str
-                                   (map (cut string-append "-I" <>)
-                                        (split str))))
-                                (match (getenv "TCC_LIBRARY_PATH")
-                                  (#f '())
-                                  (str
-                                   (map (cut string-append "-L" <>)
-                                        (split str)))))))
-              port)
-             (chmod port #o777)))
-         #t)))
-    (synopsis "Wrapper providing the 'cc' command for TCC")))
 
 (define-public pcc
   (package
@@ -183,7 +137,7 @@ compiler while still keeping it small, simple, fast and understandable.")
 (define-public libbytesize
   (package
     (name "libbytesize")
-    (version "1.4")
+    (version "2.2")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -191,52 +145,17 @@ compiler while still keeping it small, simple, fast and understandable.")
                     "download/" version "/libbytesize-" version ".tar.gz"))
               (sha256
                (base32
-                "0bbqzln1nhjxl71aydq9k4jg3hvki9lqsb4w10s1i27jgibxqkdv"))
-              (modules '((guix build utils)))
-              (snippet
-               '(begin
-                  ;; This Makefile hard-codes MSGMERGE et al. instead of
-                  ;; honoring what 'configure' detected.  Fix that.
-                  (substitute* "po/Makefile.in"
-                    (("^MSGMERGE = msgmerge")
-                     "MSGMERGE = @MSGMERGE@\n"))
-                  #t))))
+                "1aivwypmnqcaj2230pifvf3jcgl5chja8rspkxf0j3480asm8g5r"))))
     (build-system gnu-build-system)
     (arguments
-     ;; When running "make", the POT files are built with the build time as
-     ;; their "POT-Creation-Date".  Later on, "make" notices that .pot
-     ;; files were updated and goes on to run "msgmerge"; as a result, the
-     ;; non-deterministic POT-Creation-Date finds its way into .po files,
-     ;; and then in .gmo files.  To avoid that, simply make sure 'msgmerge'
-     ;; never runs.  See <https://bugs.debian.org/792687>.
-     '(#:configure-flags '("ac_cv_path_MSGMERGE=true")
-
-       #:phases (modify-phases %standard-phases
-                  (add-after 'configure 'create-merged-po-files
-                    (lambda _
-                      ;; Create "merged PO" (.mpo) files so that 'msgmerge'
-                      ;; doesn't need to run.
-                      (for-each (lambda (po-file)
-                                  (let ((merged-po
-                                         (string-append (dirname po-file) "/"
-                                                        (basename po-file
-                                                                  ".po")
-                                                        ".mpo")))
-                                    (copy-file po-file merged-po)))
-                                (find-files "po" "\\.po$"))
-                      #t)))
-
-       ;; One test fails because busctl (systemd only?) and python2-pocketlint
-       ;; are missing.  Should we fix it, we would need the "python-2" ,
-       ;; "python2-polib" and "python2-six" native-inputs.
-       #:tests? #f))
+     `(#:tests? #f))
     (native-inputs
      `(("gettext" ,gettext-minimal)
        ("pkg-config" ,pkg-config)
        ("python" ,python)))
     (inputs
      `(("mpfr" ,mpfr)
-       ("pcre" ,pcre)))
+       ("pcre2" ,pcre2)))
     (home-page "https://github.com/storaged-project/libbytesize")
     (synopsis "Tiny C library for working with arbitrary big sizes in bytes")
     (description
@@ -316,3 +235,241 @@ Its three main components are:
      "The purpose of libfixposix is to offer replacements for parts of POSIX
 whose behaviour is inconsistent across *NIX flavours.")
     (license license:boost1.0)))
+
+(define-public libhx
+  (package
+    (name "libhx")
+    (version "3.25")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "mirror://sourceforge/libhx/libHX/"
+                           "libHX-" version ".tar.xz"))
+       (sha256
+        (base32 "12avn16f8aqb0cq6jplz0sv7rh6f07m85dwc8dasnnwsvijwbpbj"))))
+    (build-system gnu-build-system)
+    (home-page "http://libhx.sourceforge.net")
+    (synopsis "C library with common data structures and functions")
+    (description
+     "This is a C library (with some C++ bindings available) that provides data
+structures and functions commonly needed, such as maps, deques, linked lists,
+string formatting and autoresizing, option and config file parsing, type
+checking casts and more.")
+    (license license:lgpl2.1+)))
+
+(define-public packcc
+  (package
+    (name "packcc")
+    ;; We need a few fixes on top of the latest release to prevent test
+    ;; failures in Universal Ctags.
+    (version "1.2.5-19-g58d1b9d")
+    (home-page "https://github.com/enechaev/packcc")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url home-page)
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0biyv835jlk43fvmmd3p8jafs7k2iw9qlaj37hvsl604ai6rd5aj"))))
+    (build-system gnu-build-system)
+    (arguments
+     '(#:tests? #f                      ;no tests
+       #:make-flags '("-DUSE_SYSTEM_STRNLEN=1")
+       #:phases (modify-phases %standard-phases
+                  ;; The project consists of a single source file and has
+                  ;; no actual build system, so we need to do it manually.
+                  (delete 'configure)
+                  (replace 'build
+                    (lambda* (#:key make-flags #:allow-other-keys)
+                      (apply invoke "gcc" "-o" "packcc" "packcc.c"
+                                      make-flags)))
+                  (replace 'install
+                    (lambda* (#:key outputs #:allow-other-keys)
+                      (let ((out (assoc-ref outputs "out")))
+                        (install-file "packcc" (string-append out "/bin"))
+                        (install-file "README.md"
+                                      (string-append out "/share/doc/packcc"))
+                        #t))))))
+    (synopsis "Packrat parser generator for C")
+    (description
+     "PackCC is a packrat parser generator for the C programming language.
+Its main features are:
+@itemize
+@item Generates a parser in C from a grammar described in a PEG.
+@item Gives your parser great efficiency by packrat parsing.
+@item Supports direct and indirect left-recursive grammar rules.
+@end itemize
+The grammar of your parser can be described in a @acronym{PEG, Parsing
+Expression Grammar}.  The PEG is a top-down parsing language, and is similar
+to the regular-expression grammar.  The PEG does not require tokenization to
+be a separate step, and tokenization rules can be written in the same way as
+any other grammar rules.")
+    (license license:expat)))
+
+(define-public sparse
+  (package
+    (name "sparse")
+    (version "0.6.2")
+    (source (origin
+              (method url-fetch)
+              (uri
+               (string-append "mirror://kernel.org/software/devel/sparse/dist/"
+                              "sparse-"  version ".tar.xz"))
+              (sha256
+               (base32
+                "1z11chawwcmf5xxx5v52cj7wrr3warz6q5wlcjvxpif1jbga172i"))))
+    (build-system gnu-build-system)
+    (inputs `(("perl" ,perl)))
+    (arguments
+     '(#:make-flags `(,(string-append "PREFIX=" (assoc-ref %outputs "out")))
+       #:phases (modify-phases %standard-phases
+                  (delete 'configure)
+                  (add-after 'unpack 'patch-cgcc
+                    (lambda _
+                      (substitute* "cgcc"
+                        (("'cc'") (string-append "'" (which "gcc") "'")))
+                      #t)))))
+    (synopsis "Semantic C parser for Linux development")
+    (description
+     "Sparse is a semantic parser for C and is required for Linux development.
+It provides a compiler frontend capable of parsing most of ANSI C as well as
+many GCC extensions, and a collection of sample compiler backends, including a
+static analyzer also called @file{sparse}.  Sparse provides a set of
+annotations designed to convey semantic information about types, such as what
+address space pointers point to, or what locks a function acquires or
+releases.")
+    (home-page "https://sparse.wiki.kernel.org/index.php/Main_Page")
+    (license license:expat)))
+
+(define-public libestr
+  (package
+    (name "libestr")
+    (version "0.1.11")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/rsyslog/libestr")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32
+         "1ca4rj90c0dn7kqpbcchkflxjw88a7rxcnwbr0gply4a28i01nd8"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         ;; autogen.sh calls configure at the end of the script.
+         (replace 'bootstrap
+           (lambda _ (invoke "autoreconf" "-vfi"))))))
+    (native-inputs
+     `(("autoconf" ,autoconf)
+       ("automake" ,automake)
+       ("pkg-config" ,pkg-config)
+       ("libtool" ,libtool)))
+    (home-page "https://github.com/rsyslog/libestr")
+    (synopsis "Helper functions for handling strings")
+    (description
+     "This C library contains some essential string manipulation functions and
+more, like escaping special characters.")
+    (license license:lgpl2.1+)))
+
+(define-public libfastjson
+  (package
+    (name "libfastjson")
+    (version "0.99.8")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/rsyslog/libfastjson")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32
+         "0qhs0g9slj3p0v2z4s3cnsx44msrlb4k78ljg7714qiziqbrbwyl"))))
+    (build-system gnu-build-system)
+    (native-inputs
+     `(("autoconf" ,autoconf)
+       ("automake" ,automake)
+       ("libtool" ,libtool)))
+    (home-page "https://github.com/rsyslog/libfastjson")
+    (synopsis "Fast JSON library for C")
+    (description
+     "libfastjson is a fork from json-c aiming to provide: a small library
+with essential JSON handling functions, sufficiently good JSON support (not
+100% standards compliant), and very fast processing.")
+    (license license:expat)))
+
+(define-public liblogging
+  (package
+    (name "liblogging")
+    (version "1.0.6")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/rsyslog/liblogging")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32
+         "1l32m0y65svf5vxsgw935jnqs6842rcqr56dmzwqvr00yfrjhjkp"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         ;; autogen.sh calls configure at the end of the script.
+         (replace 'bootstrap
+           (lambda _ (invoke "autoreconf" "-vfi"))))))
+    (native-inputs
+     `(("autoconf" ,autoconf)
+       ("automake" ,automake)
+       ("pkg-config" ,pkg-config)
+       ("libtool" ,libtool)
+       ;; For rst2man.py
+       ("python-docutils" ,python-docutils)))
+    (home-page "https://github.com/rsyslog/liblogging")
+    (synopsis "Easy to use and lightweight signal-safe logging library")
+    (description
+     "Liblogging is an easy to use library for logging.  It offers an enhanced
+replacement for the syslog() call, but retains its ease of use.")
+    (license license:bsd-2)))
+
+(define-public unifdef
+  (package
+    (name "unifdef")
+    (version "2.12")
+    (source (origin
+              (method url-fetch)
+              ;; https://dotat.at/prog/unifdef/unifdef-2.12.tar.xz
+              (uri (string-append "https://dotat.at/prog/" name "/"
+                                  name "-" version ".tar.xz"))
+              (sha256
+               (base32
+                "00647bp3m9n01ck6ilw6r24fk4mivmimamvm4hxp5p6wxh10zkj3"))
+              (modules '((guix build utils)))
+              (snippet
+               '(begin (delete-file-recursively "FreeBSD")
+                       (delete-file-recursively "win32")
+                       #t))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:phases (modify-phases %standard-phases
+                  (delete 'configure))
+       #:make-flags (list "CC=gcc" (string-append "prefix=" %output))
+       #:tests? #f))                    ;no test suite
+    (native-inputs
+     `(("perl" ,perl)))
+    (home-page "https://dotat.at/prog/unifdef/")
+    (synopsis "Utility to selectively processes conditional C preprocessor")
+    (description "The @command{unifdef} utility selectively processes
+conditional C preprocessor @code{#if} and @code{#ifdef} directives.  It
+removes from a file both the directives and the additional text that they
+delimit, while otherwise leaving the file alone.  It can be useful for
+avoiding distractions when studying code that uses @code{#ifdef} heavily for
+portability.")
+    (license (list license:bsd-2        ;all files except...
+                   license:bsd-3))))    ;...the unidef.1 manual page

@@ -1,6 +1,7 @@
 # GNU Guix --- Functional package management for GNU
 # Copyright © 2012, 2013, 2014, 2015, 2017, 2019 Ludovic Courtès <ludo@gnu.org>
 # Copyright © 2013 Nikita Karetnikov <nikita@karetnikov.org>
+# Copyright © 2020 Simon Tournier <zimon.toutoune@gmail.com>
 #
 # This file is part of GNU Guix.
 #
@@ -57,7 +58,7 @@ test -L "$profile" && test -L "$profile-1-link"
 ! test -f "$profile-2-link"
 test -f "$profile/bin/guile"
 
-boot_make="(@@ (gnu packages commencement) gnu-make-boot0)"
+boot_make="(@ (guix tests) gnu-make-for-tests)"
 boot_make_drv="`guix build -e "$boot_make" | grep -v -e -debug`"
 guix package --bootstrap -p "$profile" -i "$boot_make_drv"
 test -L "$profile-2-link"
@@ -77,6 +78,17 @@ case "x$installed" in
 esac
 
 test "`guix package -p "$profile" -I 'g.*e' | cut -f1`" = "guile-bootstrap"
+
+guix package --bootstrap -p "$profile_alt" -i gcc-bootstrap
+installed="`guix package -p "$profile" -p "$profile_alt" -I | cut -f1 | xargs echo | sort`"
+case "x$installed" in
+    "gcc-bootstrap guile-bootstrap make-boot0")
+        true;;
+    "*")
+        false;;
+esac
+test "`guix package -p "$profile_alt" -p "$profile" -I | wc -l`" = "3"
+rm "$profile_alt"
 
 # List generations.
 test "`guix package -p "$profile" -l | cut -f1 | grep guile | head -n1`" \

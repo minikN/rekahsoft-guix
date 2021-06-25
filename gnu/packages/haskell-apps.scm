@@ -1,7 +1,7 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2015 Siniša Biđin <sinisa@bidin.eu>
 ;;; Copyright © 2015, 2017, 2018 Ricardo Wurmus <rekado@elephly.net>
-;;; Copyright © 2016, 2017, 2018 ng0 <ng0@n0.is>
+;;; Copyright © 2016, 2017, 2018 Nikita <nikita@n0.is>
 ;;; Copyright © 2017 Danny Milosavljevic <dannym@scratchpost.org>
 ;;; Copyright © 2017, 2018 Alex Vong <alexvong1995@gmail.com>
 ;;; Copyright © 2017, 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
@@ -9,8 +9,12 @@
 ;;; Copyright © 2018 Arun Isaac <arunisaac@systemreboot.net>
 ;;; Copyright © 2016, 2017 Leo Famulari <leo@famulari.name>
 ;;; Copyright © 2015 Paul van der Walt <paul@denknerd.org>
-;;; Copyright © 2019 Kyle Meyer <kyle@kyleam.com>
+;;; Copyright © 2019, 2020 Kyle Meyer <kyle@kyleam.com>
 ;;; Copyright © 2015 John Soo <jsoo1@asu.edu>
+;;; Copyright © 2019, 2020 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2019 Alex Griffin <a@ajgrf.com>
+;;; Copyright © 2020 Alexandru-Sergiu Marton <brown121407@member.fsf.org>
+;;; Copyright © 2020 Brian Leung <bkleung89@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -47,10 +51,50 @@
   #:use-module (gnu packages rsync)
   #:use-module (gnu packages version-control))
 
+(define-public apply-refact
+  (package
+    (name "apply-refact")
+    (version "0.6.0.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append
+             "https://hackage.haskell.org/package/apply-refact/apply-refact-"
+             version ".tar.gz"))
+       (sha256
+        (base32
+         "0p2mqgjcqr1zcmk8zgr0yq7g8z1agsa6l493lkj6g3ya9lyhxgig"))))
+    (build-system haskell-build-system)
+    (inputs
+     `(("ghc-refact" ,ghc-refact)
+       ("ghc-exactprint" ,ghc-exactprint)
+       ("ghc-syb" ,ghc-syb)
+       ("ghc-temporary" ,ghc-temporary)
+       ("ghc-filemanip" ,ghc-filemanip)
+       ("ghc-unix-compat" ,ghc-unix-compat)
+       ("ghc-optparse-applicative"
+        ,ghc-optparse-applicative)))
+    (native-inputs
+     `(("ghc-tasty" ,ghc-tasty)
+       ("ghc-tasty-golden" ,ghc-tasty-golden)
+       ("ghc-tasty-expected-failure"
+        ,ghc-tasty-expected-failure)
+       ("ghc-silently" ,ghc-silently)))
+    (home-page "https://hackage.haskell.org/package/apply-refact")
+    (synopsis "Perform refactorings specified by the refact library")
+    (description
+     "This package lets you perform refactorings specified by the refact
+library.  It is primarily used with HLint's @code{--refactor} flag.")
+    (license license:bsd-3)))
+
+;; In Stackage LTS 14, this package is at 2.4.1.0.  However, that
+;; version requires version 2.4.1.0 of the 'Cabal' package, which is
+;; provided by GHC 8.6.5 at version 2.4.0.1.  Hence, we use an older
+;; version to match the compiler's library.
 (define-public cabal-install
  (package
   (name "cabal-install")
-   (version "2.2.0.0")
+   (version "2.4.0.0")
    (source
     (origin
      (method url-fetch)
@@ -59,9 +103,19 @@
             version
             ".tar.gz"))
       (sha256
-       (base32 "1nd3ch7qr4dpfxhgkcq2lnhvszx2kjgnn1kwb44vk9y5jgfs4mn8"))))
-   (arguments `(#:tests? #f)) ; FIXME: testing libraries are missing.
+       (base32 "1xmyl0x8wqfrnray6ky5wy0g0samv4264fbdlzxhqsvk9dbfja8k"))))
    (build-system haskell-build-system)
+   (arguments
+    `(#:cabal-revision
+      ("2" "1xil5pim6j1ckqj61zz6l7xpfxxr3rkw2hvpws2f7pr9shk645dl")
+      #:phases
+       (modify-phases %standard-phases
+         (add-before 'configure 'update-constraints
+           (lambda _
+             (substitute* "cabal-install.cabal"
+               (("zip-archive >= 0\\.3\\.2\\.5 && < 0\\.4,")
+                "zip-archive >= 0.3.2.5 && <= 0.4.1,"))
+             #t)))))
    (inputs
     `(("ghc-async" ,ghc-async)
       ("ghc-base16-bytestring" ,ghc-base16-bytestring)
@@ -76,6 +130,7 @@
       ("ghc-random" ,ghc-random)
       ("ghc-resolv" ,ghc-resolv)
       ("ghc-tar" ,ghc-tar)
+      ("ghc-zip-archive" ,ghc-zip-archive)
       ("ghc-zlib" ,ghc-zlib)))
    (home-page "https://www.haskell.org/cabal/")
    (synopsis "Command-line interface for Cabal and Hackage")
@@ -94,10 +149,9 @@ installation of Haskell libraries and programs.")
        (origin
          (method git-fetch)
          (uri (git-reference
-               (url "https://github.com/jameysharp/corrode.git")
+               (url "https://github.com/jameysharp/corrode")
                (commit "b6699fb2fa552a07c6091276285a44133e5c9789")))
-         (file-name
-          (string-append name "-" version "-checkout"))
+         (file-name (git-file-name name version))
          (sha256
           (base32 "02v0yyj6sk4gpg2222wzsdqjxn8w66scbnf6b20x0kbmc69qcz4r"))))
       (build-system haskell-build-system)
@@ -144,7 +198,7 @@ pre-processors.  Additional features include: a plain-text mode; an option to
 unlit literate code files; and an option to turn off macro-expansion.")
     (license (list license:lgpl2.1+ license:gpl3+))))
 
-;; Darcs has no https support: http://irclog.perlgeek.de/darcs/2016-09-17
+;; Darcs has no https support:
 ;; http://darcs.net/manual/Configuring_darcs.html#SECTION00440070000000000000
 ;; and results of search engines will show that if the protocol is http, https
 ;; is never mentioned.
@@ -170,7 +224,9 @@ unlit literate code files; and an option to turn off macro-expansion.")
            #t))))
     (build-system haskell-build-system)
     (arguments
-     `(#:configure-flags '("-fpkgconfig" "-fcurl" "-flibiconv" "-fthreaded"
+     `(#:cabal-revision
+       ("1" "0xl7j5cm704pbl2ms0dkydh7jvrz0ym76d725ifpg4h902m1zkhg")
+       #:configure-flags '("-fpkgconfig" "-fcurl" "-flibiconv" "-fthreaded"
                            "-fnetwork-uri" "-fhttp" "--flag=executable"
                            "--flag=library")
        #:phases
@@ -179,6 +235,12 @@ unlit literate code files; and an option to turn off macro-expansion.")
            (lambda _
              (substitute* "tests/issue538.sh"
                (("/bin/sh") (which "sh")))
+             #t))
+         (add-before 'configure 'update-constraints
+           (lambda _
+             (substitute* "darcs.cabal"
+               (("QuickCheck   >= 2\\.8\\.2 && < 2\\.13,")
+                "QuickCheck   >= 2.8.2 && < 2.14,"))
              #t)))))
     (inputs
      `(("ghc-cmdargs" ,ghc-cmdargs)
@@ -242,22 +304,55 @@ unique algebra of patches called @url{http://darcs.net/Theory,Patchtheory}.
 @end enumerate")
     (license license:gpl2)))
 
+(define-public ghcid
+  (package
+    (name "ghcid")
+    (version "0.8.4")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "https://hackage.haskell.org/package/ghcid/"
+                           "ghcid-" version ".tar.gz"))
+       (sha256
+        (base32
+         "0wpm4ikrm1krz1ckzwk0srng091yh2skjal4fh95iz1hq3dw6qlw"))))
+    (build-system haskell-build-system)
+    (inputs
+     `(("ghc-extra" ,ghc-extra)
+       ("ghc-ansi-terminal" ,ghc-ansi-terminal)
+       ("ghc-cmdargs" ,ghc-cmdargs)
+       ("ghc-fsnotify" ,ghc-fsnotify)
+       ("ghc-terminal-size" ,ghc-terminal-size)))
+    (native-inputs
+     `(("ghc-tasty" ,ghc-tasty)
+       ("ghc-tasty-hunit" ,ghc-tasty-hunit)))
+    (home-page
+     "https://github.com/ndmitchell/ghcid#readme")
+    (synopsis "GHCi based bare bones IDE")
+    (description
+     "Either \"GHCi as a daemon\" or \"GHC + a bit of an IDE\".  A very simple Haskell
+development tool which shows you the errors in your project and updates them whenever
+you save.  Run @code{ghcid --topmost --command=ghci}, where @code{--topmost} makes the
+window on top of all others (Windows only) and @code{--command} is the command to start
+GHCi on your project (defaults to @code{ghci} if you have a @file{.ghci} file, or else
+to @code{cabal repl}).")
+    (license license:bsd-3)))
+
 (define-public git-annex
   (package
     (name "git-annex")
-    (version "7.20190708")
+    (version "8.20200720.1")
     (source
      (origin
        (method url-fetch)
        (uri (string-append "https://hackage.haskell.org/package/"
                            "git-annex/git-annex-" version ".tar.gz"))
        (sha256
-        (base32
-         "18s563swrp8mx479995pdhhmn40y3xwlbm1z3w63qsnjqmj7zlij"))))
+        (base32 "0g4wlfkwr9w21hvdywc7sk077rxlnigdr4m4yz41rc0s2nbjc9fn"))))
     (build-system haskell-build-system)
     (arguments
      `(#:configure-flags
-       '("--flags=-Android -Assistant -Pairing -S3 -Webapp -WebDAV")
+       '("--flags=-Android -Assistant -Pairing -Webapp -WebDAV")
        #:phases
        (modify-phases %standard-phases
          (add-before 'configure 'patch-shell-for-tests
@@ -275,8 +370,7 @@ unique algebra of patches called @url{http://darcs.net/Theory,Patchtheory}.
              ;; Factor out necessary build logic from the provided
              ;; `Setup.hs' script.  The script as-is does not work because
              ;; it cannot find its dependencies, and there is no obvious way
-             ;; to tell it where to look.  Note that we do not preserve the
-             ;; code that installs man pages here.
+             ;; to tell it where to look.
              (call-with-output-file "PreConf.hs"
                (lambda (out)
                  (format out "import qualified Build.Configure as Configure~%")
@@ -290,6 +384,18 @@ unique algebra of patches called @url{http://darcs.net/Theory,Patchtheory}.
            (lambda _
              (invoke "runhaskell" "PreConf.hs")
              #t))
+         (add-after 'build 'build-manpages
+           (lambda _
+             ;; The Setup.hs rewrite above removed custom code for building
+             ;; the man pages.  In addition to that code, git-annex's source
+             ;; tree has a file that's not included in the tarball but is used
+             ;; by the Makefile to build man pages.  Copy the core bits here.
+             (call-with-output-file "Build/MakeMans.hs"
+               (lambda (out)
+                 (format out "module Main where~%")
+                 (format out "import Build.Mans~%")
+                 (format out "main = buildMansOrWarn~%")))
+             (invoke "runhaskell" "Build/MakeMans.hs")))
          (replace 'check
            (lambda _
              ;; We need to set the path so that Git recognizes
@@ -305,6 +411,14 @@ unique algebra of patches called @url{http://darcs.net/Theory,Patchtheory}.
              ;; Undo `patch-shell-for-tests'.
              (copy-file "/tmp/Shell.hs" "Utility/Shell.hs")
              (apply (assoc-ref %standard-phases 'build) args)))
+         (add-after 'install 'install-manpages
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((man (string-append (assoc-ref outputs "out")
+                                       "/man/man1/")))
+               (mkdir-p man)
+               (for-each (lambda (file) (install-file file man))
+                         (find-files "man")))
+             #t))
          (add-after 'install 'install-symlinks
            (lambda* (#:key outputs #:allow-other-keys)
              (let* ((out (assoc-ref outputs "out"))
@@ -318,6 +432,7 @@ unique algebra of patches called @url{http://darcs.net/Theory,Patchtheory}.
      `(("curl" ,curl)
        ("ghc-aeson" ,ghc-aeson)
        ("ghc-async" ,ghc-async)
+       ("ghc-aws" ,ghc-aws)
        ("ghc-bloomfilter" ,ghc-bloomfilter)
        ("ghc-byteable" ,ghc-byteable)
        ("ghc-case-insensitive" ,ghc-case-insensitive)
@@ -331,12 +446,14 @@ unique algebra of patches called @url{http://darcs.net/Theory,Patchtheory}.
        ("ghc-esqueleto" ,ghc-esqueleto)
        ("ghc-exceptions" ,ghc-exceptions)
        ("ghc-feed" ,ghc-feed)
+       ("ghc-filepath-bytestring" ,ghc-filepath-bytestring)
        ("ghc-free" ,ghc-free)
        ("ghc-hslogger" ,ghc-hslogger)
        ("ghc-http-client" ,ghc-http-client)
        ("ghc-http-conduit" ,ghc-http-conduit)
        ("ghc-http-types" ,ghc-http-types)
        ("ghc-ifelse" ,ghc-ifelse)
+       ("ghc-magic" ,ghc-magic)
        ("ghc-memory" ,ghc-memory)
        ("ghc-monad-control" ,ghc-monad-control)
        ("ghc-monad-logger" ,ghc-monad-logger)
@@ -367,21 +484,29 @@ unique algebra of patches called @url{http://darcs.net/Theory,Patchtheory}.
      `(("ghc-tasty" ,ghc-tasty)
        ("ghc-tasty-hunit" ,ghc-tasty-hunit)
        ("ghc-tasty-quickcheck" ,ghc-tasty-quickcheck)
-       ("ghc-tasty-rerun" ,ghc-tasty-rerun)))
+       ("ghc-tasty-rerun" ,ghc-tasty-rerun)
+       ("perl" ,perl)))
     (home-page "https://git-annex.branchable.com/")
     (synopsis "Manage files with Git, without checking in their contents")
     (description "This package allows managing files with Git, without
 checking the file contents into Git.  It can store files in many places,
 such as local hard drives and cloud storage services.  It can also be
 used to keep a folder in sync between computers.")
-    ;; The web app is released under the AGPLv3+.
-    (license (list license:gpl3+
-                   license:agpl3+))))
+    ;; The main author has released all his changes under AGPLv3+ as of March
+    ;; 2019 (7.20190219-187-g40ecf58d4).  These are also licensed under the
+    ;; original GPLv3+ license, but going forward new changes will be under
+    ;; only AGPLv3+.  The other licenses below cover code written by others.
+    ;; See git-annex's COPYRIGHT file for details on each file.
+    (license (list license:agpl3+
+                   license:gpl3+
+                   license:bsd-2
+                   license:expat
+                   license:gpl2))))
 
 (define-public hlint
   (package
     (name "hlint")
-    (version "2.1.10")
+    (version "2.1.26")
     (source
      (origin
        (method url-fetch)
@@ -390,7 +515,7 @@ used to keep a folder in sync between computers.")
              "/" name "-" version ".tar.gz"))
        (sha256
         (base32
-         "19as2m9g75cr6n1agzvsij0cvqhb0wbjlk31w4y5d5mns87dki0w"))))
+         "16zkkpbfrd69853cdqf597fva969lirfc86b039i9zd7ghlrcayc"))))
     (build-system haskell-build-system)
     (inputs
      `(("cpphs" ,cpphs)
@@ -406,8 +531,9 @@ used to keep a folder in sync between computers.")
        ("ghc-extra" ,ghc-extra)
        ("ghc-refact" ,ghc-refact)
        ("ghc-aeson" ,ghc-aeson)
+       ("ghc-lib-parser" ,ghc-lib-parser)
        ("hscolour" ,hscolour)))
-    (home-page "http://community.haskell.org/~ndm/hlint/")
+    (home-page "https://github.com/ndmitchell/hlint")
     (synopsis "Suggest improvements for Haskell source code")
     (description "HLint reads Haskell programs and suggests changes that
 hopefully make them easier to read.  HLint also makes it easy to disable
@@ -417,7 +543,7 @@ unwanted suggestions, and to add your own custom suggestions.")
 (define-public hoogle
   (package
     (name "hoogle")
-    (version "5.0.17.3")
+    (version "5.0.17.11")
     (source
      (origin
        (method url-fetch)
@@ -427,18 +553,19 @@ unwanted suggestions, and to add your own custom suggestions.")
          version ".tar.gz"))
        (sha256
         (base32
-         "174gp41v0krzj37m75pnr3aawyhkbk2wq4q6zk2z3zh0avvvmgk6"))))
+         "1svp8z9pad8z2j386pr0dda0ds8ddxab0salnz4gm51q877w93p1"))))
     (build-system haskell-build-system)
     (inputs
-     `(("ghc-network-uri" ,ghc-network-uri)
-       ("ghc-network" ,ghc-network)
-       ("ghc-quickcheck" ,ghc-quickcheck)
+     `(("ghc-quickcheck" ,ghc-quickcheck)
        ("ghc-aeson" ,ghc-aeson)
+       ("ghc-blaze-html" ,ghc-blaze-html)
+       ("ghc-blaze-markup" ,ghc-blaze-markup)
        ("ghc-cmdargs" ,ghc-cmdargs)
        ("ghc-conduit" ,ghc-conduit)
        ("ghc-conduit-extra" ,ghc-conduit-extra)
        ("ghc-connection" ,ghc-connection)
        ("ghc-extra" ,ghc-extra)
+       ("ghc-foundation" ,ghc-foundation)
        ("ghc-old-locale" ,ghc-old-locale)
        ("ghc-haskell-src-exts" ,ghc-haskell-src-exts)
        ("ghc-http-conduit" ,ghc-http-conduit)
@@ -489,6 +616,64 @@ with CSS and mouseover annotations, XHTML 1.0 with inline CSS styling, LaTeX,
 and mIRC chat codes.")
     (license license:bsd-3)))
 
+(define-public kmonad
+  (package
+    (name "kmonad")
+    (version "0.3.0")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/david-janssen/kmonad")
+             (commit version)))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "1g40nkpldih6h1rlxjx5yf9iavr3qs1f2b6j0gd8135p5hkg8d8n"))))
+    (build-system haskell-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (delete 'haddock)             ; Haddock fails to generate docs
+         (add-after 'install 'install-udev-rules
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (rules (string-append out "/lib/udev/rules.d")))
+               (mkdir-p rules)
+               (call-with-output-file (string-append rules "/70-kmonad.rules")
+                 (lambda (port)
+                   (display
+                    (string-append
+                     "KERNEL==\"uinput\", MODE=\"0660\", "
+                     "GROUP=\"input\", OPTIONS+=\"static_node=uinput\"\n")
+                    port)))
+               #t)))
+         (add-after 'install-udev-rules 'install-documentation
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (doc (string-append out "/share/doc/kmonad-" ,version)))
+               (install-file "README.md" doc)
+               (copy-recursively "doc" doc)
+               (copy-recursively "example" (string-append doc "/example"))
+               #t))))))
+    (inputs
+     `(("ghc-cereal" ,ghc-cereal)
+       ("ghc-exceptions" ,ghc-exceptions)
+       ("ghc-hashable" ,ghc-hashable)
+       ("ghc-lens" ,ghc-lens)
+       ("ghc-megaparsec" ,ghc-megaparsec)
+       ("ghc-optparse-applicative" ,ghc-optparse-applicative)
+       ("ghc-unagi-chan" ,ghc-unagi-chan)
+       ("ghc-unliftio" ,ghc-unliftio)
+       ("ghc-unordered-containers" ,ghc-unordered-containers)))
+    (home-page "https://github.com/david-janssen/kmonad")
+    (synopsis "Advanced keyboard manager")
+    (description "KMonad is a keyboard remapping utility that supports
+advanced functionality, such as custom keymap layers and modifiers, macros,
+and conditional mappings that send a different keycode when tapped or held.
+By operating at a lower level than most similar tools, it supports X11,
+Wayland, and Linux console environments alike.")
+    (license license:expat)))
+
 (define-public raincat
   (package
     (name "raincat")
@@ -496,7 +681,7 @@ and mIRC chat codes.")
     (source
      (origin
        (method url-fetch)
-       (uri (string-append "http://hackage.haskell.org/package/Raincat/"
+       (uri (string-append "mirror://hackage/package/Raincat/"
                            "Raincat-" version ".tar.gz"))
        (sha256
         (base32
@@ -522,7 +707,7 @@ and mIRC chat codes.")
        ("ghc-sdl2" ,ghc-sdl2)
        ("ghc-sdl2-image" ,ghc-sdl2-image)
        ("ghc-sdl2-mixer" ,ghc-sdl2-mixer)))
-    (home-page "http://www.bysusanlin.com/raincat/")
+    (home-page "https://www.gamecreation.org/games/raincat")
     (synopsis "Puzzle game with a cat in lead role")
     (description "Project Raincat is a game developed by Carnegie Mellon
 students through GCS during the Fall 2008 semester.  Raincat features game
@@ -530,6 +715,37 @@ play inspired from classics Lemmings and The Incredible Machine.  The project
 proved to be an excellent learning experience for the programmers.  Everything
 is programmed in Haskell.")
     (license license:bsd-3)))
+
+(define-public scroll
+  (package
+    (name "scroll")
+    (version "1.20180421")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (string-append
+               "https://hackage.haskell.org/package/scroll/scroll-"
+               version ".tar.gz"))
+        (sha256
+         (base32
+          "0apzrvf99rskj4dbmn57jjxrsf19j436s8a09m950df5aws3a0wj"))))
+    (build-system haskell-build-system)
+    (inputs
+     `(("ghc-case-insensitive" ,ghc-case-insensitive)
+       ("ghc-data-default" ,ghc-data-default)
+       ("ghc-ifelse" ,ghc-ifelse)
+       ("ghc-monad-loops" ,ghc-monad-loops)
+       ("ghc-ncurses" ,ghc-ncurses)
+       ("ghc-optparse-applicative" ,ghc-optparse-applicative)
+       ("ghc-random" ,ghc-random)
+       ("ghc-vector" ,ghc-vector)))
+    (home-page "https://joeyh.name/code/scroll/")
+    (synopsis "scroll(6), a roguelike game")
+    (description
+     "You're a bookworm that's stuck on a scroll.  You have to dodge between
+words and use spells to make your way down the page as the scroll is read.  Go
+too slow and you'll get wound up in the scroll and crushed.")
+    (license license:gpl2)))
 
 (define-public shellcheck
   (package
@@ -550,7 +766,7 @@ is programmed in Haskell.")
        ("ghc-diff" ,ghc-diff)
        ("ghc-quickcheck" ,ghc-quickcheck)
        ("ghc-regex-tdfa" ,ghc-regex-tdfa)))
-    (home-page "https://github.com/koalaman/shellcheck")
+    (home-page "https://www.shellcheck.net/")
     (synopsis "Static analysis for shell scripts")
     (description "@code{shellcheck} provides static analysis for
 @command{bash} and @command{sh} shell scripts.
@@ -564,6 +780,58 @@ that cause a shell to behave strangely and counter-intuitively.
 @item Point out subtle caveats, corner cases and pitfalls that may cause an
 advanced user's otherwise working script to fail under future circumstances.
 @end enumerate")
+    (license license:gpl3+)))
+
+(define-public shelltestrunner
+  (package
+    (name "shelltestrunner")
+    (version "1.9")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append "mirror://hackage/package/shelltestrunner-"
+                                  version "/shelltestrunner-" version ".tar.gz"))
+              (sha256
+               (base32
+                "1a5kzqbwg6990249ypw0cx6cqj6663as1kbj8nzblcky8j6kbi6b"))))
+    (build-system haskell-build-system)
+    (arguments
+     '(#:phases
+       (modify-phases %standard-phases
+         (delete 'check)
+         (add-after 'install 'check
+           (lambda* (#:key outputs tests? parallel-tests? #:allow-other-keys)
+             ;; This test is inspired by the Makefile in the upstream
+             ;; repository, which is missing in the Hackage release tarball
+             ;; along with some of the tests.  The Makefile would not work
+             ;; anyway as it ties into the 'stack' build tool.
+             (let* ((out (assoc-ref outputs "out"))
+                    (shelltest (string-append out "/bin/shelltest"))
+                    (numjobs (if parallel-tests?
+                                 (number->string (parallel-job-count))
+                                 "1")))
+               (if tests?
+                   (invoke shelltest (string-append "-j" numjobs)
+                           "tests/examples")
+                   (format #t "test suite not run~%"))
+               #t))))))
+    (inputs
+     `(("ghc-diff" ,ghc-diff)
+       ("ghc-cmdargs" ,ghc-cmdargs)
+       ("ghc-filemanip" ,ghc-filemanip)
+       ("ghc-hunit" ,ghc-hunit)
+       ("ghc-pretty-show" ,ghc-pretty-show)
+       ("ghc-regex-tdfa" ,ghc-regex-tdfa)
+       ("ghc-safe" ,ghc-safe)
+       ("ghc-utf8-string" ,ghc-utf8-string)
+       ("ghc-test-framework" ,ghc-test-framework)
+       ("ghc-test-framework-hunit" ,ghc-test-framework-hunit)))
+    (home-page "https://github.com/simonmichael/shelltestrunner")
+    (synopsis "Test CLI programs")
+    (description
+     "shelltestrunner (executable: @command{shelltest}) is a command-line tool
+for testing command-line programs, or general shell commands.  It reads simple
+test specifications defining a command to run, some input, and the expected
+output, stderr, and exit status.")
     (license license:gpl3+)))
 
 (define-public stylish-haskell
@@ -595,8 +863,29 @@ advanced user's otherwise working script to fail under future circumstances.
        ("ghc-test-framework-hunit" ,ghc-test-framework-hunit)))
     (home-page "https://github.com/jaspervdj/stylish-haskell")
     (synopsis "Haskell code prettifier")
-    (description
-     "A simple Haskell code prettifier.  The goal is not to format all of the
-code in a file, just clean up import statements and a few other tedious
-items.  This tool tries to help where necessary without getting in the way.")
+    (description "Stylish-haskell is a Haskell code prettifier.  The goal is
+not to format all of the code in a file, to avoid \"getting in the way\".
+However, this tool can e.g. clean up import statements and help doing various
+tasks that get tedious very quickly.  It can
+@itemize
+@item
+Align and sort @code{import} statements
+@item
+Group and wrap @code{{-# LANGUAGE #-}} pragmas, remove (some) redundant
+pragmas
+@item
+Remove trailing whitespaces
+@item
+Align branches in @code{case} and fields in records
+@item
+Convert line endings (customisable)
+@item
+Replace tabs by four spaces (turned off by default)
+@item
+Replace some ASCII sequences by their Unicode equivalent (turned off by
+default)
+@end itemize")
     (license license:bsd-3)))
+
+(define-public ghc-stylish-haskell
+  (deprecated-package "ghc-stylish-haskell" stylish-haskell))

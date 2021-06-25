@@ -1,7 +1,9 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2015, 2016, 2019 Ricardo Wurmus <rekado@elephly.net>
-;;; Copyright © 2016, 2017, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2015, 2016, 2018, 2019 Ricardo Wurmus <rekado@elephly.net>
+;;; Copyright © 2016, 2017, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018 Meiyo Peng <meiyo.peng@gmail.com>
+;;; Copyright © 2019 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2020 Mark H Weaver <mhw@netris.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -20,7 +22,8 @@
 
 (define-module (gnu packages datastructures)
   #:use-module (gnu packages)
-  #:use-module (gnu packages documentation)
+  #:use-module (gnu packages autotools)
+  #:use-module (gnu packages boost)
   #:use-module (gnu packages perl)
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (guix packages)
@@ -55,20 +58,23 @@ and heaps.")
 (define-public marisa
   (package
     (name "marisa")
-    (version "0.2.5")
+    (version "0.2.6")
     (source
      (origin
        (method url-fetch)
-       (uri (string-append "https://github.com/s-yata/marisa-trie"
-                           "/releases/download/v" version "/" name "-"
-                           version ".tar.gz"))
+       (uri (string-append "https://github.com/s-yata/marisa-trie/files/"
+                           "4832504/marisa-" version ".tar.gz"))
        (sha256
-        (base32 "19ifrcmnbr9whaaf4ly3s9ndyiq9sjqhnfkrxbz9zsb44w2n36hf"))))
+        (base32 "1pk6wmi28pa8srb4szybrwfn71jldb61c5vgxsiayxcyg1ya4qqh"))))
     (build-system gnu-build-system)
+    (native-inputs
+     `(("autoconf" ,autoconf)
+       ("automake" ,automake)
+       ("libtool" ,libtool)))
     (home-page "https://github.com/s-yata/marisa-trie")
     (synopsis "Trie data structure C++ library")
-    (description "Matching Algorithm with Recursively Implemented
-StorAge (MARISA) is a static and space-efficient trie data structure C++
+    (description "@acronym{MARISA, Matching Algorithm with Recursively
+Implemented StorAge} is a static and space-efficient trie data structure C++
 library.")
 
     ;; Dual-licensed, according to docs/readme.en.html (source files lack
@@ -80,12 +86,14 @@ library.")
     (name "sparsehash")
     (version "2.0.3")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/sparsehash/sparsehash/"
-                                  "archive/sparsehash-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/sparsehash/sparsehash")
+                     (commit (string-append name "-" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "133szz0ldwch0kd91l0sa57qsnl020njn622szd9cxrjqyjqds85"))))
+                "0m3f0cnpnpf6aak52wn8xbrrdw8p0yhq8csgc8nlvf9zp8c402na"))))
     (build-system gnu-build-system)
     (synopsis "Memory-efficient hashtable implementations")
     (description
@@ -103,17 +111,20 @@ and time-efficient for good hash functions.")
 (define-public ssdeep
   (package
     (name "ssdeep")
-    (version "2.13")
-    (source (origin
-              (method url-fetch)
-              (uri (string-append "mirror://sourceforge/ssdeep/"
-                                  name "-" version "/"
-                                  name "-" version ".tar.gz"))
-              (sha256
-               (base32
-                "1igqy0j7jrklb8fdlrm6ald4cyl1fda5ipfl8crzyl6bax2ajk3f"))))
+    (version "2.14.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "https://github.com/ssdeep-project/ssdeep/"
+                           "releases/download/release-" version "/"
+                           "ssdeep-" version ".tar.gz"))
+       (sha256
+        (base32 "04qkjc6kksxkv7xbnk32rwmf3a8czdv2vvrdzfs0kw06h73snbpz"))))
     (build-system gnu-build-system)
-    (home-page "http://ssdeep.sourceforge.net")
+    (arguments
+     `(#:configure-flags
+       (list "--disable-static")))
+    (home-page "https://ssdeep-project.github.io")
     (synopsis "Context-triggered piecewise hashing algorithm")
     (description "ssdeep computes and matches context triggered piecewise
 hashes (CTPH), also called fuzzy checksums.  It can identify similar files
@@ -124,14 +135,14 @@ in between these sequences may be different in both content and length.")
 (define-public liburcu
   (package
     (name "liburcu")
-    (version "0.11.1")
+    (version "0.12.1")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://www.lttng.org/files/urcu/"
                                   "userspace-rcu-" version ".tar.bz2"))
               (sha256
                (base32
-                "0l1kxgzch4m8fxiz2hc8fwg56hrvzzspp7n0svnl7i7iycdrgfcj"))))
+                "03nd1gy2c3fdb6xwdrd5lr1jcjxbzffqh3z91mzbjhjn6k8fmymv"))))
     (build-system gnu-build-system)
     (native-inputs
      `(("perl" ,perl)))                 ; for tests
@@ -147,17 +158,16 @@ queues, stacks, and doubly-linked lists.")
 (define-public uthash
   (package
     (name "uthash")
-    (version "2.0.2")
+    (version "2.1.0")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/troydhanson/uthash.git")
+             (url "https://github.com/troydhanson/uthash")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
-        (base32
-         "0kslz8k6lssh7fl7ayzwlj62p0asxs3dq03357ls5ywjad238gqg"))))
+        (base32 "0k80bjbb6ss5wpmfmfji6xbyjm990hg9kcshwwnhdnh73vxkcd1m"))))
     (build-system gnu-build-system)
     (native-inputs
      `(("perl" ,perl)))
@@ -176,7 +186,7 @@ queues, stacks, and doubly-linked lists.")
            ;; There is no top-level Makefile to do this for us.
            (lambda* (#:key outputs #:allow-other-keys)
              (let* ((out (assoc-ref outputs "out"))
-                    (doc (string-append out "/share/doc/" ,name))
+                    (doc (string-append out "/share/doc/" ,name "-" ,version))
                     (include (string-append out "/include")))
                ;; Don't install HTML files: they're just the below .txt files
                ;; dolled up, can be stale, and regeneration requires asciidoc.
@@ -211,10 +221,31 @@ to the structure and choosing one or more fields to act as the key.")
                                   ".tar.gz.offline.install.gz"))
               (sha256
                (base32
-                "1v86ivv3mmdy802i9xkjpxb4cggj3s27wb19ja4sw1klnivjj69g"))))
+                "1v86ivv3mmdy802i9xkjpxb4cggj3s27wb19ja4sw1klnivjj69g"))
+              (modules '((guix build utils)))
+              (snippet
+               '(begin
+                  (delete-file-recursively "external") #t))
+              (patches
+                (list (origin
+                        (method url-fetch)
+                        (uri "https://salsa.debian.org/science-team/libsdsl/raw/debian/2.1.1+dfsg-2/debian/patches/0001-Patch-cmake-files.patch")
+                        (file-name "sdsl-lite-dont-use-bundled-libraries.patch")
+                        (sha256
+                         (base32
+                          "0m542xpys54bni29zibgrfpgpd0zgyny4h131virxsanixsbz52z")))))))
     (build-system cmake-build-system)
+    (arguments
+     '(#:phases
+       (modify-phases %standard-phases
+         (add-after 'install 'install-static-library
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out")))
+               (copy-file "lib/libsdsl_static.a"
+                          (string-append out "/lib/libsdsl.a")))
+             #t)))))
     (native-inputs
-     `(("doxygen" ,doxygen)))
+     `(("libdivsufsort" ,libdivsufsort)))
     (home-page "https://github.com/simongog/sdsl-lite")
     (synopsis "Succinct data structure library")
     (description "The Succinct Data Structure Library (SDSL) is a powerful and
@@ -226,3 +257,70 @@ operations of the original object efficiently.  The theoretical time
 complexity of an operation performed on the classical data structure and the
 equivalent succinct data structure are (most of the time) identical.")
     (license license:gpl3+)))
+
+(define-public libdivsufsort
+  (package
+    (name "libdivsufsort")
+    (version "2.0.1")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/y-256/libdivsufsort")
+                    (commit version)))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0fgdz9fzihlvjjrxy01md1bv9vh12rkgkwbm90b1hj5xpbaqp7z2"))))
+    (build-system cmake-build-system)
+    (arguments
+     '(#:tests? #f                      ; there are no tests
+       #:configure-flags
+       ;; Needed for rapmap and sailfish.
+       '("-DBUILD_DIVSUFSORT64=ON")))
+    (home-page "https://github.com/y-256/libdivsufsort")
+    (synopsis "Lightweight suffix-sorting library")
+    (description "libdivsufsort is a software library that implements a
+lightweight suffix array construction algorithm.  This library provides a
+simple and an efficient C API to construct a suffix array and a
+Burrows-Wheeler transformed string from a given string over a constant-size
+alphabet.  The algorithm runs in O(n log n) worst-case time using only 5n+O(1)
+bytes of memory space, where n is the length of the string.")
+    (license license:expat)))
+
+(define-public robin-map
+  (package
+    (name "robin-map")
+    (version "0.6.3")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/Tessil/robin-map")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "1li70vwsksva9c4yly90hjafgqfixi1g6d52qq9p6r60vqc4pkjj"))))
+    (build-system cmake-build-system)
+    (native-inputs
+     `(("boost" ,boost)))  ; needed for tests
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (replace 'check
+           (lambda _
+             (mkdir "tests")
+             (with-directory-excursion "tests"
+               (invoke "cmake" "../../source/tests")
+               (invoke "cmake" "--build" ".")
+               (invoke "./tsl_robin_map_tests")))))))
+    (home-page "https://github.com/Tessil/robin-map")
+    (synopsis "C++ implementation of a fast hash map and hash set")
+    (description "The robin-map library is a C++ implementation of a fast hash
+map and hash set using open-addressing and linear robin hood hashing with
+backward shift deletion to resolve collisions.
+
+Four classes are provided: tsl::robin_map, tsl::robin_set, tsl::robin_pg_map
+and tsl::robin_pg_set. The first two are faster and use a power of two growth
+policy, the last two use a prime growth policy instead and are able to cope
+better with a poor hash function.")
+    (license license:expat)))

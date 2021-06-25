@@ -27,8 +27,8 @@
   #:use-module (ice-9 match)
   #:use-module (srfi srfi-1)
   #:export (%ocaml-build-system-modules
-            package-with-ocaml4.01
-            strip-ocaml4.01-variant
+            package-with-ocaml4.07
+            strip-ocaml4.07-variant
             default-findlib
             default-ocaml
             lower
@@ -84,21 +84,29 @@
   (let ((module (resolve-interface '(guix build-system dune))))
     (module-ref module 'dune-build-system)))
 
-(define (default-ocaml4.01)
+(define (default-ocaml4.07)
   (let ((ocaml (resolve-interface '(gnu packages ocaml))))
-    (module-ref ocaml 'ocaml-4.01)))
+    (module-ref ocaml 'ocaml-4.07)))
 
-(define (default-ocaml4.01-findlib)
+(define (default-ocaml4.07-findlib)
   (let ((module (resolve-interface '(gnu packages ocaml))))
-    (module-ref module 'ocaml4.01-findlib)))
+    (module-ref module 'ocaml4.07-findlib)))
 
-(define* (package-with-explicit-ocaml ocaml findlib old-prefix new-prefix
+(define (default-ocaml4.07-dune)
+  (let ((module (resolve-interface '(gnu packages ocaml))))
+    (module-ref module 'ocaml4.07-dune)))
+
+(define* (package-with-explicit-ocaml ocaml findlib dune old-prefix new-prefix
                                        #:key variant-property)
   "Return a procedure of one argument, P.  The procedure creates a package
 with the same fields as P, which is assumed to use OCAML-BUILD-SYSTEM, such
 that it is compiled with OCAML and FINDLIB instead.  The inputs are changed
 recursively accordingly.  If the name of P starts with OLD-PREFIX, this is
 replaced by NEW-PREFIX; otherwise, NEW-PREFIX is prepended to the name.
+
+When the package uses the DUNE-BUILD-SYSTEM, the procedure creates a package
+with the same fields as P, such that it is compiled with OCAML, FINDLIB and DUNE
+instead.
 
 When VARIANT-PROPERTY is present, it is used as a key to search for
 pre-defined variants of this transformation recorded in the 'properties' field
@@ -132,10 +140,15 @@ pre-defined variants."
                                    name))))
         (arguments
          (let ((ocaml   (if (promise? ocaml) (force ocaml) ocaml))
-               (findlib (if (promise? findlib) (force findlib) findlib)))
+               (findlib (if (promise? findlib) (force findlib) findlib))
+               (dune (if (promise? dune) (force dune) dune)))
            (ensure-keyword-arguments (package-arguments p)
                                      `(#:ocaml   ,ocaml
-                                       #:findlib ,findlib))))))
+                                       #:findlib ,findlib
+                                       ,@(if (eq? (package-build-system p)
+                                                  (default-dune-build-system))
+                                             `(#:dune ,dune)
+                                             '())))))))
      (else p)))
 
   (define (cut? p)
@@ -145,17 +158,18 @@ pre-defined variants."
 
   (package-mapping transform cut?))
 
-(define package-with-ocaml4.01
-  (package-with-explicit-ocaml (delay (default-ocaml4.01))
-                               (delay (default-ocaml4.01-findlib))
-                               "ocaml-" "ocaml4.01-"
-                               #:variant-property 'ocaml4.01-variant))
+(define package-with-ocaml4.07
+  (package-with-explicit-ocaml (delay (default-ocaml4.07))
+                               (delay (default-ocaml4.07-findlib))
+                               (delay (default-ocaml4.07-dune))
+                               "ocaml-" "ocaml4.07-"
+                               #:variant-property 'ocaml4.07-variant))
 
-(define (strip-ocaml4.01-variant p)
-  "Remove the 'ocaml4.01-variant' property from P."
+(define (strip-ocaml4.07-variant p)
+  "Remove the 'ocaml4.07-variant' property from P."
   (package
     (inherit p)
-    (properties (alist-delete 'ocaml4.01-variant (package-properties p)))))
+    (properties (alist-delete 'ocaml4.07-variant (package-properties p)))))
 
 (define* (lower name
                 #:key source inputs native-inputs outputs system target

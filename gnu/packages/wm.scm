@@ -9,18 +9,32 @@
 ;;; Copyright © 2016 Al McElrath <hello@yrns.org>
 ;;; Copyright © 2016 Carlo Zancanaro <carlo@zancanaro.id.au>
 ;;; Copyright © 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
-;;; Copyright © 2016, 2017, 2018 ng0 <ng0@n0.is>
+;;; Copyright © 2016, 2017, 2018, 2020 Nikita <nikita@n0.is>
 ;;; Copyright © 2016 doncatnip <gnopap@gmail.com>
 ;;; Copyright © 2016 Ivan Vilata i Balaguer <ivan@selidor.net>
 ;;; Copyright © 2017 Mekeor Melire <mekeor.melire@gmail.com>
 ;;; Copyright © 2017, 2019 Marius Bakke <mbakke@fastmail.com>
-;;; Copyright © 2017 Oleg Pykhalov <go.wigust@gmail.com>
-;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2017, 2020 Oleg Pykhalov <go.wigust@gmail.com>
+;;; Copyright © 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018 Pierre-Antoine Rouby <contact@parouby.fr>
 ;;; Copyright © 2018, 2019 Meiyo Peng <meiyo@riseup.net>
 ;;; Copyright © 2019 Rutger Helling <rhelling@mykolab.com>
 ;;; Copyright © 2019 Timothy Sample <samplet@ngyro.com>
 ;;; Copyright © 2019 Gábor Boskovits <boskovits@gmail.com>
+;;; Copyright © 2019 Kyle Andrews <kyle.c.andrews@gmail.com>
+;;; Copyright © 2019 Ingo Ruhnke <grumbel@gmail.com>
+;;; Copyright © 2019 Tanguy Le Carrour <tanguy@bioneland.org>
+;;; Copyright © 2019 John Soo <jsoo1@asu.edu>
+;;; Copyright © 2018, 2019 Pierre Langlois <pierre.langlois@gmx.com>
+;;; Copyright © 2016, 2017 Andy Patterson <ajpatter@uwaterloo.ca>
+;;; Copyright © 2019 Evan Straw <evan.straw99@gmail.com>
+;;; Copyright © 2019 Brett Gilio <brettg@gnu.org>
+;;; Copyright © 2019 Noodles! <nnoodle@chiru.no>
+;;; Copyright © 2019, 2020 Alexandru-Sergiu Marton <brown121407@member.fsf.org>
+;;; Copyright © 2020 Nicolas Goaziou <mail@nicolasgoaziou.fr>
+;;; Copyright © 2020 Brice Waegeneire <brice@waegenei.re>
+;;; Copyright © 2020 Boris A. Dekshteyn <harlequin78@gmail.com>
+;;; Copyright © 2020 Marcin Karpezo <sirmacik@wioo.waw.pl>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -40,72 +54,78 @@
 (define-module (gnu packages wm)
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (guix packages)
-  #:use-module (gnu packages)
-  #:use-module (gnu packages linux)
+  #:use-module (guix download)
+  #:use-module (guix git-download)
+  #:use-module (guix build-system asdf)
   #:use-module (guix build-system cmake)
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system haskell)
   #:use-module (guix build-system meson)
   #:use-module (guix build-system perl)
   #:use-module (guix build-system python)
+  #:use-module (guix build-system trivial)
+  #:use-module (guix utils)
+  #:use-module (gnu packages)
+  #:use-module (gnu packages bash)
+  #:use-module (gnu packages autotools)
+  #:use-module (gnu packages base)
+  #:use-module (gnu packages bison)
+  #:use-module (gnu packages calendar)
+  #:use-module (gnu packages docbook)
+  #:use-module (gnu packages documentation)
+  #:use-module (gnu packages fontutils)
+  #:use-module (gnu packages freedesktop)
+  #:use-module (gnu packages fribidi)
+  #:use-module (gnu packages gawk)
+  #:use-module (gnu packages gl)
+  #:use-module (gnu packages glib)
+  #:use-module (gnu packages gperf)
+  #:use-module (gnu packages gtk)
   #:use-module (gnu packages haskell-check)
   #:use-module (gnu packages haskell-web)
   #:use-module (gnu packages haskell-xyz)
-  #:use-module (gnu packages autotools)
-  #:use-module (gnu packages bison)
-  #:use-module (gnu packages gawk)
-  #:use-module (gnu packages base)
-  #:use-module (gnu packages pkg-config)
-  #:use-module (gnu packages perl)
-  #:use-module (gnu packages pulseaudio)
-  #:use-module (gnu packages xorg)
-  #:use-module (gnu packages xdisorg)
-  #:use-module (gnu packages documentation)
-  #:use-module (gnu packages xml)
-  #:use-module (gnu packages m4)
-  #:use-module (gnu packages docbook)
   #:use-module (gnu packages image)
-  #:use-module (gnu packages pcre)
-  #:use-module (gnu packages python)
-  #:use-module (gnu packages gtk)
-  #:use-module (gnu packages libevent)
-  #:use-module (gnu packages fribidi)
-  #:use-module (gnu packages maths)
-  #:use-module (gnu packages web)
-  #:use-module (gnu packages fontutils)
-  #:use-module (gnu packages freedesktop)
-  #:use-module (gnu packages glib)
-  #:use-module (gnu packages gperf)
   #:use-module (gnu packages imagemagick)
-  #:use-module (gnu packages lua)
+  #:use-module (gnu packages libevent)
   #:use-module (gnu packages linux)
-  #:use-module (gnu packages suckless)
-  #:use-module (gnu packages mpd)
-  #:use-module (gnu packages gl)
-  #:use-module (gnu packages video)
-  #:use-module (gnu packages version-control)
-  #:use-module (gnu packages man)
-  #:use-module (gnu packages textutils)
-  #:use-module (gnu packages pretty-print)
+  #:use-module (gnu packages lisp-xyz)
   #:use-module (gnu packages logging)
+  #:use-module (gnu packages lua)
+  #:use-module (gnu packages m4)
+  #:use-module (gnu packages man)
+  #:use-module (gnu packages maths)
+  #:use-module (gnu packages mpd)
+  #:use-module (gnu packages pcre)
+  #:use-module (gnu packages perl)
+  #:use-module (gnu packages pkg-config)
+  #:use-module (gnu packages pretty-print)
+  #:use-module (gnu packages pulseaudio)
+  #:use-module (gnu packages python)
+  #:use-module (gnu packages readline)
   #:use-module (gnu packages serialization)
-  #:use-module (gnu packages commencement) ; TODO remove when default gcc version >=7
-  #:use-module (guix download)
-  #:use-module (guix git-download))
+  #:use-module (gnu packages sphinx)
+  #:use-module (gnu packages suckless)
+  #:use-module (gnu packages texinfo)
+  #:use-module (gnu packages textutils)
+  #:use-module (gnu packages video)
+  #:use-module (gnu packages web)
+  #:use-module (gnu packages xdisorg)
+  #:use-module (gnu packages xml)
+  #:use-module (gnu packages xorg))
 
 (define-public bspwm
   (package
     (name "bspwm")
-    (version "0.9.5")
+    (version "0.9.9")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/baskerville/bspwm.git")
+             (url "https://github.com/baskerville/bspwm")
              (commit version)))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "09h3g1rxxjyw861mk32lj774nmwkx8cwxq4wfgmf4dpbizymvhhr"))))
+        (base32 "1i7crmljk1vra1r6alxvj6lqqailjjcv0llyg7a0gm23rbv4a42g"))))
     (build-system gnu-build-system)
     (inputs
      `(("libxcb" ,libxcb)
@@ -126,6 +146,83 @@
     (synopsis "Tiling window manager based on binary space partitioning")
     (description "bspwm is a tiling window manager that represents windows as
 the leaves of a full binary tree.")
+    (license license:bsd-2)))
+
+(define-public herbstluftwm
+  (package
+    (name "herbstluftwm")
+    (version "0.8.3")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "https://herbstluftwm.org/tarballs/herbstluftwm-"
+                           version ".tar.gz"))
+       (sha256
+        (base32 "1qmb4pjf2f6g0dvcg11cw9njwmxblhqzd70ai8qnlgqw1iz3nkm1"))
+       (file-name (string-append "herbstluftwm-" version ".tar.gz"))))
+    (build-system cmake-build-system)
+    (inputs
+     `(("dzen"        ,dzen)
+       ("dmenu"       ,dmenu)
+       ("glib"        ,glib)
+       ("glibmm"      ,glibmm)
+       ("xterm"       ,xterm)
+       ("xsetroot"    ,xsetroot)
+       ("libx11"      ,libx11)
+       ("libxext"     ,libxext)
+       ("libxinerama" ,libxinerama)
+       ("libxrandr"   ,libxrandr)))
+    (native-inputs
+     `(("asciidoc"   ,asciidoc)
+       ("pkg-config" ,pkg-config)))
+    (arguments
+     '(#:tests? #f
+       #:configure-flags
+       (let ((out (assoc-ref %outputs "out")))
+         (list "-DCC=gcc"
+               (string-append "-DCMAKE_INSTALL_SYSCONF_PREFIX=" out "/etc")
+               (string-append "-DBASHCOMPLETIONDIR=" out "/etc/bash_completion.d")))
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'install 'install-xsession
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (xsessions (string-append out "/share/xsessions")))
+               (mkdir-p xsessions)
+               (call-with-output-file
+                   (string-append xsessions "/herbstluftwm.desktop")
+                 (lambda (port)
+                   (format port "~
+                     [Desktop Entry]~@
+                     Name=herbstluftwm~@
+                     Comment=Manual tiling window manager~@
+                     Exec=~a/bin/herbstluftwm~@
+                     Type=XSession~%" out)))
+               #t))))))
+    (synopsis "Tiling window manager for X11")
+    (description "herbstluftwm is a manual tiling window manager for X11 using
+Xlib and GLib.  Its main features are:
+
+@itemize
+@item
+The layout is based on splitting frames into subframes which can be split
+again or can be filled with windows (similar to i3 or musca).
+
+@item
+Tags (or workspaces or virtual desktops or …) can be added/removed at runtime.
+Each tag contains an own layout.
+
+@item
+Exactly one tag is viewed on each monitor.  The tags are monitor independent
+(similar to Xmonad).
+
+@item
+It is configured at runtime via IPC calls from @command{herbstclient}.  So the
+configuration file is just a script which is run on startup (similar to wmii
+or musca).
+
+@end itemize")
+    (home-page "https://herbstluftwm.org")
     (license license:bsd-2)))
 
 (define-public i3status
@@ -173,14 +270,14 @@ commands would.")
 (define-public i3-wm
   (package
     (name "i3-wm")
-    (version "4.17.1")
+    (version "4.18.2")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://i3wm.org/downloads/i3-"
                                   version ".tar.bz2"))
               (sha256
                (base32
-                "0iazv2i2rgmakzh95pgj6iapyzn7bdpcbcd35a79mhlml4ry33qy"))))
+                "030jym6b8b07yf4y6pb806hg8k77zsprv569gy0r72rh5zb1g1mj"))))
     (build-system gnu-build-system)
     (arguments
      `(#:configure-flags
@@ -240,6 +337,35 @@ i3 uses a plain-text configuration file, and can be extended and controlled from
 many programming languages.")
     (license license:bsd-3)))
 
+(define-public i3-gaps
+  (package (inherit i3-wm)
+           (name "i3-gaps")
+           (version "4.18.2")
+           (source (origin
+                     (method url-fetch)
+                     (uri (string-append
+                           "https://github.com/Airblader/i3/releases/download/"
+                           version "/i3-" version ".tar.bz2"))
+                     (sha256
+                      (base32
+                       "0lz08wf4b0yprzqsmymn94kiyg885dcwmh0p64v2rnf52s165g2g"))))
+           (home-page "https://github.com/Airblader/i3")
+           (synopsis "Tiling window manager with gaps")
+           (description "i3-gaps is a fork of i3wm, a tiling window manager
+for X11.  It is kept up to date with upstream, adding a few additional
+features such as gaps between windows.
+
+i3 is a tiling X11 window manager that dynamically manages tiled, stacked,
+and tabbed window layouts.
+
+i3 primarily targets advanced users.  Windows are managed manually and
+organised inside containers, which can be split vertically or horizontally,
+and optionally resized.
+
+i3 uses a plain-text configuration file, and can be extended and controlled
+from many programming languages.")
+           (license license:bsd-3)))
+
 (define-public i3lock
   (package
     (name "i3lock")
@@ -277,7 +403,7 @@ Despite the name it should work with any X11 window manager.")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/vivien/i3blocks.git")
+                    (url "https://github.com/vivien/i3blocks")
                     (commit version)))
               (sha256
                (base32
@@ -332,7 +458,7 @@ You can then subscribe to events or send messages and receive their replies.")
        ;; for years.
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/ziberna/i3-py.git")
+             (url "https://github.com/ziberna/i3-py")
              (commit "27f88a616e9ecc340e7d041d3d00782f8a1964c1")))
        (sha256
         (base32
@@ -377,7 +503,7 @@ subscribe to events.")
          ;; instead of the release.
          (method git-fetch)
          (uri (git-reference
-               (url "https://github.com/proxypoke/quickswitch-for-i3.git")
+               (url "https://github.com/proxypoke/quickswitch-for-i3")
                (commit commit)))
          (sha256
           (base32
@@ -415,7 +541,7 @@ prompt.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/PandorasFox/i3lock-color.git")
+             (url "https://github.com/PandorasFox/i3lock-color")
              (commit version)))
        (file-name (git-file-name name version))
        (sha256
@@ -458,7 +584,7 @@ Features include:
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/meskarune/i3lock-fancy.git")
+             (url "https://github.com/meskarune/i3lock-fancy")
              (commit version)))
        (file-name (git-file-name name version))
        (sha256
@@ -568,37 +694,46 @@ tiled on several screens.")
 (define-public xmobar
   (package
     (name "xmobar")
-    (version "0.28")
+    (version "0.34")
     (source (origin
               (method url-fetch)
               (uri (string-append "mirror://hackage/package/xmobar/"
                                   "xmobar-" version ".tar.gz"))
               (sha256
                (base32
-                "1xh87asg8y35srvp7d3gyyy4bkxsw122liihxgzgm8pqv2z3h4zd"))))
+                "0x09xbz7y9ay0046j1xpr9jjk5jqivqi06vm3q6mhcrgc4y922rx"))))
     (build-system haskell-build-system)
     (native-inputs
      `(("ghc-hspec" ,ghc-hspec)
        ("hspec-discover" ,hspec-discover)))
     (inputs
-     `(("ghc-hinotify" ,ghc-hinotify)
+     `(("ghc-alsa-core" ,ghc-alsa-core)
+       ("ghc-alsa-mixer" ,ghc-alsa-mixer)
+       ("ghc-dbus" ,ghc-dbus)
+       ("ghc-hinotify" ,ghc-hinotify)
        ("ghc-http" ,ghc-http)
+       ("ghc-http-conduit" ,ghc-http-conduit)
+       ("ghc-http-types" ,ghc-http-types)
        ("ghc-iwlib" ,ghc-iwlib)
+       ("ghc-libmpd" ,ghc-libmpd)
+       ("ghc-old-locale" ,ghc-old-locale)
        ("ghc-parsec-numbers" ,ghc-parsec-numbers)
        ("ghc-regex-compat" ,ghc-regex-compat)
+       ("ghc-temporary" ,ghc-temporary)
+       ("ghc-timezone-olson" ,ghc-timezone-olson)
+       ("ghc-x11" ,ghc-x11)
        ("ghc-x11-xft" ,ghc-x11-xft)
        ("libxpm" ,libxpm)))
     (arguments
-     `(#:configure-flags
-       (list (string-append "--flags="
-                            (string-join (list "with_inotify"
-                                               "with_iwlib"
-                                               "with_utf8"
-                                               "with_weather"
-                                               "with_xft"
-                                               "with_xpm")
-                                         " ")))))
-    (home-page "http://xmobar.org")
+     `(#:configure-flags (list "--flags=all_extensions")
+       #:phases
+       (modify-phases %standard-phases
+         (add-before 'build 'patch-test-shebang
+           (lambda* (#:key inputs #:allow-other-keys)
+             (substitute* "test/Xmobar/Plugins/Monitors/AlsaSpec.hs"
+               (("/bin/bash") (which "bash")))
+             #t)))))
+    (home-page "https://xmobar.org")
     (synopsis "Minimalistic text based status bar")
     (description
      "@code{xmobar} is a lightweight, text-based, status bar written in
@@ -610,14 +745,14 @@ Haskell, no knowledge of the language is required to install and use it.")
 (define-public ghc-xmonad-contrib
   (package
     (name "ghc-xmonad-contrib")
-    (version "0.15")
+    (version "0.16")
     (source
      (origin
        (method url-fetch)
        (uri (string-append "mirror://hackage/package/xmonad-contrib/"
                            "xmonad-contrib-" version ".tar.gz"))
        (sha256
-        (base32 "0r9yzgy67j4mi3dyxx714f0ssk5qzca5kh4zw0fhiz1pf008cxms"))))
+        (base32 "1pddgkvnbww28wykncc7j0yb0lv15bk7xnnhdcbrwkxzw66w6wmd"))))
     (build-system haskell-build-system)
     (propagated-inputs
      `(("ghc-old-time" ,ghc-old-time)
@@ -738,89 +873,108 @@ experience.")
 (define-public awesome
   (package
     (name "awesome")
-    (version "4.2")
+    (version "4.3")
     (source
-     (origin (method url-fetch)
-             (uri (string-append
-                   "https://github.com/awesomeWM/awesome-releases/raw/"
-                   "master/awesome-" version ".tar.xz"))
-             (sha256
-              (base32
-               "0kwpbls9h1alxcmvxh5g9qb995fds5b2ngcr44w0ibazkyls2pdc"))
-             (modules '((guix build utils)
-                        (srfi srfi-19)))
-             (snippet '(begin
-                         ;; Remove non-reproducible timestamp and use the date
-                         ;; of the source file instead.
-                         (substitute* "common/version.c"
-                           (("__DATE__ \" \" __TIME__")
-                            (date->string
-                             (time-utc->date
-                              (make-time time-utc 0
-                                         (stat:mtime (stat "awesome.c"))))
-                             "\"~c\"")))
-                         #t))
-             (patches (search-patches "awesome-reproducible-png.patch"))))
+     (origin
+       (method url-fetch)
+       (uri (string-append
+             "https://github.com/awesomeWM/awesome-releases/raw/master/"
+             "awesome-" version ".tar.xz"))
+       (sha256
+        (base32 "0lqpw401mkkmp9wgbvrmm45bqq2j9357l4irwdqv6l1305pls9kq"))
+       (modules '((guix build utils)
+                  (srfi srfi-19)))
+       (snippet
+        '(begin
+           ;; Remove non-reproducible timestamp and use the date of
+           ;; the source file instead.
+           (substitute* "common/version.c"
+             (("__DATE__ \" \" __TIME__")
+              (date->string
+               (time-utc->date
+                (make-time time-utc 0 (stat:mtime (stat "awesome.c"))))
+               "\"~c\"")))
+           #t))
+       (patches
+        (search-patches "awesome-reproducible-png.patch"))))
     (build-system cmake-build-system)
-    (native-inputs `(("asciidoc" ,asciidoc)
-                     ("docbook-xsl" ,docbook-xsl)
-                     ("doxygen" ,doxygen)
-                     ("gperf" ,gperf)
-                     ("imagemagick" ,imagemagick)
-                     ("libxml2" ,libxml2)         ;for XML_CATALOG_FILES
-                     ("pkg-config" ,pkg-config)
-                     ("xmlto" ,xmlto)))
-    (inputs `(("cairo" ,cairo)
-              ("dbus" ,dbus)
-              ("gdk-pixbuf" ,gdk-pixbuf)
-              ("glib" ,glib)
-              ("gobject-introspection" ,gobject-introspection)
-              ("imlib2" ,imlib2)
-              ("libev" ,libev)
-              ("libxcb" ,libxcb)
-              ("libxcursor" ,libxcursor)
-              ("libxdg-basedir" ,libxdg-basedir)
-              ("libxkbcommon" ,libxkbcommon)
-              ("lua" ,lua)
-              ("lua-lgi" ,lua-lgi)
-              ("pango" ,pango)
-              ("startup-notification" ,startup-notification)
-              ("xcb-util" ,xcb-util)
-              ("xcb-util-cursor" ,xcb-util-cursor)
-              ("xcb-util-image" ,xcb-util-image)
-              ("xcb-util-keysyms" ,xcb-util-keysyms)
-              ("xcb-util-renderutil" ,xcb-util-renderutil)
-              ("xcb-util-xrm" ,xcb-util-xrm)
-              ("xcb-util-wm" ,xcb-util-wm)))
+    (native-inputs
+     `(("asciidoc" ,asciidoc)
+       ("docbook-xsl" ,docbook-xsl)
+       ("doxygen" ,doxygen)
+       ("gperf" ,gperf)
+       ("imagemagick" ,imagemagick)
+       ("libxml2" ,libxml2)             ;for XML_CATALOG_FILES
+       ("lua-ldoc" ,lua-ldoc)
+       ("pkg-config" ,pkg-config)
+       ("xmlto" ,xmlto)))
+    (inputs
+     `(("cairo" ,cairo)
+       ("dbus" ,dbus)
+       ("gdk-pixbuf" ,gdk-pixbuf)
+       ("glib" ,glib)
+       ("gobject-introspection" ,gobject-introspection)
+       ("imlib2" ,imlib2)
+       ("libev" ,libev)
+       ("libxcb" ,libxcb)
+       ("libxcursor" ,libxcursor)
+       ("libxdg-basedir" ,libxdg-basedir)
+       ("libxkbcommon" ,libxkbcommon)
+       ("lua" ,lua)
+       ("lua-lgi" ,lua-lgi)
+       ("pango" ,pango)
+       ("startup-notification" ,startup-notification)
+       ("xcb-util" ,xcb-util)
+       ("xcb-util-cursor" ,xcb-util-cursor)
+       ("xcb-util-image" ,xcb-util-image)
+       ("xcb-util-keysyms" ,xcb-util-keysyms)
+       ("xcb-util-renderutil" ,xcb-util-renderutil)
+       ("xcb-util-xrm" ,xcb-util-xrm)
+       ("xcb-util-wm" ,xcb-util-wm)))
     (arguments
-     `(;; Let compression happen in our 'compress-documentation' phase so that
-       ;; '--no-name' is used, which removes timestamps from gzip output.
-       #:configure-flags '("-DCOMPRESS_MANPAGES=off")
-
-       ;; Building awesome in its source dir is no longer supported.
+     `(#:modules ((guix build cmake-build-system)
+                  (guix build utils)
+                  (ice-9 match))
+       ;; Let compression happen in our 'compress-documentation' phase
+       ;; so that '--no-name' is used, which removes timestamps from
+       ;; gzip output.
+       #:configure-flags
+       '("-DCOMPRESS_MANPAGES=off")
+       ;; Building awesome in its source directory is no longer
+       ;; supported.
        #:out-of-source? #t
-
        #:phases
        (modify-phases %standard-phases
-         (add-before 'build 'xmlto-skip-validation
-           (lambda _
-             ;; We can't download the necessary schema, so so skip
-             ;; validation and assume they're valid.
-             (substitute* "../build/CMakeFiles/man.dir/build.make"
-               (("/xmlto")
-                (string-append "/xmlto --skip-validation")))
-             #t))
-         (add-before 'configure 'set-lua-paths
+         (add-before 'configure 'set-paths
            (lambda* (#:key inputs #:allow-other-keys)
-             ;; The build process needs to load cairo dynamically.
-             (let* ((cairo (string-append
-                             (assoc-ref inputs "cairo") "/lib" ))
-                    (lua-lgi (assoc-ref inputs "lua-lgi") ))
-               (setenv "LD_LIBRARY_PATH" cairo )
-               (setenv "LUA_PATH" (string-append lua-lgi
-                                                 "/share/lua/5.2/?.lua"))
-               (setenv "LUA_CPATH" (string-append lua-lgi
-                                                  "/lib/lua/5.2/?.so"))
+             ;; The build process needs to load Cairo dynamically.
+             (let* ((cairo (string-append (assoc-ref inputs "cairo") "/lib"))
+                    (lua-version ,(version-major+minor (package-version lua)))
+                    (lua-dependencies
+                     (filter (match-lambda
+                               ((label . _) (string-prefix? "lua-" label)))
+                             inputs))
+                    (lua-path
+                     (string-join
+                      (map (match-lambda
+                             ((_ . dir)
+                              (string-append
+                               dir "/share/lua/" lua-version "/?.lua;"
+                               dir "/share/lua/" lua-version "/?/?.lua")))
+                           lua-dependencies)
+                      ";"))
+                    (lua-cpath
+                     (string-join
+                      (map (match-lambda
+                             ((_ . dir)
+                              (string-append
+                               dir "/lib/lua/" lua-version "/?.so;"
+                               dir "/lib/lua/" lua-version "/?/?.so")))
+                           lua-dependencies)
+                      ";")))
+               (setenv "LD_LIBRARY_PATH" cairo)
+               (setenv "LUA_PATH" (string-append "?.lua;" lua-path))
+               (setenv "LUA_CPATH" lua-cpath)
                #t)))
          (replace 'check
            (lambda _
@@ -837,35 +991,35 @@ experience.")
          (add-after 'install 'wrap
            (lambda* (#:key inputs outputs #:allow-other-keys)
              (let* ((awesome (assoc-ref outputs "out"))
-                    (cairo (string-append
-                             (assoc-ref inputs "cairo") "/lib" ))
-                    (lua-lgi (assoc-ref inputs "lua-lgi") ))
+                    (cairo (string-append (assoc-ref inputs "cairo") "/lib"))
+                    (lua-version ,(version-major+minor (package-version lua)))
+                    (lua-lgi (assoc-ref inputs "lua-lgi")))
                (wrap-program (string-append awesome "/bin/awesome")
+                 `("LUA_PATH" suffix
+                   (,(format #f "~a/share/lua/~a/?.lua" lua-lgi lua-version)))
+                 `("LUA_CPATH" suffix
+                   (,(format #f "~a/lib/lua/~a/?.so" lua-lgi lua-version)))
                  `("GI_TYPELIB_PATH" ":" prefix (,(getenv "GI_TYPELIB_PATH")))
-                 `("LD_LIBRARY_PATH" suffix (, cairo))
-                 `("LUA_PATH" suffix (,(string-append lua-lgi
-                                                      "/share/lua/5.2/?.lua")))
-                 `("LUA_CPATH" suffix (,(string-append
-                                          lua-lgi "/lib/lua/5.2/?.so"))))))))))
+                 `("LD_LIBRARY_PATH" suffix (,cairo)))
+               #t))))))
+    (home-page "https://awesomewm.org/")
     (synopsis "Highly configurable window manager")
     (description
      "Awesome has been designed as a framework window manager.  It is fast, small,
 dynamic and extensible using the Lua programming language.")
-    (license license:gpl2+)
-    (home-page "https://awesomewm.org/")))
+    (license license:gpl2+)))
 
 (define-public menumaker
   (package
     (name "menumaker")
-    (version "0.99.10")
+    (version "0.99.12")
     (source
      (origin
        (method url-fetch)
        (uri (string-append "mirror://sourceforge/menumaker/"
                            "menumaker-" version ".tar.gz"))
        (sha256
-        (base32
-         "1mm4cvg3kphkkd8nwrhcg6d9nm5ar7mgc0wf6fxk6zck1l7xn8ky"))))
+        (base32 "034v5204bsgkzzk6zfa5ia63q95gln47f7hwf96yvad5hrhmd8z3"))))
     (build-system gnu-build-system)
     (inputs
      `(("python" ,python)))
@@ -919,21 +1073,49 @@ Keybinder works with GTK-based applications using the X Window System.")
     (home-page "https://github.com/kupferlauncher/keybinder")
     (license license:gpl2+)))
 
+(define-public keybinder-3.0
+  (package
+    (name "keybinder-3.0")
+    (version "0.3.2")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "https://github.com/kupferlauncher/keybinder"
+                           "/releases/download/" name "-v" version "/" name "-"
+                           version ".tar.gz"))
+       (file-name (string-append name "-" version ".tar.gz"))
+       (sha256
+        (base32
+         "0830ihwnalw59pp1xzrp37dn58n8vwb8zasnm4a1h81v3x7dxqz6"))))
+    (build-system gnu-build-system)
+    (inputs
+     `(("gtk+" ,gtk+)
+       ("gobject-introspection" ,gobject-introspection)))
+    (native-inputs
+     `(("gtk-doc" ,gtk-doc)
+       ("pkg-config" ,pkg-config)))
+    (synopsis "Library for registering global keyboard shortcuts, Gtk3 version")
+    (description
+     "Keybinder is a library for registering global keyboard shortcuts.
+Keybinder works with GTK-based applications using the X Window System.")
+    (home-page "https://github.com/kupferlauncher/keybinder")
+    (license license:x11)))
+
 (define-public spectrwm
   (package
     (name "spectrwm")
     (version "3.2.0")
     (source
      (origin
-       (method url-fetch)
-       (uri (let ((version-with-underscores
-                   (string-join (string-split version #\.) "_")))
-              (string-append "https://github.com/conformal/spectrwm/archive/"
-                             "SPECTRWM_" version-with-underscores ".tar.gz")))
-       (file-name (string-append name "-" version ".tar.gz"))
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/conformal/spectrwm")
+             (commit
+              (string-append "SPECTRWM_"
+                             (string-join (string-split version #\.) "_")))))
+       (file-name (git-file-name name version))
        (sha256
-        (base32
-         "0z7gjmp1x6y8q3dnw6swvbv8x2wd4ykzjvi3ibk2sxhgc910907v"))))
+        (base32 "1dfqy5f0s1nv6rqkz9lj006vypmp4rwxd5vczfk3ndzqgnh19kw6"))))
     (build-system gnu-build-system)
     (arguments
      `(#:make-flags (let ((pkg-config (lambda (flag)
@@ -993,15 +1175,15 @@ It is inspired by Xmonad and dwm.  Its major features include:
 (define-public cwm
   (package
     (name "cwm")
-    (version "6.3")
+    (version "6.6")
     (source
      (origin
        (method url-fetch)
-       (uri (string-append "http://chneukirchen.org/releases/cwm-"
+       (uri (string-append "https://leahneukirchen.org/releases/cwm-"
                            version ".tar.gz"))
        (sha256
         (base32
-         "17pdp9cfgh2n3n3905l4rl9qk7b722i8psnarhlc2h98qzx7zmac"))))
+         "0p350pbfn92m21jiq4i324sdskxhs71p435g0mgz7cmzprnhhg92"))))
     (build-system gnu-build-system)
     (arguments
      `(#:make-flags (list "CC=gcc"
@@ -1036,7 +1218,7 @@ It is inspired by Xmonad and dwm.  Its major features include:
     (native-inputs
      `(("pkg-config" ,pkg-config)
        ("bison" ,bison)))
-    (home-page "https://github.com/chneukirchen/cwm")
+    (home-page "https://github.com/leahneukirchen/cwm")
     (synopsis "OpenBSD fork of the calmwm window manager")
     (description "Cwm is a stacking window manager for X11.  It is an OpenBSD
 project derived from the original Calm Window Manager.")
@@ -1062,10 +1244,6 @@ project derived from the original Calm Window Manager.")
        ("glibmm" ,glibmm)))
     (native-inputs
      `(("pkg-config" ,pkg-config)))
-    (arguments
-     `(#:configure-flags (list
-                          (string-append "--prefix=" %output)
-                          "CXXFLAGS=-std=c++11")))
     (home-page "http://projects.l3ib.org/nitrogen/")
     (synopsis "Background browser and setter for X windows")
     (description
@@ -1089,15 +1267,14 @@ its size
 (define-public polybar
   (package
     (name "polybar")
-    (version "3.3.1")
+    (version "3.4.3")
     (source
      (origin
        (method url-fetch)
-       (uri (string-append "https://github.com/jaagr/polybar/releases/"
+       (uri (string-append "https://github.com/polybar/polybar/releases/"
                            "download/" version "/polybar-" version ".tar"))
        (sha256
-        (base32 "0758na059vpgnsrcdrxmh9wsahs80wnmizb9g7bmixlrkxr2m65h"))
-       (file-name (string-append name "-" version ".tar"))))
+        (base32 "0bw22qvbcdvyd0qv3ax48r34rnclbbb6dyb8h8zljq1r3lf15vfl"))))
     (build-system cmake-build-system)
     (arguments
      ;; Test is disabled because it requires downloading googletest from the
@@ -1107,6 +1284,7 @@ its size
      `(("alsa-lib" ,alsa-lib)
        ("cairo" ,cairo)
        ("i3-wm" ,i3-wm)
+       ("jsoncpp" ,jsoncpp)
        ("libmpdclient" ,libmpdclient)
        ("libnl" ,libnl)
        ("libxcb" ,libxcb)
@@ -1119,6 +1297,9 @@ its size
        ("xcb-util-xrm" ,xcb-util-xrm)))
     (native-inputs
      `(("pkg-config" ,pkg-config)
+       ("python-sphinx" ,python-sphinx) ; for the manual
+       ;; XXX: "python" input must be located after "python-2", or the package
+       ;; fails to build with "missing required python module: xcbgen".
        ("python-2" ,python-2)           ; lib/xpp depends on python 2
        ("python" ,python)))             ; xcb-proto depends on python 3
     (home-page "https://polybar.github.io/")
@@ -1131,16 +1312,16 @@ functionality to display information about the most commonly used services.")
 (define-public wlroots
   (package
     (name "wlroots")
-    (version "0.7.0")
+    (version "0.10.1")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/swaywm/wlroots.git")
+             (url "https://github.com/swaywm/wlroots")
              (commit version)))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "0jzxa6psbc7ddxli7rbfqxmv1svxnis51l1vch4hb9fdixqm284a"))))
+        (base32 "0j2lh9vc92zhn44rjbia5aw3y1rpgfng1x1h17lcvj5m4i6vj0pc"))))
     (build-system meson-build-system)
     (arguments
      `(#:configure-flags '("-Dlogind-provider=elogind")
@@ -1176,16 +1357,16 @@ modules for building a Wayland compositor.")
 (define-public sway
   (package
     (name "sway")
-    (version "1.2")
+    (version "1.4")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/swaywm/sway.git")
+             (url "https://github.com/swaywm/sway")
              (commit version)))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "0vch2zm5afc76ia78p3vg71zr2fyda67l9hd2h0x1jq3mnvfbxnd"))))
+        (base32 "11qf89y3q92g696a6f4d23qb44gqixg6qxq740vwv2jw59ms34ja"))))
     (build-system meson-build-system)
     (arguments
      `(#:phases
@@ -1214,8 +1395,7 @@ modules for building a Wayland compositor.")
               ("swaybg" ,swaybg)
               ("wayland" ,wayland)
               ("wlroots" ,wlroots)))
-    (native-inputs `(("git" ,git)
-                     ("libcap" ,libcap)
+    (native-inputs `(("libcap" ,libcap)
                      ("linux-pam" ,linux-pam)
                      ("mesa" ,mesa)
                      ("pkg-config" ,pkg-config)
@@ -1234,7 +1414,7 @@ modules for building a Wayland compositor.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/swaywm/swayidle.git")
+             (url "https://github.com/swaywm/swayidle")
              (commit version)))
        (file-name (git-file-name name version))
        (sha256
@@ -1260,7 +1440,7 @@ modules for building a Wayland compositor.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/swaywm/swaylock.git")
+             (url "https://github.com/swaywm/swaylock")
              (commit version)))
        (file-name (git-file-name name version))
        (sha256
@@ -1271,8 +1451,7 @@ modules for building a Wayland compositor.")
               ("libxkbcommon" ,libxkbcommon)
               ;("linux-pam" ,linux-pam) ; FIXME: Doesn't work.
               ("wayland" ,wayland)))
-    (native-inputs `(("git" ,git)
-                     ("pango" ,pango)
+    (native-inputs `(("pango" ,pango)
                      ("pkg-config" ,pkg-config)
                      ("scdoc" ,scdoc)
                      ("wayland-protocols" ,wayland-protocols)))
@@ -1289,7 +1468,7 @@ modules for building a Wayland compositor.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/swaywm/swaybg.git")
+             (url "https://github.com/swaywm/swaybg")
              (commit version)))
        (file-name (git-file-name name version))
        (sha256
@@ -1298,8 +1477,7 @@ modules for building a Wayland compositor.")
     (inputs `(("cairo" ,cairo)
               ("gdk-pixbuf" ,gdk-pixbuf)
               ("wayland" ,wayland)))
-    (native-inputs `(("git" ,git)
-                     ("pkg-config" ,pkg-config)
+    (native-inputs `(("pkg-config" ,pkg-config)
                      ("scdoc" ,scdoc)
                      ("wayland-protocols" ,wayland-protocols)))
     (home-page "https://github.com/swaywm/sway")
@@ -1310,29 +1488,23 @@ modules for building a Wayland compositor.")
 (define-public waybar
   (package
     (name "waybar")
-    (version "0.6.8")
+    (version "0.9.1")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/Alexays/Waybar.git")
+             (url "https://github.com/Alexays/Waybar")
              (commit version)))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "0wyp1p9r1k8jnjq8clp2fx8xa3f4lfrgbp67fxrjh9718p4br0ab"))))
+        (base32 "0drlv8im5phz39jxp3gxkc40b6f85bb3piff2v3hmnfzh7ib915s"))))
     (build-system meson-build-system)
     (arguments
      `(#:configure-flags
-       (list (string-append "-Dout=" (assoc-ref %outputs "out")))
-       #:phases
-       (modify-phases %standard-phases
-         ;; TODO remove when issue #30756 is resolved
-         (add-before 'configure 'fix-gcc
-           (lambda _
-             (unsetenv "C_INCLUDE_PATH")
-             (unsetenv "CPLUS_INCLUDE_PATH")
-             #t)))))
-    (inputs `(("fmt" ,fmt)
+       (list (string-append "-Dout=" (assoc-ref %outputs "out")))))
+    (inputs `(("date" ,date)
+              ("fmt" ,fmt)
+              ("gtk-layer-shell" ,gtk-layer-shell)
               ("gtkmm" ,gtkmm)
               ("jsoncpp" ,jsoncpp)
               ("libdbusmenu" ,libdbusmenu)
@@ -1342,12 +1514,11 @@ modules for building a Wayland compositor.")
               ("pulseaudio" ,pulseaudio)
               ("spdlog" ,spdlog)
               ("wayland" ,wayland)))
-    (native-inputs `(("gcc-toolchain" ,gcc-toolchain-7) ; TODO remove when default gcc version >=7
-                     ("glib:bin" ,glib "bin")
+    (native-inputs `(("glib:bin" ,glib "bin")
                      ("pkg-config" ,pkg-config)
                      ("wayland-protocols" ,wayland-protocols)))
     (home-page "https://github.com/Alexays/Waybar")
-    (synopsis "Wayland bar for Sway and Wlroots based compositors.")
+    (synopsis "Wayland bar for Sway and Wlroots based compositors")
     (description "Waybar is a highly customisable Wayland bar for Sway and
 Wlroots based compositors.")
     (license license:expat))) ; MIT license
@@ -1355,16 +1526,16 @@ Wlroots based compositors.")
 (define-public mako
   (package
     (name "mako")
-    (version "1.3")
+    (version "1.4")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/emersion/mako.git")
+             (url "https://github.com/emersion/mako")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "17azdc37xsbmx13fkfp23vg9lznrv9fh6nhagn64wdq3nhsxm3b6"))))
+        (base32 "11ymiq6cr2ma0iva1mqybn3j6k73bsc6lv6pcbdq7hkhd4f9b7j9"))))
     (build-system meson-build-system)
     (inputs `(("cairo" ,cairo)
               ("elogind" ,elogind)
@@ -1379,3 +1550,414 @@ Wlroots based compositors.")
     (description "Mako is a lightweight notification daemon for Wayland
 compositors that support the layer-shell protocol.")
     (license license:expat))) ; MIT license
+
+(define-public stumpwm
+  (package
+    (name "stumpwm")
+    (version "19.11")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/stumpwm/stumpwm")
+             (commit version)))
+       (file-name (git-file-name "stumpwm" version))
+       (sha256
+        (base32 "1ha8803ll7472kqxsy2xz0v5d4sv8apmc9z631d67m31q0z1m9rz"))))
+    (build-system asdf-build-system/sbcl)
+    (native-inputs `(("fiasco" ,sbcl-fiasco)
+                     ("texinfo" ,texinfo)))
+    (inputs `(("cl-ppcre" ,sbcl-cl-ppcre)
+              ("clx" ,sbcl-clx)
+              ("alexandria" ,sbcl-alexandria)))
+    (outputs '("out" "lib"))
+    (arguments
+     '(#:asd-system-name "stumpwm"
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'create-symlinks 'build-program
+           (lambda* (#:key outputs #:allow-other-keys)
+             (build-program
+              (string-append (assoc-ref outputs "out") "/bin/stumpwm")
+              outputs
+              #:entry-program '((stumpwm:stumpwm) 0))))
+         (add-after 'build-program 'create-desktop-file
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (xsessions (string-append out "/share/xsessions")))
+               (mkdir-p xsessions)
+               (call-with-output-file
+                   (string-append xsessions "/stumpwm.desktop")
+                 (lambda (file)
+                   (format file
+                    "[Desktop Entry]~@
+                     Name=stumpwm~@
+                     Comment=The Stump Window Manager~@
+                     Exec=~a/bin/stumpwm~@
+                     TryExec=~@*~a/bin/stumpwm~@
+                     Icon=~@
+                     Type=Application~%"
+                    out)))
+               #t)))
+         (add-after 'install 'install-manual
+           (lambda* (#:key outputs #:allow-other-keys)
+             ;; The proper way to the manual is bootstrapping a full autotools
+             ;; build system and running ‘./configure && make stumpwm.info’ to
+             ;; do some macro substitution.  We can get away with much less.
+             (let* ((out  (assoc-ref outputs "out"))
+                    (info (string-append out "/share/info")))
+               (invoke "makeinfo" "stumpwm.texi.in")
+               (install-file "stumpwm.info" info)
+               #t))))))
+    (synopsis "Window manager written in Common Lisp")
+    (description "Stumpwm is a window manager written entirely in Common Lisp.
+It attempts to be highly customizable while relying entirely on the keyboard
+for input.  These design decisions reflect the growing popularity of
+productive, customizable lisp based systems.")
+    (home-page "https://github.com/stumpwm/stumpwm")
+    (license license:gpl2+)
+    (properties `((cl-source-variant . ,(delay cl-stumpwm))))))
+
+(define-public sbcl-stumpwm
+  (deprecated-package "sbcl-stumpwm" stumpwm))
+
+(define-public cl-stumpwm
+  (package
+    (inherit (sbcl-package->cl-source-package stumpwm))
+    (name "cl-stumpwm")))
+
+(define-public stumpwm+slynk
+  (package
+    (inherit stumpwm)
+    (name "stumpwm-with-slynk")
+    (outputs '("out"))
+    (inputs
+     `(("stumpwm" ,stumpwm "lib")
+       ("slynk" ,sbcl-slynk)))
+    (arguments
+     (substitute-keyword-arguments (package-arguments stumpwm)
+       ((#:phases phases)
+        `(modify-phases ,phases
+           (replace 'build-program
+             (lambda* (#:key inputs outputs #:allow-other-keys)
+               (let* ((out (assoc-ref outputs "out"))
+                      (program (string-append out "/bin/stumpwm")))
+                 (build-program program outputs
+                                #:entry-program '((stumpwm:stumpwm) 0)
+                                #:dependencies '("stumpwm"
+                                                 ,@(@@ (gnu packages lisp-xyz) slynk-systems))
+                                #:dependency-prefixes
+                                (map (lambda (input) (assoc-ref inputs input))
+                                     '("stumpwm" "slynk")))
+                 ;; Remove unneeded file.
+                 (delete-file (string-append out "/bin/stumpwm-exec.fasl"))
+                 #t)))
+           (delete 'copy-source)
+           (delete 'build)
+           (delete 'check)
+           (delete 'create-asd-file)
+           (delete 'cleanup)
+           (delete 'create-symlinks)))))))
+
+(define stumpwm-contrib
+  (let ((commit "920f8fc1488f7953f205e1dda4c2ecbbbda56d63")
+        (revision "2"))
+    (package
+      (name "stumpwm-contrib")
+      (version (git-version "0.0.1" revision commit)) ;no upstream release
+      (source
+       (origin
+         (method git-fetch)
+         (uri (git-reference
+               (url "https://github.com/stumpwm/stumpwm-contrib")
+               (commit commit)))
+         (file-name (git-file-name name version))
+         (sha256
+          (base32 "0giac390bq95ag41xkxqp8jjrhfx1wpgglz7jg5rkm0wjhcwmyml"))))
+      (build-system asdf-build-system/sbcl)
+      (inputs
+       `(("stumpwm" ,stumpwm "lib")))
+      (home-page "https://github.com/stumpwm/stumpwm-contrib")
+      (synopsis "StumpWM interactive shell")
+      (description "This package provides a StumpWM interactive shell.")
+      (license (list license:gpl2+ license:gpl3+ license:bsd-2)))))
+
+(define-public stumpish
+  (package
+    (inherit stumpwm-contrib)
+    (name "stumpish")
+    (inputs
+     `(("bash" ,bash)
+       ("rlwrap" ,rlwrap)))
+    (build-system trivial-build-system)
+    (arguments
+     '(#:modules ((guix build utils))
+       #:builder
+       (begin
+         (use-modules (guix build utils))
+         (copy-recursively (assoc-ref %build-inputs "source") ".")
+         (chdir "util/stumpish")
+         (substitute* "stumpish"
+           (("rlwrap") (string-append (assoc-ref %build-inputs "rlwrap")
+                                      "/bin/rlwrap"))
+           (("/bin/sh") (string-append (assoc-ref %build-inputs "bash")
+                                       "/bin/bash")))
+         (install-file "stumpish" (string-append %output "/bin")))))
+    (home-page "https://github.com/stumpwm/stumpwm-contrib")
+    (synopsis "StumpWM interactive shell")
+    (description "This package provides a StumpWM interactive shell.")
+    (license (list license:gpl2+ license:gpl3+ license:bsd-2))))
+
+(define-public sbcl-stumpwm+slynk
+  (deprecated-package "sbcl-stumpwm-with-slynk" stumpwm+slynk))
+
+(define-public sbcl-stumpwm-ttf-fonts
+  (package
+    (inherit stumpwm-contrib)
+    (name "sbcl-stumpwm-ttf-fonts")
+    (inputs
+     `(("stumpwm" ,stumpwm "lib")
+       ("clx-truetype" ,sbcl-clx-truetype)))
+    (arguments
+     '(#:asd-system-name "ttf-fonts"
+       #:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'chdir
+           (lambda _ (chdir "util/ttf-fonts") #t)))))
+    (home-page "https://github.com/stumpwm/stumpwm-contrib")
+    (synopsis "Implementation of TTF font rendering for Lisp")
+    (description "This package provides a Lisp implementation of TTF font
+rendering.")
+    (license (list license:gpl2+ license:gpl3+ license:bsd-2))))
+
+(define-public sbcl-stumpwm-pass
+  (package
+    (inherit stumpwm-contrib)
+    (name "sbcl-stumpwm-pass")
+    (arguments
+     '(#:asd-system-name "pass"
+       #:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'chdir
+           (lambda _ (chdir "util/pass") #t)))))
+    (home-page "https://github.com/stumpwm/stumpwm-contrib")
+    (synopsis "Integrate @code{pass} with StumpWM")
+    (description "This package provides an interface which integrates
+password-store into StumpWM.")
+    (license (list license:gpl2+ license:gpl3+ license:bsd-2))))
+
+(define-public sbcl-stumpwm-globalwindows
+  (package
+    (inherit stumpwm-contrib)
+    (name "sbcl-stumpwm-globalwindows")
+    (arguments
+     '(#:asd-system-name "globalwindows"
+       #:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'chdir
+           (lambda _ (chdir "util/globalwindows") #t)))))
+    (home-page "https://github.com/stumpwm/stumpwm-contrib")
+    (synopsis "Manipulate all windows in the current X session")
+    (description "This package provides a StumpWM module to manipulate all
+windows in the current X session.")
+    (license (list license:gpl2+ license:gpl3+ license:bsd-2))))
+
+(define-public sbcl-stumpwm-swm-gaps
+  (package
+    (inherit stumpwm-contrib)
+    (name "sbcl-stumpwm-swm-gaps")
+    (arguments
+     '(#:asd-system-name "swm-gaps"
+       #:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'chdir
+           (lambda _ (chdir "util/swm-gaps") #t)))))
+    (home-page "https://github.com/stumpwm/stumpwm-contrib")
+    (synopsis "Gaps between windows for StumpWM")
+    (description "This package provides a StumpWM module which adds gaps
+between windows.")
+    (license (list license:gpl2+ license:gpl3+ license:bsd-2))))
+
+(define-public sbcl-stumpwm-net
+  (package
+    (inherit stumpwm-contrib)
+    (name "sbcl-stumpwm-net")
+    (arguments
+     '(#:asd-system-name "net"
+       #:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'chdir (lambda _ (chdir "modeline/net") #t)))))
+    (home-page
+     "https://github.com/stumpwm/stumpwm-contrib/tree/master/modeline/net")
+    (synopsis "Modeline support for network connectivity")
+    (description "Modeline support for network connectivity.")
+    (supported-systems
+     (filter (lambda (a) (string-contains a "linux")) %supported-systems))
+    (license license:gpl3+)))
+
+(define-public sbcl-stumpwm-wifi
+  (package
+    (inherit stumpwm-contrib)
+    (name "sbcl-stumpwm-wifi")
+    (arguments
+     '(#:asd-system-name "wifi"
+       #:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'chdir (lambda _ (chdir "modeline/wifi") #t)))))
+    (home-page
+     "https://github.com/stumpwm/stumpwm-contrib/tree/master/modeline/wifi")
+    (synopsis "Modeline support for wifi connectivity")
+    (description "Modeline support for wifi connectivity.")
+    (supported-systems
+     (filter (lambda (a) (string-contains a "linux")) %supported-systems))
+    (license license:gpl3+)))
+
+(define-public sbcl-stumpwm-stumptray
+  (package
+    (inherit stumpwm-contrib)
+    (name "sbcl-stumpwm-stumptray")
+    (arguments
+     '(#:asd-system-name "stumptray"
+       #:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'chdir (lambda _ (chdir "modeline/stumptray") #t)))))
+    (inputs
+     `(("stumpwm" ,stumpwm "lib")
+       ("xembed" ,sbcl-clx-xembed)
+       ("alexandria" ,sbcl-alexandria)))
+    (home-page
+     "https://github.com/stumpwm/stumpwm-contrib/tree/master/modeline/stumptray")
+    (synopsis "Modeline support for stumptray connectivity")
+    (description "Modeline support for stumptray connectivity.")
+    (supported-systems
+     (filter (lambda (a) (string-contains a "linux")) %supported-systems))
+    (license license:gpl3+)))
+
+(define-public sbcl-stumpwm-kbd-layouts
+  (package
+    (inherit stumpwm-contrib)
+    (name "sbcl-stumpwm-kbd-layouts")
+    (arguments
+     '(#:asd-system-name "kbd-layouts"
+       #:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'chdir (lambda _ (chdir "util/kbd-layouts") #t)))))
+    (home-page
+     "https://github.com/stumpwm/stumpwm-contrib/tree/master/util/kbd-layouts")
+    (synopsis "Keyboard layout switcher for StumpWM")
+    (description "Keyboard layout switcher for StumpWM")
+    (license license:gpl3+)))
+
+(define-public lemonbar
+  (let ((commit "35183ab81d2128dbb7b6d8e119cc57846bcefdb4")
+        (revision "1"))
+    (package
+      (name "lemonbar")
+      (version (git-version "1.3" revision commit))
+      (source (origin
+                (method git-fetch)
+                (uri (git-reference
+                      (url "https://github.com/LemonBoy/bar")
+                      (commit commit)))
+                (file-name (git-file-name name version))
+                (sha256
+                 (base32
+                  "1wwqbph392iwz8skaqxb0xpklb1l6yganqz80g4x1fhrnz7idmlh"))))
+      (build-system gnu-build-system)
+      (arguments
+       `(#:tests? #f                    ; no test suite
+         #:make-flags
+         (list ,(string-append "CC=" (cc-for-target))
+               (string-append "PREFIX=" %output))
+         #:phases
+         (modify-phases %standard-phases
+           (delete 'configure))))
+      (inputs
+       `(("libxcb" ,libxcb)))
+      (native-inputs
+       `(("perl" ,perl)))
+      (home-page "https://github.com/LemonBoy/bar")
+      (synopsis "Featherweight status bar")
+      (description
+       "@code{lemonbar} (formerly known as @code{bar}) is a lightweight
+bar entirely based on XCB.  Provides full UTF-8 support, basic
+formatting, RandR and Xinerama support and EWMH compliance without
+wasting your precious memory.")
+      (license license:x11))))
+
+(define-public xclickroot
+  (let ((commit "309fd17174dba4149b5ea66654c6fd02cfcf7c9a")
+        (revision "1"))
+    (package
+      (name "xclickroot")
+      (version (git-version "0.0.1" revision commit)) ;no upstream release
+      (source (origin
+                (method git-fetch)
+                (uri (git-reference
+                      (url "https://github.com/phillbush/xclickroot")
+                      (commit commit)))
+                (file-name (git-file-name name version))
+                (sha256
+                 (base32
+                  "0fjqkg3wnyks0my1vrzhxfjicsfy8xwnijaazmpz6mhilcqkpvnd"))))
+      (build-system gnu-build-system)
+      (inputs
+       `(("libx11" ,libx11)))
+      (arguments
+       `(#:tests? #f ;no test suite
+         #:make-flags
+         (list ,(string-append "CC=" (cc-for-target))
+               (string-append "PREFIX=" %output))
+         #:phases
+         (modify-phases %standard-phases
+           (delete 'configure))))
+      (home-page "https://github.com/phillbush/xclickroot")
+      (synopsis "Run a command when a mouse button is pressed on the root window")
+      (description "@code{xclickroot} runs a command every time a given mouse
+button is pressed on the root window.")
+      (license license:public-domain))))
+
+(define-public xmenu
+  (package
+    (name "xmenu")
+    (version "3.4")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/phillbush/xmenu")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "1sw9l87fh03jp03a2v7rhgpyx29yg2x9blzfzp40jwad2whs7m7n"))))
+    (build-system gnu-build-system)
+    (inputs
+     `(("libx11" ,libx11)
+       ("libxft" ,libxft)
+       ("freetype" ,freetype)
+       ("imlib2" ,imlib2)))
+    (arguments
+     `(#:tests? #f ;no test suite
+       #:make-flags
+       (list (string-append "CC=" ,(cc-for-target))
+             (string-append "PREFIX=" %output)
+             (string-append "CFLAGS="
+                            "-I" (assoc-ref %build-inputs "freetype")
+                            "/include/freetype2"))
+       #:phases
+       (modify-phases %standard-phases
+         (delete 'configure))))
+    (home-page "https://github.com/phillbush/xmenu")
+    (synopsis "Menu utility for X")
+    (description "@code{xmenu} receives a menu specification in stdin, shows
+a menu for the user to select one of the options, and outputs the option
+selected to stdout.  It can be controlled both via mouse and via keyboard.")
+    (license license:public-domain)))

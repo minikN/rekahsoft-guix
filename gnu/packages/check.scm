@@ -16,20 +16,25 @@
 ;;; Copyright © 2016 Troy Sankey <sankeytms@gmail.com>
 ;;; Copyright © 2016 Lukas Gradl <lgradl@openmailbox.org>
 ;;; Copyright © 2016 Hartmut Goebel <h.goebel@crazy-compilers.com>
-;;; Copyright © 2016, 2017, 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2016, 2017, 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2017 Julien Lepiller <julien@lepiller.eu>
 ;;; Copyright © 2017 Thomas Danckaert <post@thomasdanckaert.be>
 ;;; Copyright © 2017, 2018 Arun Isaac <arunisaac@systemreboot.net>
 ;;; Copyright © 2017 Frederick M. Muriithi <fredmanglis@gmail.com>
-;;; Copyright © 2017 Mathieu Othacehe <m.othacehe@gmail.com>
+;;; Copyright © 2017, 2019 Mathieu Othacehe <m.othacehe@gmail.com>
 ;;; Copyright © 2017, 2019 Kei Kebreau <kkebreau@posteo.net>
-;;; Copyright © 2017 ng0 <ng0@n0.is>
-;;; Copyright © 2015, 2017, 2018 Ricardo Wurmus <rekado@elephly.net>
-;;; Copyright © 2016, 2017, 2018 Marius Bakke <mbakke@fastmail.com>
-;;; Copyright © 2017, 2018 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2017 Nikita <nikita@n0.is>
+;;; Copyright © 2015, 2017, 2018, 2020 Ricardo Wurmus <rekado@elephly.net>
+;;; Copyright © 2016, 2017, 2018, 2019, 2020 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2017, 2018, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2018 Fis Trivial <ybbs.daans@hotmail.com>
 ;;; Copyright © 2019 Pierre Langlois <pierre.langlois@gmx.com>
 ;;; Copyright © 2019 Chris Marusich <cmmarusich@gmail.com>
+;;; Copyright © 2020 Lars-Dominik Braun <ldb@leibniz-psychology.org>
+;;; Copyright © 2020 Brice Waegeneire <brice@waegenei.re>
+;;; Copyright © 2020 Josh Marshall <joshua.r.marshall.1991@gmail.com>
+;;; Copyright © 2020 Vinicius Monego <monego@posteo.net>
+;;; Copyright © 2020 Tanguy Le Carrour <tanguy@bioneland.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -64,6 +69,7 @@
   #:use-module (gnu packages python-web)
   #:use-module (gnu packages python-xyz)
   #:use-module (gnu packages time)
+  #:use-module (gnu packages xml)
   #:use-module (guix utils)
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (guix packages)
@@ -78,7 +84,7 @@
 (define-public check
   (package
     (name "check")
-    (version "0.12.0")
+    (version "0.14.0")
     (source
      (origin
       (method url-fetch)
@@ -86,7 +92,7 @@
                           version "/check-" version ".tar.gz"))
       (sha256
        (base32
-        "0d22h8xshmbpl9hba9ch3xj8vb9ybm5akpsbbh7yj07fic4h2hj6"))))
+        "02zkfiyklckmivrfvdsrlzvzphkdsgjrz3igncw05dv5pshhq3xx"))))
     (build-system gnu-build-system)
     (home-page "https://libcheck.github.io/check/")
     (synopsis "Unit test framework for C")
@@ -98,6 +104,67 @@ catch both assertion failures and code errors that cause segmentation
 faults or other signals.  The output from unit tests can be used within
 source code editors and IDEs.")
     (license license:lgpl2.1+)))
+
+;; Some packages require this older version.  Removed once no longer needed.
+(define-public check-0.12
+  (package
+   (inherit check)
+   (version "0.12.0")
+   (source (origin
+             (method url-fetch)
+             (uri (string-append "https://github.com/libcheck/check/releases"
+                                 "/download/" version "/check-" version ".tar.gz"))
+             (sha256
+              (base32
+               "0d22h8xshmbpl9hba9ch3xj8vb9ybm5akpsbbh7yj07fic4h2hj6"))))))
+
+(define-public clitest
+  (package
+    (name "clitest")
+    (version "0.3.0")
+    (home-page "https://github.com/aureliojargas/clitest")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url home-page)
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0zw5wra9hc717srmcar1wm4i34kyj8c49ny4bb7y3nrvkjp2pdb5"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         ;; This package is distributed as a single shell script and comes
+         ;; without a proper build system.
+         (delete 'configure)
+         (delete 'build)
+         (replace 'check
+           (lambda _
+             (substitute* "test.md"
+               ;; One test looks for an error from grep in the form "grep: foo",
+               ;; but our grep returns the absolute file name on errors.  Adjust
+               ;; the test to cope with that.
+               (("sed 's/\\^e\\*grep: \\.\\*/")
+                "sed 's/.*e*grep: .*/"))
+
+             (setenv "HOME" "/tmp")
+             (invoke "./clitest" "test.md")))
+         (replace 'install
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out")))
+               (install-file "clitest" (string-append out "/bin"))
+               (install-file "README.md"
+                             (string-append out "/share/doc/clitest-" ,version))
+               #t))))))
+    (native-inputs
+     `(("perl" ,perl)))                 ;for tests
+    (synopsis "Command line test tool")
+    (description
+     "@command{clitest} is a portable shell script that performs automatic
+testing of Unix command lines.")
+    (license license:expat)))
 
 (define-public cunit
   (package
@@ -134,14 +201,14 @@ with a flexible variety of user interfaces.")
 (define-public cppunit
   (package
     (name "cppunit")
-    (version "1.13.2")
+    (version "1.14.0")
     (source (origin
              (method url-fetch)
               (uri (string-append "http://dev-www.libreoffice.org/src/"
                                   name "-" version ".tar.gz"))
              (sha256
               (base32
-               "17s2kzmkw3kfjhpp72rfppyd7syr7bdq5s69syj2nvrlwd3d4irz"))))
+               "1027cyfx5gsjkdkaf6c2wnjh68882grw8n672018cj3vs9lrhmix"))))
     ;; Explicitly link with libdl. This is expected to be done by packages
     ;; relying on cppunit for their tests. However, not all of them do.
     ;; If we added the linker flag to such packages, we would pollute all
@@ -155,23 +222,6 @@ with a flexible variety of user interfaces.")
 unit testing.  Test output is in XML for automatic testing and GUI based for
 supervised tests.")
     (license license:lgpl2.1))) ; no copyright notices. LGPL2.1 is in the tarball
-
-;; Some packages require this newer version of cppunit.  However, it needs
-;; C++11 support, which is not enabled by default in our current GCC, and
-;; updating in-place would require adding CXXFLAGS to many dependent packages.
-;; Thus, keep as a separate variable for now.
-;; TODO: Remove this when our default GCC is updated to 6 or higher.
-(define-public cppunit-1.14
-  (package
-    (inherit cppunit)
-    (version "1.14.0")
-    (source (origin
-              (method url-fetch)
-              (uri (string-append "https://dev-www.libreoffice.org/src/"
-                                  "cppunit-" version ".tar.gz"))
-              (sha256
-               (base32
-                "1027cyfx5gsjkdkaf6c2wnjh68882grw8n672018cj3vs9lrhmix"))))))
 
 ;; When dependent packages upgraded to use newer version of catch, this one should
 ;; be removed.
@@ -213,7 +263,7 @@ supervised tests.")
 multi-paradigm automated test framework for C++ and Objective-C.")
     (license license:boost1.0)))
 
-(define-public catch-framework2
+(define-public catch-framework2-1
   (package
     (name "catch2")
     (version "1.12.2")
@@ -228,6 +278,28 @@ multi-paradigm automated test framework for C++ and Objective-C.")
                (base32
                 "1gdp5wm8khn02g2miz381llw3191k7309qj8s3jd6sasj01rhf23"))))
     (build-system cmake-build-system)
+    (synopsis "Automated test framework for C++ and Objective-C")
+    (description "Catch2 stands for C++ Automated Test Cases in Headers and is
+a multi-paradigm automated test framework for C++ and Objective-C.")
+    (license license:boost1.0)))
+
+(define-public catch-framework2
+  (package
+    (name "catch2")
+    (version "2.1.2")
+    (home-page "https://github.com/catchorg/Catch2")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/catchorg/Catch2")
+                     (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "14vcckqmbydjsg40ngi6iv999zimysh2l7fmrqj1d7xl990qz233"))))
+    (build-system cmake-build-system)
+    (inputs
+     `(("python" ,python-wrapper)))
     (synopsis "Automated test framework for C++ and Objective-C")
     (description "Catch2 stands for C++ Automated Test Cases in Headers and is
 a multi-paradigm automated test framework for C++ and Objective-C.")
@@ -281,7 +353,7 @@ problem, and shows the differences.")
 (define-public cmocka
   (package
     (name "cmocka")
-    (version "1.1.3")
+    (version "1.1.5")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://cmocka.org/files/"
@@ -289,7 +361,7 @@ problem, and shows the differences.")
                                   version ".tar.xz"))
               (sha256
                (base32
-                "1bxzzafjlwzgldcb07hjnlnqvh88wh21r2kw7z8f704w5bvvrsj3"))))
+                "1dm8pdvkyfa8dsbz9bpq7wwgixjij4sii9bbn5sgvqjm5ljdik7h"))))
     (build-system cmake-build-system)
     (arguments
      `(#:tests? #f))                    ; no test target
@@ -305,7 +377,7 @@ format.")
 (define-public cppcheck
   (package
     (name "cppcheck")
-    (version "1.87")
+    (version "1.90")
     (source (origin
       (method git-fetch)
       (uri (git-reference
@@ -313,7 +385,7 @@ format.")
              (commit version)))
       (file-name (git-file-name name version))
       (sha256
-       (base32 "1xiy54rz99nzbpwj35jiyssd2nc6k5k0lw5ml6nh2qnmbfkl8swl"))))
+       (base32 "0h7ir2x0k005fm586dxmaphgv5cyz25k3k4sh02p7zb78gzx398h"))))
     (build-system cmake-build-system)
     (arguments
      '(#:configure-flags '("-DBUILD_TESTS=ON")))
@@ -371,6 +443,25 @@ a CxxTest testing library, it employs no advanced features of C++ (e.g. RTTI)
 and it supports a very flexible form of test discovery.")
     (license license:lgpl3+)))
 
+(define-public doctest
+  (package
+    (name "doctest")
+    (version "2.4.0")
+    (home-page "https://github.com/onqtam/doctest")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference (url home-page) (commit version)))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "1yi95saqv8qb3ix6w8d7ffvs7qbwvqmq6wblckhxhicxxdxk85cd"))))
+    (build-system cmake-build-system)
+    (synopsis "C++ test framework")
+    (description
+     "doctest is a single-header testing framework for C++11 and later.  It
+has been designed to be fast, light and unintrusive.")
+    (license license:expat)))
+
 (define-public go-gopkg.in-check.v1
   (let ((commit "788fd78401277ebd861206a03c884797c6ec5541")
         (revision "1"))
@@ -380,7 +471,7 @@ and it supports a very flexible form of test discovery.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/go-check/check.git")
+                      (url "https://github.com/go-check/check")
                       (commit commit)))
                 (file-name (git-file-name name version))
                 (sha256
@@ -481,27 +572,41 @@ test coverage and has a web user interface that will refresh automatically.")
 (define-public googletest
   (package
     (name "googletest")
-    (version "1.8.1")
+    (version "1.10.0")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/google/googletest.git")
+             (url "https://github.com/google/googletest")
              (commit (string-append "release-" version))))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "0270msj6n7mggh4xqqjp54kswbl7mkcc8px1p5dqdpmw5ngh9fzk"))))
+        (base32 "1zbmab9295scgg4z2vclgfgjchfjailjnvzc6f5x9jvlsdi3dpwz"))))
     (build-system cmake-build-system)
     (arguments
      `(#:configure-flags '("-DBUILD_SHARED_LIBS=ON")))
     (native-inputs
-     `(("python-2" ,python-2)))
+     `(("python" ,python-wrapper)))
     (home-page "https://github.com/google/googletest/")
     (synopsis "Test discovery and XUnit test framework")
     (description "Google Test features an XUnit test framework, automated test
 discovery, death tests, assertions, parameterized tests and XML test report
 generation.")
     (license license:bsd-3)))
+
+(define-public googletest-1.8
+  (package/inherit
+   googletest
+   (version "1.8.1")
+   (source (origin
+             (method git-fetch)
+             (uri (git-reference
+                   (url "https://github.com/google/googletest")
+                   (commit (string-append "release-" version))))
+             (file-name (git-file-name "googletest" version))
+             (sha256
+              (base32
+               "0270msj6n7mggh4xqqjp54kswbl7mkcc8px1p5dqdpmw5ngh9fzk"))))))
 
 (define-public cpputest
   (package
@@ -529,25 +634,42 @@ but it works for any C/C++ project.")
 (define-public python-parameterized
   (package
     (name "python-parameterized")
-    (version "0.6.1")
+    (version "0.7.4")
     (source
      (origin
        (method url-fetch)
        (uri (pypi-uri "parameterized" version))
        (sha256
-        (base32
-         "1qj1939shm48d9ql6fm1nrdy4p7sdyj8clz1szh5swwpf1qqxxfa"))))
+        (base32 "1444fdz5bj0k10nmhxv0bv2gfrfisi7hfzqdndb0pvhf4g3qq3qr"))))
     (build-system python-build-system)
-    (arguments '(#:tests? #f)) ; there are no tests
+    (arguments
+     '(#:phases (modify-phases %standard-phases
+                  (replace 'check
+                    (lambda* (#:key tests? #:allow-other-keys)
+                      (if tests?
+                          (invoke "nosetests" "-v")
+                          (format #t "test suite not run~%"))
+                      #t)))))
+    (native-inputs
+     `(("python-mock" ,python-mock)
+       ("python-nose" ,python-nose)))
     (home-page "https://github.com/wolever/parameterized")
     (synopsis "Parameterized testing with any Python test framework")
     (description
      "Parameterized is a Python library that aims to fix parameterized testing
 for every Python test framework.  It supports nose, py.test, and unittest.")
+    (properties `((python2-variant . ,(delay python2-parameterized))))
     (license license:bsd-2)))
 
 (define-public python2-parameterized
-  (package-with-python2 python-parameterized))
+  (let ((base (package-with-python2 (strip-python2-variant
+                                     python-parameterized))))
+    (package/inherit
+     base
+     (source
+      (origin
+        (inherit (package-source base))
+        (patches (search-patches "python2-parameterized-docstring-test.patch")))))))
 
 (define-public python-minimock
   (package
@@ -573,26 +695,20 @@ doctest.")
 (define-public python-mock
   (package
     (name "python-mock")
-    (version "2.0.0")
+    (version "3.0.5")
     (source
      (origin
        (method url-fetch)
        (uri (pypi-uri "mock" version))
        (sha256
         (base32
-         "1flbpksir5sqrvq2z0dp8sl4bzbadg21sj4d42w3klpdfvgvcn5i"))))
+         "1hrp6j0yrx2xzylfv02qa8kph661m6yq4p0mc8fnimch9j4psrc3"))))
     (propagated-inputs
-     `(("python-pbr" ,python-pbr-minimal)
-       ("python-six" ,python-six)))
+     `(("python-six" ,python-six)))
     (build-system python-build-system)
-    (native-inputs
-     `(("python-unittest2" ,python-unittest2)))
     (arguments
-     `(#:phases
-       (modify-phases %standard-phases
-         (replace 'check
-           (lambda _
-             (zero? (system* "unit2")))))))
+     ;; FIXME: Tests require "pytest", which depends on this package.
+     '(#:tests? #f))
     (home-page "https://github.com/testing-cabal/mock")
     (synopsis "Python mocking and patching library for testing")
     (description
@@ -637,14 +753,14 @@ have been used.")
 (define-public python-nose2
   (package
     (name "python-nose2")
-    (version "0.6.5")
+    (version "0.9.2")
       (source
         (origin
           (method url-fetch)
           (uri (pypi-uri "nose2" version))
           (sha256
            (base32
-            "1x4zjq1zlyrh8b9ba0cmafd3w94pxhid408kibyjd3s6h1lap6s7"))))
+            "0pmbb6nk31yhgh4zkcblzxsznml7f7pf5q1ihgrwvbxv4mwzfql7"))))
     (build-system python-build-system)
     (arguments `(#:tests? #f)) ; 'module' object has no attribute 'collector'
     (propagated-inputs
@@ -687,7 +803,7 @@ interfaces and processes.")
     (propagated-inputs
      `(("python-six" ,python-six)
        ("python-traceback2" ,python-traceback2)))
-    (home-page "http://pypi.python.org/pypi/unittest2")
+    (home-page "https://pypi.org/project/unittest2/")
     (synopsis "Python unit testing library")
     (description
      "Unittest2 is a replacement for the unittest module in the Python
@@ -700,38 +816,40 @@ standard library.")
 (define-public python-pytest
   (package
     (name "python-pytest")
-    (version "3.8.0")
+    (version "5.3.5")
     (source
      (origin
        (method url-fetch)
        (uri (pypi-uri "pytest" version))
        (sha256
         (base32
-         "17grcfvd6ggvvqmprwv5y8g319nayam70hr43ssjwj40ws27z858"))))
+         "139i9cjhrv5aici3skq8iihvfb3lq0d8xb5j7qycr2hlk8cfjpqd"))))
     (build-system python-build-system)
     (arguments
      `(#:phases
        (modify-phases %standard-phases
-         (add-before 'check 'disable-invalid-tests
-           (lambda _
-             ;; Some tests involves the /usr directory, and fails.
-             (substitute* "testing/test_argcomplete.py"
-               (("def test_remove_dir_prefix\\(self\\):")
-                "@pytest.mark.xfail\n    def test_remove_dir_prefix(self):"))
-             (substitute* "testing/test_argcomplete.py"
-               (("def test_remove_dir_prefix" line)
-                (string-append "@pytest.mark.skip"
-                               "(reason=\"Assumes that /usr exists.\")\n    "
-                               line)))
-             #t))
-         (replace 'check (lambda _ (invoke "pytest" "-vv"))))))
+         (replace 'check
+           (lambda* (#:key (tests? #t) #:allow-other-keys)
+             (if tests?
+                 (invoke "pytest" "-vv" "-k"
+                         (string-append
+                          ;; These tests involve the /usr directory, and fails.
+                          "not test_remove_dir_prefix"
+                          " and not test_argcomplete"
+                          ;; This test tries to override PYTHONPATH, and
+                          ;; subsequently fails to locate the test libraries.
+                          " and not test_collection"))
+                 (format #t "test suite not run~%"))
+             #t)))))
     (propagated-inputs
      `(("python-atomicwrites" ,python-atomicwrites)
        ("python-attrs" ,python-attrs-bootstrap)
        ("python-more-itertools" ,python-more-itertools)
+       ("python-packaging" ,python-packaging-bootstrap)
        ("python-pluggy" ,python-pluggy)
        ("python-py" ,python-py)
-       ("python-six" ,python-six-bootstrap)))
+       ("python-six" ,python-six-bootstrap)
+       ("python-wcwidth" ,python-wcwidth)))
     (native-inputs
      `(;; Tests need the "regular" bash since 'bash-final' lacks `compgen`.
        ("bash" ,bash)
@@ -739,7 +857,8 @@ standard library.")
        ("python-nose" ,python-nose)
        ("python-mock" ,python-mock)
        ("python-pytest" ,python-pytest-bootstrap)
-       ("python-setuptools-scm" ,python-setuptools-scm)))
+       ("python-setuptools-scm" ,python-setuptools-scm)
+       ("python-xmlschema" ,python-xmlschema)))
     (home-page "https://docs.pytest.org/en/latest/")
     (synopsis "Python testing library")
     (description
@@ -749,15 +868,41 @@ and many external plugins.")
     (license license:expat)
     (properties `((python2-variant . ,(delay python2-pytest))))))
 
+;; Pytest 4.x are the last versions that support Python 2.
 (define-public python2-pytest
-  (let ((pytest (package-with-python2
-                 (strip-python2-variant python-pytest))))
-    (package
-      (inherit pytest)
-      (propagated-inputs
-       `(("python2-funcsigs" ,python2-funcsigs)
-         ("python2-pathlib2" ,python2-pathlib2)
-         ,@(package-propagated-inputs pytest))))))
+  (package
+    (inherit (strip-python2-variant python-pytest))
+    (name "python2-pytest")
+    (version "4.6.9")
+    (source (origin
+              (method url-fetch)
+              (uri (pypi-uri "pytest" version))
+              (sha256
+               (base32
+                "0fgkmpc31nzy97fxfrkqbzycigdwxwwmninx3qhkzp81migggs0r"))))
+    (build-system python-build-system)
+    (arguments
+     `(#:python ,python-2
+       ,@(package-arguments python-pytest)))
+    (propagated-inputs
+     `(("python-atomicwrites" ,python2-atomicwrites)
+       ("python-attrs" ,python2-attrs-bootstrap)
+       ("python-funcsigs" ,python2-funcsigs)
+       ("python-importlib-metadata" ,python2-importlib-metadata-bootstrap)
+       ("python-more-itertools" ,python2-more-itertools)
+       ("python-packaging" ,python2-packaging-bootstrap)
+       ("python-pathlib2" ,python2-pathlib2)
+       ("python-pluggy" ,python2-pluggy)
+       ("python-py" ,python2-py)
+       ("python-six" ,python2-six-bootstrap)
+       ("python-wcwidth" ,python2-wcwidth)))
+    (native-inputs
+     `(("bash" ,bash)                   ;tests require 'compgen'
+       ("python-hypothesis" ,python2-hypothesis)
+       ("python-nose" ,python2-nose)
+       ("python-mock" ,python2-mock)
+       ("python-pytest" ,python2-pytest-bootstrap)
+       ("python-setuptools-scm" ,python2-setuptools-scm)))))
 
 (define-public python-pytest-bootstrap
   (package
@@ -768,24 +913,37 @@ and many external plugins.")
     (properties `((python2-variant . ,(delay python2-pytest-bootstrap))))))
 
 (define-public python2-pytest-bootstrap
-  (let ((pytest (package-with-python2
-                 (strip-python2-variant python-pytest-bootstrap))))
-    (package (inherit pytest)
-             (propagated-inputs
-              `(("python2-funcsigs" ,python2-funcsigs-bootstrap)
-                ("python2-pathlib2" ,python2-pathlib2-bootstrap)
-                ,@(package-propagated-inputs pytest))))))
+  (hidden-package
+   (package/inherit
+    python2-pytest
+    (name "python2-pytest-bootstrap")
+    (arguments
+     (substitute-keyword-arguments (package-arguments python2-pytest)
+       ((#:tests? _ #f) #f)))
+    (native-inputs
+     `(("python-setuptools-scm" ,python2-setuptools-scm)))
+     (propagated-inputs
+      `(("python-atomicwrites" ,python2-atomicwrites)
+        ("python-attrs" ,python2-attrs-bootstrap)
+        ("python-funcsigs" ,python2-funcsigs-bootstrap)
+        ("python-importlib-metadata" ,python2-importlib-metadata-bootstrap)
+        ("python-more-itertools" ,python2-more-itertools)
+        ("python-packaging" ,python2-packaging-bootstrap)
+        ("python-pathlib2" ,python2-pathlib2-bootstrap)
+        ("python-pluggy" ,python2-pluggy-bootstrap)
+        ("python-py" ,python2-py)
+        ("python-wcwidth" ,python2-wcwidth))))))
 
 (define-public python-pytest-cov
   (package
     (name "python-pytest-cov")
-    (version "2.6.1")
+    (version "2.8.1")
     (source
       (origin
         (method url-fetch)
         (uri (pypi-uri "pytest-cov" version))
         (sha256
-         (base32 "0cyxbbghx2l4p60w10k00j1j74q1ngfiffr0pxn73ababjr69dha"))))
+         (base32 "0avzlk9p4nc44k7lpx9109dybq71xqnggxb9f4hp0l64pbc44ryc"))))
     (build-system python-build-system)
     (arguments
      `(#:phases
@@ -814,18 +972,28 @@ supports coverage of subprocesses.")
 (define-public python-pytest-runner
   (package
     (name "python-pytest-runner")
-    (version "4.2")
+    (version "5.2")
     (source
      (origin
        (method url-fetch)
        (uri (pypi-uri "pytest-runner" version))
        (sha256
         (base32
-         "1gkpyphawxz38ni1gdq1fmwyqcg02m7ypzqvv46z06crwdxi2gyj"))))
+         "0awll1bva5zy8cspsxcpv7pjcrdf5c6pf56nqn4f74vvmlzfgiwn"))))
     (build-system python-build-system)
+    (arguments
+     '(;; FIXME: The test suite requires 'python-flake8' and 'python-black',
+       ;; but that introduces a circular dependency.
+       #:tests? #f
+       #:phases (modify-phases %standard-phases
+                  (replace 'check
+                    (lambda* (#:key tests? #:allow-other-keys)
+                      (if tests?
+                          (invoke "pytest" "-vv")
+                          (format #t "test suite not run~%"))
+                      #t)))))
     (native-inputs
-     `(("python-pytest" ,python-pytest-bootstrap)
-       ("python-setuptools-scm" ,python-setuptools-scm)))
+     `(("python-setuptools-scm" ,python-setuptools-scm)))
     (home-page "https://github.com/pytest-dev/pytest-runner")
     (synopsis "Invoke py.test as a distutils command")
     (description
@@ -835,6 +1003,49 @@ supports coverage of subprocesses.")
 
 (define-public python2-pytest-runner
   (package-with-python2 python-pytest-runner))
+
+;; python-bleach 3.1.0 requires this ancient version of pytest-runner.
+;; Remove once no longer needed.
+(define-public python-pytest-runner-2
+  (package/inherit
+   python-pytest-runner
+   (version "2.12.2")
+   (source (origin
+             (method url-fetch)
+             (uri (pypi-uri "pytest-runner" version))
+             (sha256
+              (base32
+               "11ivjj9hfphkv4yfb2g74av4yy86y8gcbf7gbif0p1hcdfnxg3w6"))))))
+
+(define-public python2-pytest-runner-2
+  (package-with-python2 python-pytest-runner-2))
+
+(define-public python-pytest-lazy-fixture
+  (package
+    (name "python-pytest-lazy-fixture")
+    (version "0.6.3")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (pypi-uri "pytest-lazy-fixture" version))
+        (sha256
+         (base32 "1b0hmnsxw4s2wf9pks8dg6dfy5cx3zcbzs8517lfccxsfizhqz8f"))))
+    (build-system python-build-system)
+    (arguments
+     '(#:phases
+       (modify-phases %standard-phases
+         (replace 'check
+           (lambda* (#:key inputs outputs #:allow-other-keys)
+             ;; Make the installed plugin discoverable by Pytest.
+             (add-installed-pythonpath inputs outputs)
+             (invoke "pytest" "-vv"))))))
+    (propagated-inputs
+     `(("python-pytest" ,python-pytest)))
+    (home-page "https://github.com/tvorog/pytest-lazy-fixture")
+    (synopsis "Use fixtures in @code{pytest.mark.parametrize}")
+    (description "This plugin helps to use fixtures in
+@code{pytest.mark.parametrize}.")
+    (license license:expat)))
 
 (define-public python-pytest-mock
   (package
@@ -925,22 +1136,56 @@ result back.")
 (define-public python-pytest-timeout
   (package
     (name "python-pytest-timeout")
-    (version "1.3.3")
+    (version "1.3.4")
     (source
      (origin
        (method url-fetch)
        (uri (pypi-uri "pytest-timeout" version))
        (sha256
         (base32
-         "1cczcjhw4xx5sjkhxlhc5c1bkr7x6fcyx12wrnvwfckshdvblc2a"))))
+         "13n42azbvs5slvy2n1a9nw17r4qdq10dd68nln3jp925safa3yl0"))))
     (build-system python-build-system)
+    (arguments
+     '(#:phases (modify-phases %standard-phases
+                  (replace 'check
+                    (lambda* (#:key inputs outputs #:allow-other-keys)
+                      ;; Make the installed plugin discoverable by Pytest.
+                      (add-installed-pythonpath inputs outputs)
+                      (invoke "pytest" "-vv"))))))
     (propagated-inputs
      `(("python-pytest" ,python-pytest)))
+    (native-inputs
+     `(("python-pexpect" ,python-pexpect)))
     (home-page "http://bitbucket.org/pytest-dev/pytest-timeout/")
     (synopsis "Plugin for py.test to abort hanging tests")
     (description
      "This package provides a py.test plugin that aborts hanging tests after a
 timeout has been exceeded.")
+    (license license:expat)))
+
+(define-public python-pytest-forked
+  (package
+    (name "python-pytest-forked")
+    (version "1.1.3")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "pytest-forked" version))
+       (sha256
+        (base32
+         "000i4q7my2fq4l49n8idx2c812dql97qv6qpm2vhrrn9v6g6j18q"))))
+    (build-system python-build-system)
+    (propagated-inputs
+     `(("python-pytest" ,python-pytest)))
+    (native-inputs
+     `(("python-setuptools-scm" ,python-setuptools-scm)))
+    (home-page
+     "https://github.com/pytest-dev/pytest-forked")
+    (synopsis
+     "Run tests in isolated forked subprocesses")
+    (description
+     "Pytest plugin which will run each test in a subprocess and will report if
+a test crashed the process.")
     (license license:expat)))
 
 (define-public python-scripttest
@@ -957,7 +1202,8 @@ timeout has been exceeded.")
     (build-system python-build-system)
     (native-inputs
      `(("python-pytest" ,python-pytest)))
-    (home-page "http://pythonpaste.org/scripttest/")
+    (home-page (string-append "https://web.archive.org/web/20161029233413/"
+                              "http://pythonpaste.org/scripttest/"))
     (synopsis "Python library to test command-line scripts")
     (description "Scripttest is a Python helper library for testing
 interactive command-line applications.  With it you can run a script in a
@@ -1265,19 +1511,19 @@ have failed since the last commit or what tests are currently failing.")))
 (define-public python-coverage
   (package
     (name "python-coverage")
-    (version "4.4.1")
+    (version "5.0.3")
     (source
      (origin
        (method url-fetch)
        (uri (pypi-uri "coverage" version))
        (sha256
         (base32
-         "097l4s3ssxm1vncsn0nw3a1pbzah28773q36c1ab9wz01r04973s"))))
+         "1vrg8panqw79pswg52ygbrff3wdnxarrd9qz6c64ah0c4h2cmbvp"))))
     (build-system python-build-system)
     (arguments
      ;; FIXME: 95 tests failed, 539 passed, 6 skipped, 2 errors.
      '(#:tests? #f))
-    (home-page "http://nedbatchelder.com/code/coverage")
+    (home-page "https://coverage.readthedocs.io")
     (synopsis "Code coverage measurement for Python")
     (description
      "Coverage measures code coverage, typically during test execution.  It
@@ -1288,6 +1534,30 @@ executed.")
 
 (define-public python2-coverage
   (package-with-python2 python-coverage))
+
+(define-public python-pytest-asyncio
+  (package
+    (name "python-pytest-asyncio")
+    (version "0.10.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "pytest-asyncio" version))
+       (sha256
+        (base32 "1bysy4nii13bm7h345wxf8fxcjhab7l374pqdv7vwv3izl053b4z"))))
+    (build-system python-build-system)
+    (native-inputs
+     `(("python-coverage" ,python-coverage)
+       ("python-async-generator" ,python-async-generator)
+       ("python-hypothesis" ,python-hypothesis)
+       ("python-pytest" ,python-pytest)))
+    (home-page "https://github.com/pytest-dev/pytest-asyncio")
+    (synopsis "Pytest support for asyncio")
+    (description "Python asyncio code is usually written in the form of
+coroutines, which makes it slightly more difficult to test using normal
+testing tools.  @code{pytest-asyncio} provides useful fixtures and markers
+to make testing async code easier.")
+    (license license:asl2.0)))
 
 (define-public python-cov-core
   (package
@@ -1331,7 +1601,7 @@ testing frameworks.")
     (propagated-inputs
      `(("python-coverage" ,python-coverage)
        ("python-requests" ,python-requests)))
-    (home-page "http://github.com/codecov/codecov-python")
+    (home-page "https://github.com/codecov/codecov-python")
     (synopsis "Upload code coverage reports to @code{codecov.io}")
     (description
      "Codecov collects code coverage reports from code written in Python, Java,
@@ -1358,8 +1628,6 @@ C/C++, R, and more, and uploads it to the @code{codecov.io} service.")
        #:modules ((guix build python-build-system)
                   (guix build utils)
                   (srfi srfi-1))
-       #:imported-modules (,@%python-build-system-modules
-                           (srfi srfi-1))
        #:phases
        (modify-phases %standard-phases
          (delete 'install)
@@ -1459,7 +1727,7 @@ the last py.test invocation.")
     (synopsis "Py.test plugin to test server connections locally")
     (description "Pytest-localserver is a plugin for the pytest testing
 framework which enables you to test server connections locally.")
-    (home-page "https://pypi.python.org/pypi/pytest-localserver")
+    (home-page "https://pypi.org/project/pytest-localserver/")
     (license license:expat)))
 
 (define-public python-pytest-xprocess
@@ -1511,14 +1779,13 @@ normally the case.")
 (define-public python-pytest-sugar
   (package
     (name "python-pytest-sugar")
-    (version "0.9.2")
+    (version "0.9.3")
     (source
      (origin
        (method url-fetch)
        (uri (pypi-uri "pytest-sugar" version))
        (sha256
-        (base32
-         "1asq7yc4g8bx2sn7yy974mhc9ywvaihasjab4inkirdwn9s7mn7w"))))
+        (base32 "1i0hv3h49zvl62jbiyjag84carbrp3zprqzxffdr291nxavvac0n"))))
     (build-system python-build-system)
     (propagated-inputs
      `(("python-packaging" ,python-packaging)
@@ -1535,21 +1802,20 @@ instantly.")
 (define-public python-hypothesis
   (package
     (name "python-hypothesis")
-    (version "3.70.3")
+    (version "5.4.1")
     (source (origin
               (method url-fetch)
               (uri (pypi-uri "hypothesis" version))
               (sha256
                (base32
-                "1rshs1japfmwgar98yrkq4hg4z2q76hlnq7w2n3lfbjnscn1jd9b"))))
+                "0zn09bn6hadk4vxl6jy8bkjr5fz8mrhin3z46w7pq5qgbaycr89p"))))
     (build-system python-build-system)
-    (native-inputs
-     `(;; FIXME: Change to python-flake8 in the next rebuild cycle.
-       ("python-flake8" ,python-flake8-3.5)
-       ("python-pytest" ,python-pytest-bootstrap)))
+    (arguments
+     ;; XXX: Tests are not distributed with the PyPI archive.
+     '(#:tests? #f))
     (propagated-inputs
      `(("python-attrs" ,python-attrs-bootstrap)
-       ("python-coverage" ,python-coverage)))
+       ("python-sortedcontainers" ,python-sortedcontainers)))
     (synopsis "Library for property based testing")
     (description "Hypothesis is a library for testing your Python code against a
 much larger range of examples than you would ever want to write by hand.  It’s
@@ -1559,13 +1825,56 @@ seamlessly into your existing Python unit testing work flow.")
     (license license:mpl2.0)
     (properties `((python2-variant . ,(delay python2-hypothesis))))))
 
+(define-public python-hypothesis-5.23
+  (package
+    (inherit python-hypothesis)
+    (version "5.23.0")
+    (source (origin
+              (method url-fetch)
+              (uri (pypi-uri "hypothesis" version))
+              (sha256
+               (base32
+                "0sy1v6nyxg4rjcf3rlr8nalb7wqd9nccpb2lzkchbj5an13ysf1h"))))
+    (home-page "https://github.com/HypothesisWorks/hypothesis")))
+
+;; This is the last version of Hypothesis that supports Python 2.
 (define-public python2-hypothesis
   (let ((hypothesis (package-with-python2
                      (strip-python2-variant python-hypothesis))))
     (package (inherit hypothesis)
+      (version "4.57.1")
+      (source (origin
+                (method url-fetch)
+                (uri (pypi-uri "hypothesis" version))
+                (sha256
+                 (base32
+                  "183gpxbfcdhdqzlahkji5a71n6lmvgqsbkcb0ihqad51n2j6jhrw"))))
       (propagated-inputs
        `(("python2-enum34" ,python2-enum34)
          ,@(package-propagated-inputs hypothesis))))))
+
+(define-public python-hypothesmith
+  (package
+    (name "python-hypothesmith")
+    (version "0.1.2")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "hypothesmith" version))
+       (sha256
+        (base32
+         "09331sspknv459xcyn1k0lx5flqlc6gmnwp9370pfvg4kg1zmss6"))))
+    (build-system python-build-system)
+    (propagated-inputs
+     `(("python-hypothesis" ,python-hypothesis-5.23)
+       ("python-lark-parser" ,python-lark-parser)
+       ("python-libcst" ,python-libcst)))
+    (home-page "https://github.com/Zac-HD/hypothesmith")
+    (synopsis "Strategies for generating Python programs")
+    (description
+     "This package contains hypothesis strategies for generating Python
+programs, something like CSmith, a random generator of C programs.")
+    (license license:mpl2.0)))
 
 (define-public python-lit
   (package
@@ -1625,13 +1934,13 @@ failures.")
 (define-public python-pytest-flakes
   (package
     (name "python-pytest-flakes")
-    (version "1.0.1")
+    (version "4.0.0")
     (source (origin
               (method url-fetch)
               (uri (pypi-uri "pytest-flakes" version))
               (sha256
                (base32
-                "0flag3n33kbhyjrhzmq990rvg4yb8hhhl0i48q9hw0ll89jp28lw"))))
+                "0hyind0gb950v9kfy0v97x66fb33slbqmxhrjvgbvsv0ayzn869l"))))
     (build-system python-build-system)
     (arguments
      `(#:phases
@@ -1642,7 +1951,7 @@ failures.")
              ;; It's easier to run tests after install.
              ;; Make installed package available for running the tests
              (add-installed-pythonpath inputs outputs)
-             (invoke "py.test" "-vv"))))))
+             (invoke "py.test" "-vv" "-k" "not test_syntax_error"))))))
     (native-inputs
      `(("python-coverage" ,python-coverage)
        ("python-pytest" ,python-pytest)
@@ -1692,17 +2001,20 @@ statements in the module it tests.")
 (define-public python-pylint
   (package
     (name "python-pylint")
-    (version "1.7.2")
+    (version "2.5.3")
     (source
      (origin
-       (method url-fetch)
-       (uri (string-append
-             "https://github.com/PyCQA/pylint/archive/pylint-"
-             version ".tar.gz"))
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/PyCQA/pylint")
+             (commit (string-append "pylint-" version))))
+       (file-name (git-file-name name version))
        (sha256
-        (base32
-         "0mzn1czhf1mgr2wiqfihb274sja02h899b85kywdpivppa9nwrmp"))))
+        (base32 "04cgbh2z1mygar63plzziyz34yg6bdr4i0g63jp256fgnqwb1bi3"))))
     (build-system python-build-system)
+    ;; FIXME: Tests are failing since version 2.4.3, see:
+    ;; https://github.com/PyCQA/pylint/issues/3198.
+    (arguments '(#:tests? #f))
     (native-inputs
      `(("python-pytest" ,python-pytest)
        ("python-pytest-runner" ,python-pytest-runner)
@@ -1711,23 +2023,8 @@ statements in the module it tests.")
      `(("python-astroid" ,python-astroid)
        ("python-isort" ,python-isort)
        ("python-mccabe" ,python-mccabe)
-       ("python-six" ,python-six)))
-    (arguments
-     `(#:phases
-       (modify-phases %standard-phases
-         (replace 'check
-                  (lambda _
-                    ;; Somehow, tests for python2-pylint
-                    ;; fail if run from the build directory
-                    (let ((work "/tmp/work"))
-                      (mkdir-p work)
-                      (setenv "PYTHONPATH"
-                              (string-append (getenv "PYTHONPATH") ":" work))
-                      (copy-recursively "." work)
-                      (with-directory-excursion "/tmp"
-                        (invoke "python" "-m" "unittest" "discover"
-                                "-s" (string-append work "/pylint/test")
-                                "-p" "*test_*.py"))))))))
+       ("python-six" ,python-six)
+       ("python-toml" ,python-toml)))
     (home-page "https://github.com/PyCQA/pylint")
     (synopsis "Python source code analyzer which looks for coding standard
 errors")
@@ -1742,10 +2039,42 @@ possible to write plugins to add your own checks.")
     (properties `((python2-variant . ,(delay python2-pylint))))
     (license license:gpl2+)))
 
+;; Python2 is not supported anymore by Pylint. See:
+;; https://github.com/PyCQA/pylint/issues/1763.
 (define-public python2-pylint
   (let ((pylint (package-with-python2
-                  (strip-python2-variant python-pylint))))
+                 (strip-python2-variant python-pylint))))
     (package (inherit pylint)
+             (version "1.9.5")
+             (source
+              (origin
+                (method git-fetch)
+                (uri (git-reference
+                      (url "https://github.com/PyCQA/pylint")
+                      (commit (string-append "pylint-" version))))
+                (file-name (git-file-name (package-name pylint) version))
+                (sha256
+                 (base32
+                  "02a89d8a47s7nfiv1ady3j0sg2sbyja3np145brarfp5x9qxz9x2"))))
+             (arguments
+              `(,@(strip-keyword-arguments '(#:tests?) (package-arguments pylint))
+                #:phases
+                (modify-phases %standard-phases
+                  (replace 'check
+                    (lambda _
+                      ;; Somehow, tests fail if run from the build directory.
+                      (let ((work "/tmp/work"))
+                        (mkdir-p work)
+                        (setenv "PYTHONPATH"
+                                (string-append (getenv "PYTHONPATH") ":" work))
+                        (copy-recursively "." work)
+                        (with-directory-excursion "/tmp"
+                          (invoke "python" "-m" "unittest" "discover"
+                                  "-s" (string-append work "/pylint/test")
+                                  "-p" "*test_*.py"))))))))
+             (native-inputs
+              `(("python2-futures" ,python2-futures)
+                ,@(package-native-inputs pylint)))
              (propagated-inputs
               `(("python2-backports-functools-lru-cache"
                  ,python2-backports-functools-lru-cache)
@@ -1769,8 +2098,8 @@ possible to write plugins to add your own checks.")
     (synopsis
      "Simple extension to have parametrized unit tests")
     (description
-     "This package allows to create parametrized unit-tests that work with the standard
-unittest package.  A parametrized test case is automatically converted to multiple test
+     "This package creates parameterized unit-tests that work with the standard
+unittest package.  A parameterized test case is automatically converted to multiple test
 cases.  Since they are TestCase subclasses, they work with other test suites that
 recognize TestCases.")
     (license license:bsd-2)))
@@ -1870,7 +2199,7 @@ a fork of pytest-capturelog.")
     (propagated-inputs
      `(("python-coverage" ,python-coverage)
        ("python-nose" ,python-nose)))
-    (home-page "http://github.com/cmheisel/nose-xcover")
+    (home-page "https://github.com/cmheisel/nose-xcover")
     (synopsis "Extends nose.plugins.cover to add Cobertura-style XML reports")
     (description "Nose-xcover is a companion to the built-in
 @code{nose.plugins.cover}.  This plugin will write out an XML coverage report
@@ -1895,7 +2224,7 @@ especially -cover-package.")
         (base32
          "0y8d0zwiqar51kxj8lzmkvwc3b8kazb04gk5zcb4nzg5k68zmhq5"))))
     (build-system python-build-system)
-    (home-page "http://pypi.python.org/pypi/discover/")
+    (home-page "https://pypi.org/project/discover/")
     (synopsis
      "Python test discovery for unittest")
     (description
@@ -1915,7 +2244,9 @@ backported from Python 2.7 for Python 2.4+.")
              (uri (pypi-uri "behave" version))
              (sha256
               (base32
-               "11hsz365qglvpp1m1w16239c3kiw15lw7adha49lqaakm8kj6rmr"))))
+               "11hsz365qglvpp1m1w16239c3kiw15lw7adha49lqaakm8kj6rmr"))
+             (patches (search-patches
+                       "behave-skip-a-couple-of-tests.patch"))))
     (build-system python-build-system)
     (native-inputs
      `(("python-mock" ,python-mock)
@@ -1929,7 +2260,15 @@ backported from Python 2.7 for Python 2.4+.")
        ("python-parse" ,python-parse)
        ("python-parse-type" ,python-parse-type)))
     (arguments
-     '(#:test-target "behave_test"))
+     '(#:test-target "behave_test"
+       #:phases
+       (modify-phases %standard-phases
+         (add-before 'check 'fix-library-loading
+           (lambda _
+             ;; Otherwise, tests fail with no module named 'path'
+             (setenv "PYTHONPATH" (string-append (getenv "PYTHONPATH") ":"
+                                                 (getcwd) "/tasks/_vendor"))
+             #t)))))
     (home-page "https://github.com/behave/behave")
     (synopsis "Python behavior-driven development")
     (description
@@ -2009,6 +2348,32 @@ JSON APIs with Behave.")
 (define-public python2-rednose
   (package-with-python2 python-rednose))
 
+(define-public python-nose-random
+  (package
+    (name "python-nose-random")
+    (version "1.0.0")
+    (source
+     (origin
+      (method git-fetch)
+      (uri (git-reference
+            (url "https://github.com/fzumstein/nose-random")
+            (commit version)))
+      (file-name (git-file-name name version))
+      (sha256
+       (base32
+        "1dvip61r2frjv35mv6mmfjc07402z73pjbndfp3mhxyjn2zhksw2"))))
+    (build-system python-build-system)
+    (native-inputs
+     `(("python-nose" ,python-nose)))
+    (home-page "https://github.com/fzumstein/nose-random")
+    (synopsis "Nose plugin to facilitate randomized unit testing with
+Python")
+    (description "Python nose-random is designed to facilitate
+Monte-Carlo style unit testing.  The idea is to improve testing by
+running your code against a large number of randomly generated input
+scenarios.")
+    (license license:expat)))
+
 (define-public python-nose-randomly
   (package
     (name "python-nose-randomly")
@@ -2062,13 +2427,13 @@ create data based on random numbers and yet remain repeatable.")
 (define-public python-freezegun
   (package
     (name "python-freezegun")
-    (version "0.3.12")
+    (version "0.3.14")
     (source
      (origin
        (method url-fetch)
        (uri (pypi-uri "freezegun" version))
        (sha256
-        (base32 "1rx57v8ryjncjimg8hys9kx1r3rknvwcl4y340g20jn0sf69qk9a"))))
+        (base32 "0al75mk829j1izxi760b7yjnknjihyfhp2mvi5qiyrxb9cpxwqk2"))))
     (build-system python-build-system)
     (native-inputs
      `(("python-mock" ,python-mock)
@@ -2145,33 +2510,45 @@ retried.")
   (package-with-python2 python-flaky))
 
 (define-public python-pyhamcrest
-  (package
-    (name "python-pyhamcrest")
-    (version "1.9.0")
-    (source (origin
-              ;; Tests not distributed from pypi release.
-              (method git-fetch)
-              (uri (git-reference
-                     (url "https://github.com/hamcrest/PyHamcrest")
-                     (commit (string-append "V" version))))
-              (file-name (git-file-name name version))
-              (sha256
-               (base32
-                "01qnzj9qnzz0y78qa3ing24ssvszb0adw59xc4qqmdn5wryy606b"))))
-    (native-inputs                      ; All native inputs are for tests
-     `(("python-pytest-cov" ,python-pytest-cov)
-       ("python-mock" ,python-mock)
-       ("python-pytest" ,python-pytest)
-       ("python-hypothesis" ,python-hypothesis)))
-    (propagated-inputs
-     `(("python-six" ,python-six)))
-    (build-system python-build-system)
-    (home-page "http://hamcrest.org/")
-    (synopsis "Hamcrest matchers for Python")
-    (description
-     "PyHamcrest is a framework for writing matcher objects,
+  ;; The latest release was in 2016 and its test suite does not work with recent
+  ;; versions of Pytest.  Just take the master branch for now, which seems stable.
+  (let ((commit "25fdc5f00bdf3084335353bc9247253098ec4cf2")
+        (revision "0"))
+    (package
+      (name "python-pyhamcrest")
+      (version (git-version "1.9.0" revision commit))
+      (source (origin
+                ;; Tests not distributed from pypi release.
+                (method git-fetch)
+                (uri (git-reference
+                      (url "https://github.com/hamcrest/PyHamcrest")
+                      (commit commit)))
+                (file-name (git-file-name name version))
+                (sha256
+                 (base32
+                  "1miqmhhi68vaix8sqc1lvpvbm27bacffxh5anm5cbfsvk7g9n6f3"))))
+      (native-inputs                    ;all native inputs are for tests
+       `(("python-pytest-cov" ,python-pytest-cov)
+         ("python-mock" ,python-mock)
+         ("python-pytest" ,python-pytest)
+         ("python-hypothesis" ,python-hypothesis)))
+      (propagated-inputs
+       `(("python-six" ,python-six)))
+      (build-system python-build-system)
+      (arguments
+       `(#:phases (modify-phases %standard-phases
+                    (replace 'check
+                      (lambda _
+                        (setenv "PYTHONPATH"
+                                (string-append "build/lib:"
+                                               (getenv "PYTHONPATH")))
+                        (invoke "pytest" "-vv"))))))
+      (home-page "http://hamcrest.org/")
+      (synopsis "Hamcrest matchers for Python")
+      (description
+       "PyHamcrest is a framework for writing matcher objects,
  allowing you to declaratively define \"match\" rules.")
-    (license license:bsd-3)))
+      (license license:bsd-3))))
 
 (define-public python2-pyhamcrest
   (package-with-python2 python-pyhamcrest))
@@ -2204,7 +2581,7 @@ portable to just about any platform.")
 (define-public libfaketime
   (package
     (name "libfaketime")
-    (version "0.9.7")
+    (version "0.9.8")
     (home-page "https://github.com/wolfcw/libfaketime")
     (source (origin
               (method git-fetch)
@@ -2213,7 +2590,7 @@ portable to just about any platform.")
                     (commit (string-append "v" version))))
               (sha256
                (base32
-                "1cin1pqwpsswcv7amiwijirvcg3x1zf2l00s1x84nxc5602fzr5c"))
+                "1mfdl82ppgbdvy1ny8mb7xii7p0g7awvn4bn36jb8v4r545slmjc"))
               (file-name (git-file-name name version))))
     (build-system gnu-build-system)
     (arguments
@@ -2223,11 +2600,21 @@ portable to just about any platform.")
                       (let ((out (assoc-ref outputs "out")))
                         (setenv "CC" "gcc")
                         (setenv "PREFIX" out)
+
+                        ;; XXX: Without this flag, the CLOCK_REALTIME test hangs
+                        ;; indefinitely.  See README.packagers for more information.
+                        ;; Try removing this for future versions of libfaketime.
+                        (setenv "FAKETIME_COMPILE_CFLAGS" "-DFORCE_MONOTONIC_FIX")
+
                         #t)))
                   (add-before 'check 'pre-check
                     (lambda _
                       (substitute* "test/functests/test_exclude_mono.sh"
                         (("/bin/bash") (which "bash")))
+
+                      ;; Do not fail due to use of 'ftime', which was deprecated in
+                      ;; glibc 2.31.  Remove this for later versions of libfaketime.
+                      (setenv "FAKETIME_COMPILE_CFLAGS" "-Wno-deprecated-declarations")
                       #t)))
        #:test-target "test"))
     (native-inputs
@@ -2243,7 +2630,7 @@ provides a simple way to achieve this.")
 (define-public umockdev
   (package
     (name "umockdev")
-    (version "0.13.2")
+    (version "0.14.1")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://github.com/martinpitt/umockdev/"
@@ -2251,19 +2638,19 @@ provides a simple way to achieve this.")
                                   "umockdev-" version ".tar.xz"))
               (sha256
                (base32
-                "095v3abc321s584sga04y16lcmdzsdi88h24wcrm78v7vq484g74"))))
+                "1g78jcrvb7yyh0q5kv5409wjqf8nlfqnw1rknm3a247mcx317dpz"))))
     (build-system gnu-build-system)
     (arguments
      `(#:phases
        (modify-phases %standard-phases
-         (add-after 'unpack 'skip-broken-test
+         (add-after 'unpack 'fix-test
            (lambda _
              (substitute* "tests/test-umockdev.c"
-               (("/\\* sys/ in other dir")
-                (string-append "return; // ")))
+               (("/run") "/tmp"))
              #t)))))
     (native-inputs
      `(("vala" ,vala)
+       ("gobject-introspection" ,gobject-introspection)
        ("gtk-doc" ,gtk-doc)
        ("pkg-config" ,pkg-config)
 
@@ -2273,8 +2660,7 @@ provides a simple way to achieve this.")
     (inputs
      `(("glib" ,glib)
        ("eudev" ,eudev)
-       ("libgudev" ,libgudev)
-       ("gobject-introspection" ,gobject-introspection)))
+       ("libgudev" ,libgudev)))
     (home-page "https://github.com/martinpitt/umockdev/")
     (synopsis "Mock hardware devices for creating unit tests")
     (description "umockdev mocks hardware devices for creating integration
@@ -2284,10 +2670,42 @@ program or test suite under a test bed with the previously recorded devices
 loaded.")
     (license license:lgpl2.1+)))
 
+(define-public virtest
+  ;; No releases yet, so we take the commit that "vc" expects.
+  (let ((commit "f7d03ef39fceba168745bd29e1b20af6e7971e04")
+        (revision "0"))
+    (package
+      (name "virtest")
+      (version (git-version "0.0" revision commit))
+      (home-page "https://github.com/mattkretz/virtest")
+      (source (origin
+                (method git-fetch)
+                (uri (git-reference (url home-page) (commit commit)))
+                (file-name (git-file-name name version))
+                (sha256
+                 (base32
+                  "07pjyb0mk7y2w1dg1bhl26nb7416xa1mw16ifj6mmps5y6aq054l"))))
+      (build-system cmake-build-system)
+      (arguments
+       `(#:phases (modify-phases %standard-phases
+                    (add-after 'unpack 'adjust-install-directory
+                      (lambda _
+                        ;; Vc is the only consumer of this library, and expects
+                        ;; to find it in "virtest/vir/" instead of "vir/vir/".
+                        (substitute* "CMakeLists.txt"
+                          (("DESTINATION include/vir")
+                           "DESTINATION include/virtest"))
+                        #t)))))
+      (synopsis "Header-only test framework")
+      (description
+       "@code{virtest} is a small header-only test framework for C++.  It
+grew out of the @dfn{Vc} project.")
+      (license license:bsd-3))))
+
 (define-public python-pyfakefs
   (package
     (name "python-pyfakefs")
-    (version "3.5.8")
+    (version "3.7.1")
     (source (origin
               (method url-fetch)
               ;; We use the PyPI URL because there is no proper release
@@ -2296,7 +2714,7 @@ loaded.")
               (uri (pypi-uri "pyfakefs" version))
               (sha256
                (base32
-                "0qb9jp0bqhc0dv0rn805fv99029fvx135f3bvka6scfkcl6jgllc"))
+                "1cp2yw96fa2qkgi39xa3nlr3inf8wb5rgh9kdq53256ca2r8pdhy"))
               (patches (search-patches
                         "python-pyfakefs-remove-bad-test.patch"))
               (file-name (string-append name "-" version ".tar.gz"))))
@@ -2332,3 +2750,38 @@ system.  The code under test requires no modification to work with pyfakefs.")
 
 (define-public python2-pyfakefs
   (package-with-python2 python-pyfakefs))
+
+;; This minimal variant is used to avoid a circular dependency between
+;; python2-importlib-metadata, which requires pyfakefs for its tests, and
+;; python2-pytest, which requires python2-importlib-metadata.
+(define-public python2-pyfakefs-bootstrap
+  (hidden-package
+   (package
+     (inherit python2-pyfakefs)
+     (name "python2-pyfakefs-bootstrap")
+     (native-inputs '())
+     (arguments
+      `(#:python ,python-2
+        #:tests? #f)))))
+
+(define-public python-aiounittest
+  (package
+    (name "python-aiounittest")
+    (version "1.3.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "aiounittest" version))
+       (sha256
+        (base32
+         "1q4bhmi80smaa1lknvdna0sx3915naczlfna1fp435nf6cjyrjl1"))))
+    (build-system python-build-system)
+    (native-inputs
+     `(("python-coverage" ,python-coverage)
+       ("python-nose" ,python-nose)))
+    (home-page
+     "https://github.com/kwarunek/aiounittest")
+    (synopsis "Test asyncio code more easily")
+    (description "Aiounittest is a library that helps write tests using
+asynchronous code in Python (asyncio).")
+    (license license:expat)))

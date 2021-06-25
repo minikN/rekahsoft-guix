@@ -1,8 +1,11 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2013, 2014, 2015 Andreas Enge <andreas@enge.fr>
 ;;; Copyright © 2015, 2016, 2018 Ricardo Wurmus <rekado@elephly.net>
-;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2019 Julien Lepiller <julien@lepiller.eu>
+;;; Copyright © 2020 Alexandros Theodotou <alex@zrythm.org>
+;;; Copyright © 2020 Pjotr Prins <pjotr.guix@thebird.nl>
+;;; Copyright © 2020 Efraim Flashner <efraim@flashner.co.il>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -20,8 +23,7 @@
 ;;; along with GNU Guix.  If not, see <http://www.gnu.org/licenses/>.
 
 (define-module (gnu packages rdf)
-  #:use-module ((guix licenses)
-                #:select (non-copyleft asl2.0 isc gpl2 lgpl2.1 lgpl2.1+ lgpl3+))
+  #:use-module ((guix licenses) #:prefix license:)
   #:use-module (guix packages)
   #:use-module (guix git-download)
   #:use-module (guix download)
@@ -84,7 +86,7 @@ of RSS, Atom 1.0 and 0.3, GRDDL and microformats for HTML, XHTML and
 XML.  The serialising syntaxes are RDF/XML (regular, abbreviated, XMP),
 Turtle 2013, N-Quads, N-Triples 1.1, Atom 1.0, RSS 1.0, GraphViz DOT,
 HTML and JSON.")
-    (license lgpl2.1+))) ; or any choice of gpl2+ or asl2.0
+    (license license:lgpl2.1+))) ; or any choice of gpl2+ or asl2.0
 
 (define-public clucene
   (package
@@ -118,7 +120,7 @@ HTML and JSON.")
     (description "CLucene is a high-performance, scalable, cross platform,
 full-featured indexing and searching API.  It is a port of the very popular
 Java Lucene text search engine API to C++.")
-    (license lgpl2.1)))
+    (license license:lgpl2.1)))
 
 (define-public lucene++
   (package
@@ -149,7 +151,7 @@ Java Lucene text search engine API to C++.")
     (synopsis "Text search engine")
     (description "Lucene++ is an up to date C++ port of the popular Java
 Lucene library, a high-performance, full-featured text search engine.")
-    (license (list asl2.0 lgpl3+)))); either asl or lgpl.
+    (license (list license:asl2.0 license:lgpl3+)))); either asl or lgpl.
 
 (define-public lrdf
   (package
@@ -158,7 +160,7 @@ Lucene library, a high-performance, full-featured text search engine.")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/swh/LRDF.git")
+                    (url "https://github.com/swh/LRDF")
                     (commit (string-append "v" version))))
               (file-name (git-file-name name version))
               (sha256
@@ -194,7 +196,7 @@ Lucene library, a high-performance, full-featured text search engine.")
 LADSPA plugins.  It can also be used for general RDF manipulation.  It can
 read RDF/XLM and N3 files and export N3 files, and it also has a light
 taxonomic inference capability.")
-    (license gpl2)))
+    (license license:gpl2)))
 
 (define-public rasqal
   (package
@@ -217,7 +219,7 @@ taxonomic inference capability.")
        ("libxml2" ,libxml2)
        ("mpfr" ,mpfr)
        ("pcre" ,pcre)
-       ("util-linux" ,util-linux)))
+       ("util-linux" ,util-linux "lib")))
     (propagated-inputs
      `(("raptor2" ,raptor2))) ; stipulated by rasqal.pc
     (arguments
@@ -235,7 +237,7 @@ SPARQL Query 1.1, SPARQL Update 1.1 (no executing) and the Experimental
 SPARQL extensions (LAQRS).  Rasqal can write binding query results in the
 SPARQL XML, SPARQL JSON, CSV, TSV, HTML, ASCII tables, RDF/XML and
 Turtle/N3 and read them in SPARQL XML, RDF/XML and Turtle/N3.")
-    (license lgpl2.1+))) ; or any choice of gpl2+ or asl2.0
+    (license license:lgpl2.1+))) ; or any choice of gpl2+ or asl2.0
 
 (define-public redland
   (package
@@ -260,19 +262,19 @@ Turtle/N3 and read them in SPARQL XML, RDF/XML and Turtle/N3.")
     (synopsis "RDF library")
     (description "The Redland RDF Library (librdf) provides the RDF API
 and triple stores.")
-    (license lgpl2.1+))) ; or any choice of gpl2+ or asl2.0
+    (license license:lgpl2.1+))) ; or any choice of gpl2+ or asl2.0
 
 (define-public serd
   (package
     (name "serd")
-    (version "0.30.0")
+    (version "0.30.4")
     (source (origin
              (method url-fetch)
              (uri (string-append "https://download.drobilla.net/serd-"
                                  version ".tar.bz2"))
              (sha256
               (base32
-               "1yyfyvc6kwagi5w43ljp1bbjdvdpmgpds74lmjxycm91bkx0xyvf"))))
+               "168rn3m32c59qbar120f83ibcnnd987ij9p053kybgl7cmm6358c"))))
     (build-system waf-build-system)
     (arguments
      `(#:tests? #f ; no check target
@@ -294,19 +296,19 @@ knife of RDF syntax, but rather is suited to resource limited or performance
 critical applications (e.g. converting many gigabytes of NTriples to Turtle),
 or situations where a simple reader/writer with minimal dependencies is
 ideal (e.g. in LV2 implementations or embedded applications).")
-    (license isc)))
+    (license license:isc)))
 
 (define-public sord
   (package
     (name "sord")
-    (version "0.16.2")
+    (version "0.16.4")
     (source (origin
              (method url-fetch)
              (uri (string-append "https://download.drobilla.net/sord-"
                                  version ".tar.bz2"))
              (sha256
               (base32
-               "13fshxwpipjrvsah1m2jw1kf022z2q5vpw24bzcznglgvms13x89"))))
+               "1mwh4qvp9q4vgrgg5bz9sgjhxscncrylf2b06h0q55ddwzs9hndi"))))
     (build-system waf-build-system)
     (arguments
      `(#:tests? #f                      ; no check target
@@ -319,6 +321,8 @@ ideal (e.g. in LV2 implementations or embedded applications).")
                     (string-append "-Wl,-rpath="
                                    (assoc-ref outputs "out") "/lib"))
             #t)))))
+    (inputs
+     `(("pcre" ,pcre)))
     (native-inputs
      `(("pkg-config" ,pkg-config)))
     (propagated-inputs
@@ -327,7 +331,7 @@ ideal (e.g. in LV2 implementations or embedded applications).")
     (synopsis "C library for storing RDF data in memory")
     (description
      "Sord is a lightweight C library for storing RDF data in memory.")
-    (license isc)))
+    (license license:isc)))
 
 (define-public python-rdflib
   (package
@@ -362,8 +366,30 @@ ideal (e.g. in LV2 implementations or embedded applications).")
     (description
       "RDFLib is a Python library for working with RDF, a simple yet
 powerful language for representing information.")
-    (license (non-copyleft "file://LICENSE"
-                           "See LICENSE in the distribution."))))
+    (license (license:non-copyleft "file://LICENSE"
+                                   "See LICENSE in the distribution."))))
 
 (define-public python2-rdflib
   (package-with-python2 python-rdflib))
+
+(define-public python-rdflib-jsonld
+  (package
+    (name "python-rdflib-jsonld")
+    (version "0.5.0")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (pypi-uri "rdflib-jsonld" version))
+        (sha256
+         (base32
+          "1v85f4hdlrrk0l1najmqmm79ijrvcj259kwsrrxiq1q5chr5azag"))))
+    (build-system python-build-system)
+    (native-inputs
+     `(("python-nose" ,python-nose)))
+    (propagated-inputs
+     `(("python-rdflib" ,python-rdflib)))
+    (home-page "https://github.com/RDFLib/rdflib-jsonld")
+    (synopsis "rdflib extension adding JSON-LD parser and serializer")
+    (description "This package provides an rdflib extension adding JSON-LD
+parser and serializer.")
+    (license license:bsd-3)))

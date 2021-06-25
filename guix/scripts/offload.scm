@@ -1,5 +1,5 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2017 Ricardo Wurmus <rekado@elephly.net>
 ;;;
 ;;; This file is part of GNU Guix.
@@ -33,11 +33,12 @@
   #:use-module ((guix serialization)
                 #:select (nar-error? nar-error-file))
   #:use-module (guix nar)
-  #:use-module (guix utils)
+  #:use-module ((guix utils) #:select (%current-system))
   #:use-module ((guix build syscalls)
                 #:select (fcntl-flock set-thread-name))
   #:use-module ((guix build utils) #:select (which mkdir-p))
   #:use-module (guix ui)
+  #:use-module (guix diagnostics)
   #:use-module (srfi srfi-1)
   #:use-module (srfi srfi-11)
   #:use-module (srfi srfi-26)
@@ -60,7 +61,7 @@
 ;;; retrieving the build output(s) over SSH upon success.
 ;;;
 ;;; This command should not be used directly; instead, it is called on-demand
-;;; by the daemon, unless it was started with '--no-build-hook' or a client
+;;; by the daemon, unless it was started with '--no-offload' or a client
 ;;; inhibited build hooks.
 ;;;
 ;;; Code:
@@ -149,19 +150,6 @@ ignoring it~%")
          (leave (G_ "failed to load machine file '~a': ~s~%")
                 file args))))))
 
-(define (host-key->type+key host-key)
-  "Destructure HOST-KEY, an OpenSSH host key string, and return two values:
-its key type as a symbol, and the actual base64-encoded string."
-  (define (type->symbol type)
-    (and (string-prefix? "ssh-" type)
-         (string->symbol (string-drop type 4))))
-
-  (match (string-tokenize host-key)
-    ((type key x)
-     (values (type->symbol type) key))
-    ((type key)
-     (values (type->symbol type) key))))
-
 (define (private-key-from-file* file)
   "Like 'private-key-from-file', but raise an error that 'with-error-handling'
 can interpret meaningfully."
@@ -169,12 +157,11 @@ can interpret meaningfully."
     (lambda ()
       (private-key-from-file file))
     (lambda (key proc str . rest)
-      (raise (condition
-              (&message (message (format #f (G_ "failed to load SSH \
+      (raise (formatted-message (G_ "failed to load SSH \
 private key from '~a': ~a")
-                                         file str))))))))
+                                file str)))))
 
-(define (open-ssh-session machine)
+(define* (open-ssh-session machine #:optional (max-silent-time -1))
   "Open an SSH session for MACHINE and return it.  Throw an error on failure."
   (let ((private (private-key-from-file* (build-machine-private-key machine)))
         (public  (public-key-from-file
@@ -183,7 +170,7 @@ private key from '~a': ~a")
         (session (make-session #:user (build-machine-user machine)
                                #:host (build-machine-name machine)
                                #:port (build-machine-port machine)
-                               #:timeout 10       ;seconds
+                               #:timeout 10       ;initial timeout (seconds)
                                ;; #:log-verbosity 'protocol
                                #:identity (build-machine-private-key machine)
 
@@ -203,27 +190,18 @@ private key from '~a': ~a")
                                (build-machine-compression-level machine))))
     (match (connect! session)
       ('ok
-       ;; Authenticate the server.  XXX: Guile-SSH 0.10.1 doesn't know about
-       ;; ed25519 keys and 'get-key-type' returns #f in that case.
-       (let-values (((server)   (get-server-public-key session))
-                    ((type key) (host-key->type+key
-                                 (build-machine-host-key machine))))
-         (unless (and (or (not (get-key-type server))
-                          (eq? (get-key-type server) type))
-                      (string=? (public-key->string server) key))
-           ;; Key mismatch: something's wrong.  XXX: It could be that the server
-           ;; provided its Ed25519 key when we where expecting its RSA key.
-           (leave (G_ "server at '~a' returned host key '~a' of type '~a' \
-instead of '~a' of type '~a'~%")
-                  (build-machine-name machine)
-                  (public-key->string server) (get-key-type server)
-                  key type)))
+       ;; Make sure the server's key is what we expect.
+       (authenticate-server* session (build-machine-host-key machine))
 
        (let ((auth (userauth-public-key! session private)))
          (unless (eq? 'success auth)
            (disconnect! session)
            (leave (G_ "SSH public key authentication failed for '~a': ~a~%")
                   (build-machine-name machine) (get-error session))))
+
+       ;; From then on use MAX-SILENT-TIME as the absolute timeout when
+       ;; reading from or write to a channel for this session.
+       (session-set! session 'timeout max-silent-time)
 
        session)
       (x
@@ -243,7 +221,8 @@ instead of '~a' of type '~a'~%")
   ;; of these; if we fail, that means all the build slots are already taken.
   ;; Inspired by Nix's build-remote.pl.
   (string-append  (string-append %state-directory "/offload/"
-                                 (build-machine-name machine)
+                                 (build-machine-name machine) ":"
+                                 (number->string (build-machine-port machine))
                                  "/" (number->string slot))))
 
 (define (acquire-build-slot machine)
@@ -312,7 +291,7 @@ hook."
 INPUTS to MACHINE; if building DRV succeeds, retrieve all of OUTPUTS from
 MACHINE."
   (define session
-    (open-ssh-session machine))
+    (open-ssh-session machine max-silent-time))
 
   (define store
     (connect-to-remote-daemon session
@@ -471,7 +450,8 @@ slot (which must later be released with 'release-build-slot'), or #f and #f."
        ;; Return the best machine unless it's already overloaded.
        ;; Note: We call 'node-load' only as a last resort because it is
        ;; too costly to call it once for every machine.
-       (let* ((session (false-if-exception (open-ssh-session best)))
+       (let* ((session (false-if-exception (open-ssh-session best
+                                                             %short-timeout)))
               (node    (and session (remote-inferior session)))
               (load    (and node (normalized-load best (node-load node))))
               (space   (and node (node-free-disk-space node))))
@@ -572,6 +552,11 @@ If TIMEOUT is #f, simply evaluate EXP..."
 ;;; Installation tests.
 ;;;
 
+(define %short-timeout
+  ;; Timeout in seconds used on SSH connections where reads and writes
+  ;; shouldn't take long.
+  15)
+
 (define (assert-node-repl node name)
   "Bail out if NODE is not running Guile."
   (match (node-guile-version node)
@@ -657,7 +642,7 @@ machine."
           (length machines) machine-file)
     (let* ((names    (map build-machine-name machines))
            (sockets  (map build-machine-daemon-socket machines))
-           (sessions (map open-ssh-session machines))
+           (sessions (map (cut open-ssh-session <> %short-timeout) machines))
            (nodes    (map remote-inferior sessions)))
       (for-each assert-node-has-guix nodes names)
       (for-each assert-node-repl nodes names)
@@ -681,7 +666,7 @@ machine."
           (length machines) machine-file)
     (for-each (lambda (machine)
                 (define session
-                  (open-ssh-session machine))
+                  (open-ssh-session machine %short-timeout))
 
                 (match (remote-inferior session)
                   (#f

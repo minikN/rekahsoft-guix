@@ -1,6 +1,8 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2015 David Thompson <davet@gnu.org>
+;;; Copyright © 2020 Simon South <simon@simonsouth.net>
+;;; Copyright © 2020 Mathieu Othacehe <m.othacehe@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -73,21 +75,21 @@
       ;; Note: 'utimensat' does not change 'ctime'.
       (list (stat:mtime st) (stat:atime st)))))
 
-(test-assert "swapon, ENOENT/EPERM"
+(test-assert "swapon, ENOSYS/ENOENT/EPERM"
   (catch 'system-error
     (lambda ()
       (swapon "/does-not-exist")
       #f)
     (lambda args
-      (memv (system-error-errno args) (list EPERM ENOENT)))))
+      (memv (system-error-errno args) (list EPERM ENOENT ENOSYS)))))
 
-(test-assert "swapoff, ENOENT/EINVAL/EPERM"
+(test-assert "swapoff, ENOSYS/ENOENT/EINVAL/EPERM"
   (catch 'system-error
     (lambda ()
       (swapoff "/does-not-exist")
       #f)
     (lambda args
-      (memv (system-error-errno args) (list EPERM EINVAL ENOENT)))))
+      (memv (system-error-errno args) (list EPERM EINVAL ENOENT ENOSYS)))))
 
 (test-assert "mkdtemp!"
   (let* ((tmp (or (getenv "TMPDIR") "/tmp"))
@@ -161,29 +163,22 @@
              (waitpid fork-pid)
              result))))))))
 
-;; XXX: Skip this test when running Linux > 4.7.5 to work around
-;; <https://bugzilla.kernel.org/show_bug.cgi?id=183461>.
-(when (or (not perform-container-tests?)
-          (version>? (utsname:release (uname)) "4.7.5")
-
-          ;; Skip on Ubuntu's 4.4 kernels, which contain a backport of the
-          ;; faulty code: <https://bugs.gnu.org/25476>.
-          (member (utsname:release (uname))
-                  '("4.4.0-21-generic" "4.4.0-59-generic"
-                    "4.4.0-116-generic")))
+(when (not perform-container-tests?)
   (test-skip 1))
 (test-equal "pivot-root"
-  #t
-  (match (pipe)
-    ((in . out)
+  'success!
+  (match (socketpair AF_UNIX SOCK_STREAM 0)
+    ((parent . child)
      (match (clone (logior CLONE_NEWUSER CLONE_NEWNS SIGCHLD))
        (0
         (dynamic-wind
           (const #t)
           (lambda ()
-            (close in)
+            (close parent)
             (call-with-temporary-directory
              (lambda (root)
+               (display "ready\n" child)
+               (read child)                       ;wait for "go!"
                (let ((put-old (string-append root "/real-root")))
                  (mount "none" root "tmpfs")
                  (mkdir put-old)
@@ -192,18 +187,32 @@
                      (display "testing\n" port)))
                  (pivot-root root put-old)
                  ;; The test file should now be located inside the root directory.
-                 (write (file-exists? "/test") out)
-                 (close out)))))
+                 (write (and (file-exists? "/test") 'success!) child)
+                 (close child)))))
           (lambda ()
             (primitive-exit 0))))
        (pid
-        (close out)
-        (let ((result (read in)))
-          (close in)
-          (and (zero? (match (waitpid pid)
-                        ((_ . status)
-                         (status:exit-val status))))
-               (eq? #t result))))))))
+        (close child)
+        (match (read parent)
+          ('ready
+           ;; Set up the UID/GID mapping so that we can mkdir on the tmpfs:
+           ;; <https://bugzilla.kernel.org/show_bug.cgi?id=183461>.
+           (call-with-output-file (format #f "/proc/~d/setgroups" pid)
+             (lambda (port)
+               (display "deny" port)))
+           (call-with-output-file (format #f "/proc/~d/uid_map" pid)
+             (lambda (port)
+               (format port "0 ~d 1" (getuid))))
+           (call-with-output-file (format #f "/proc/~d/gid_map" pid)
+             (lambda (port)
+               (format port "0 ~d 1" (getgid))))
+           (display "go!\n" parent)
+           (let ((result (read parent)))
+             (close parent)
+             (and (zero? (match (waitpid pid)
+                           ((_ . status)
+                            (status:exit-val status))))
+                  result)))))))))
 
 (test-equal "scandir*, ENOENT"
   ENOENT
@@ -262,6 +271,20 @@
                                 (eq? type (stat:type stat)))))))))
            (scandir* directory)
            (scandir directory (const #t) string<?))))
+
+(false-if-exception (delete-file temp-file))
+(test-assert "getxattr, setxattr"
+  (let ((key "user.translator")
+        (value "/hurd/pfinet\0")
+        (file (open-file temp-file "w0")))
+    (catch 'system-error
+      (lambda ()
+        (setxattr temp-file key value)
+        (string=? (getxattr temp-file key) value))
+      (lambda args
+        ;; Accept ENOTSUP, if the file-system does not support extended user
+        ;; attributes.
+        (memv (system-error-errno args) (list ENOTSUP))))))
 
 (false-if-exception (delete-file temp-file))
 (test-equal "fcntl-flock wait"
@@ -359,7 +382,11 @@
      (member "lo" names))))
 
 (test-assert "network-interface-names"
-  (match (network-interface-names)
+  (match (remove (lambda (interface)
+                   ;; Ignore interface aliases since they don't show up in
+                   ;; (all-network-interface-names).
+                   (string-contains interface ":"))
+                 (network-interface-names))
     (((? string? names) ..1)
      (lset<= string=? names (all-network-interface-names)))))
 
@@ -566,6 +593,19 @@
 (test-assert "read-utmpx"
   (let ((result (call-with-input-file "/var/run/utmpx" read-utmpx)))
     (or (utmpx? result) (eof-object? result))))
+
+(when (zero? (getuid))
+  (test-skip 1))
+(test-equal "add-to-entropy-count"
+  EPERM
+  (call-with-output-file "/dev/urandom"
+    (lambda (port)
+      (catch 'system-error
+        (lambda ()
+          (add-to-entropy-count port 77)
+          #f)
+        (lambda args
+          (system-error-errno args))))))
 
 (test-end)
 

@@ -1,5 +1,5 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2018 Clément Lassieur <clement@lassieur.org>
 ;;;
 ;;; This file is part of GNU Guix.
@@ -55,7 +55,7 @@
 
 
 (define* (run-basic-test os command #:optional (name "basic")
-                         #:key initialization)
+                         #:key initialization root-password)
   "Return a derivation called NAME that tests basic features of the OS started
 using COMMAND, a gexp that evaluates to a list of strings.  Compare some
 properties of running system to what's declared in OS, an <operating-system>.
@@ -63,7 +63,10 @@ properties of running system to what's declared in OS, an <operating-system>.
 When INITIALIZATION is true, it must be a one-argument procedure that is
 passed a gexp denoting the marionette, and it must return gexp that is
 inserted before the first test.  This is used to introduce an extra
-initialization step, such as entering a LUKS passphrase."
+initialization step, such as entering a LUKS passphrase.
+
+When ROOT-PASSWORD is true, enter it as the root password when logging in.
+Otherwise assume that there is no password for root."
   (define special-files
     (service-value
      (fold-services (operating-system-services os)
@@ -192,6 +195,14 @@ info --version")
                      (pk 'services services)
                      '(root #$@(operating-system-shepherd-service-names os)))))
 
+          (test-equal "/var/log/messages is not world-readable"
+            #o640                                ;<https://bugs.gnu.org/40405>
+            (begin
+              (wait-for-file "/var/log/messages" marionette
+                             #:read 'get-u8)
+              (marionette-eval '(stat:perms (lstat "/var/log/messages"))
+                               marionette)))
+
           (test-assert "homes"
             (let ((homes
                    '#$(map user-account-home-directory
@@ -300,7 +311,19 @@ info --version")
                marionette)
 
               ;; Now we can type.
-              (marionette-type "root\n\nid -un > logged-in\n" marionette)
+              (let ((password #$root-password))
+                (if password
+                    (begin
+                      (marionette-type "root\n" marionette)
+                      (wait-for-screen-text marionette
+                                            (lambda (text)
+                                              (string-contains text "Password"))
+                                            #:ocrad
+                                            #$(file-append ocrad "/bin/ocrad"))
+                      (marionette-type (string-append password "\n\n")
+                                       marionette))
+                    (marionette-type "root\n\n" marionette)))
+              (marionette-type "id -un > logged-in\n" marionette)
 
               ;; It can take a while before the shell commands are executed.
               (marionette-eval '(use-modules (rnrs io ports)) marionette)
@@ -436,6 +459,21 @@ info --version")
             (marionette-eval '(readlink "/var/guix/gcroots/profiles")
                              marionette))
 
+          (test-equal "guix-daemon set-http-proxy action"
+            '(#t)                                 ;one value, #t
+            (marionette-eval '(with-shepherd-action 'guix-daemon
+                                  ('set-http-proxy "http://localhost:8118")
+                                  result
+                                result)
+                             marionette))
+
+          (test-equal "guix-daemon set-http-proxy action, clear"
+            '(#t)                                 ;one value, #t
+            (marionette-eval '(with-shepherd-action 'guix-daemon
+                                  ('set-http-proxy)
+                                  result
+                                result)
+                             marionette))
 
           (test-assert "screendump"
             (begin

@@ -1,6 +1,7 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2017 Danny Milosavljevic <dannym@scratchpost.org>
+;;; Copyright © 2019 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -43,6 +44,8 @@
             string->ext4-uuid
             string->btrfs-uuid
             string->fat-uuid
+            string->jfs-uuid
+            string->ntfs-uuid
             iso9660-uuid->string
 
             ;; XXX: For lack of a better place.
@@ -195,6 +198,38 @@ ISO9660 UUID representation."
 
 
 ;;;
+;;; NTFS.
+;;;
+
+(define-syntax %ntfs-endianness
+  ;; Endianness of NTFS file system.
+  (identifier-syntax (endianness little)))
+
+(define (ntfs-uuid->string uuid)
+  "Convert NTFS UUID, a 8-byte bytevector, to its string representation."
+  (format #f "~{~:@(~x~)~}" (reverse (bytevector->u8-list uuid))))
+
+(define %ntfs-uuid-rx
+  (make-regexp "^([[:xdigit:]]{16})$"))
+
+(define (string->ntfs-uuid str)
+  "Parse STR, which is in NTFS format, and return a bytevector or #f."
+  (match (regexp-exec %ntfs-uuid-rx str)
+    (#f
+     #f)
+    (rx-match
+     (u8-list->bytevector
+      (let loop ((str str)
+                 (res '()))
+        (if (string=? str "")
+            res
+            (loop (string-drop str 2)
+                  (cons
+                   (string->number (string-take str 2) 16)
+                   res))))))))
+
+
+;;;
 ;;; Generic interface.
 ;;;
 
@@ -202,6 +237,7 @@ ISO9660 UUID representation."
 (define string->ext3-uuid string->dce-uuid)
 (define string->ext4-uuid string->dce-uuid)
 (define string->btrfs-uuid string->dce-uuid)
+(define string->jfs-uuid string->dce-uuid)
 
 (define-syntax vhashq
   (syntax-rules (=>)
@@ -215,15 +251,17 @@ ISO9660 UUID representation."
 
 (define %uuid-parsers
   (vhashq
-   ('dce 'ext2 'ext3 'ext4 'btrfs 'luks => string->dce-uuid)
+   ('dce 'ext2 'ext3 'ext4 'btrfs 'jfs 'luks => string->dce-uuid)
    ('fat32 'fat16 'fat => string->fat-uuid)
+   ('ntfs => string->ntfs-uuid)
    ('iso9660 => string->iso9660-uuid)))
 
 (define %uuid-printers
   (vhashq
-   ('dce 'ext2 'ext3 'ext4 'btrfs 'luks => dce-uuid->string)
+   ('dce 'ext2 'ext3 'ext4 'btrfs 'jfs 'luks => dce-uuid->string)
    ('iso9660 => iso9660-uuid->string)
-   ('fat32 'fat16 'fat => fat-uuid->string)))
+   ('fat32 'fat16 'fat => fat-uuid->string)
+   ('ntfs => ntfs-uuid->string)))
 
 (define* (string->uuid str #:optional (type 'dce))
   "Parse STR as a UUID of the given TYPE.  On success, return the
@@ -295,5 +333,5 @@ corresponding bytevector; otherwise return #f."
      (bytevector=? (uuid-bytevector a) b))
     (((? uuid? a) (? uuid? b))
      (bytevector=? (uuid-bytevector a) (uuid-bytevector b)))
-    ((a b)
+    (((or (? uuid? a) (? bytevector? a)) (or (? uuid? b) (? bytevector? b)))
      (uuid=? b a))))

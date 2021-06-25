@@ -1,6 +1,7 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2018, 2019 Mathieu Othacehe <m.othacehe@gmail.com>
-;;; Copyright © 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2019, 2020 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -64,13 +65,7 @@
             user-partition-parted-object
 
             find-esp-partition
-            data-partition?
-            metadata-partition?
-            freespace-partition?
             small-freespace-partition?
-            normal-partition?
-            extended-partition?
-            logical-partition?
             esp-partition?
             boot-partition?
             default-esp-mount-point
@@ -172,24 +167,6 @@
   "Find and return the ESP partition among PARTITIONS."
   (find esp-partition? partitions))
 
-(define (data-partition? partition)
-  "Return #t if PARTITION is a partition dedicated to data (by opposition to
-freespace, metadata and protected partition types), return #f otherwise."
-  (let ((type (partition-type partition)))
-    (not (any (lambda (flag)
-                (member flag type))
-              '(free-space metadata protected)))))
-
-(define (metadata-partition? partition)
-  "Return #t if PARTITION is a metadata partition, #f otherwise."
-  (let ((type (partition-type partition)))
-    (member 'metadata type)))
-
-(define (freespace-partition? partition)
-  "Return #t if PARTITION is a free-space partition, #f otherwise."
-  (let ((type (partition-type partition)))
-    (member 'free-space type)))
-
 (define* (small-freespace-partition? device
                                      partition
                                      #:key (max-size MEBIBYTE-SIZE))
@@ -199,21 +176,6 @@ inferior to MAX-SIZE, #f otherwise."
         (max-sector-size (/ max-size
                             (device-sector-size device))))
     (< size max-sector-size)))
-
-(define (normal-partition? partition)
-  "return #t if partition is a normal partition, #f otherwise."
-  (let ((type (partition-type partition)))
-    (member 'normal type)))
-
-(define (extended-partition? partition)
-  "return #t if partition is an extended partition, #f otherwise."
-  (let ((type (partition-type partition)))
-    (member 'extended type)))
-
-(define (logical-partition? partition)
-  "Return #t if PARTITION is a logical partition, #f otherwise."
-  (let ((type (partition-type partition)))
-    (member 'logical type)))
 
 (define (partition-user-type partition)
   "Return the type of PARTITION, to be stored in the TYPE field of
@@ -260,6 +222,8 @@ inferior to MAX-SIZE, #f otherwise."
     ((btrfs) "btrfs")
     ((fat16) "fat16")
     ((fat32) "fat32")
+    ((jfs)   "jfs")
+    ((ntfs)  "ntfs")
     ((swap)  "linux-swap")))
 
 (define (user-fs-type->mount-type fs-type)
@@ -268,7 +232,9 @@ inferior to MAX-SIZE, #f otherwise."
     ((ext4)  "ext4")
     ((btrfs) "btrfs")
     ((fat16) "fat")
-    ((fat32) "vfat")))
+    ((fat32) "vfat")
+    ((jfs)   "jfs")
+    ((ntfs)  "ntfs")))
 
 (define (partition-filesystem-user-type partition)
   "Return the filesystem type of PARTITION, to be stored in the FS-TYPE field
@@ -281,6 +247,8 @@ of <user-partition> record."
             ((string=? name "btrfs") 'btrfs)
             ((string=? name "fat16") 'fat16)
             ((string=? name "fat32") 'fat32)
+            ((string=? name "jfs") 'jfs)
+            ((string=? name "ntfs") 'ntfs)
             ((or (string=? name "swsusp")
                  (string=? name "linux-swap(v0)")
                  (string=? name "linux-swap(v1)"))
@@ -813,7 +781,7 @@ cause them to cross."
 (define (rmpart disk number)
   "Remove the partition with the given NUMBER on DISK."
   (let ((partition (disk-get-partition disk number)))
-    (disk-remove-partition disk partition)))
+    (disk-remove-partition* disk partition)))
 
 
 ;;
@@ -928,12 +896,12 @@ exists."
 
     (if has-extended?
         ;; msdos - remove everything.
-        (disk-delete-all disk)
+        (disk-remove-all-partitions disk)
         ;; gpt - remove everything but esp if it exists.
         (for-each
          (lambda (partition)
            (and (data-partition? partition)
-                (disk-remove-partition disk partition)))
+                (disk-remove-partition* disk partition)))
          non-boot-partitions))
 
     (let* ((start-partition
@@ -1051,7 +1019,7 @@ bit bucket."
         (lambda () exp ...)))))
 
 (define (create-btrfs-file-system partition)
-  "Create an btrfs file-system for PARTITION file-name."
+  "Create a btrfs file-system for PARTITION file-name."
   (with-null-output-ports
    (invoke "mkfs.btrfs" "-f" partition)))
 
@@ -1069,6 +1037,16 @@ bit bucket."
   "Create a fat32 file-system for PARTITION file-name."
   (with-null-output-ports
    (invoke "mkfs.fat" "-F32" partition)))
+
+(define (create-jfs-file-system partition)
+  "Create a JFS file-system for PARTITION file-name."
+  (with-null-output-ports
+   (invoke "jfs_mkfs" "-f" partition)))
+
+(define (create-ntfs-file-system partition)
+  "Create a JFS file-system for PARTITION file-name."
+  (with-null-output-ports
+   (invoke "mkfs.ntfs" "-F" "-f" partition)))
 
 (define (create-swap-partition partition)
   "Set up swap area on PARTITION file-name."
@@ -1100,6 +1078,8 @@ USER-PARTITION if it is encrypted, or the plain file-name otherwise."
     (call-with-luks-key-file
      password
      (lambda (key-file)
+       (syslog "formatting and opening LUKS entry ~s at ~s~%"
+               label file-name)
        (system* "cryptsetup" "-q" "luksFormat" file-name key-file)
        (system* "cryptsetup" "open" "--type" "luks"
                 "--key-file" key-file file-name label)))))
@@ -1107,6 +1087,7 @@ USER-PARTITION if it is encrypted, or the plain file-name otherwise."
 (define (luks-close user-partition)
   "Close the encrypted partition pointed by USER-PARTITION."
   (let ((label (user-partition-crypt-label user-partition)))
+    (syslog "closing LUKS entry ~s~%" label)
     (system* "cryptsetup" "close" label)))
 
 (define (format-user-partitions user-partitions)
@@ -1140,6 +1121,14 @@ NEED-FORMATING? field set to #t."
           (and need-formatting?
                (not (eq? type 'extended))
                (create-fat32-file-system file-name)))
+         ((jfs)
+          (and need-formatting?
+               (not (eq? type 'extended))
+               (create-jfs-file-system file-name)))
+         ((ntfs)
+          (and need-formatting?
+               (not (eq? type 'extended))
+               (create-ntfs-file-system file-name)))
          ((swap)
           (create-swap-partition file-name))
          (else
@@ -1176,6 +1165,7 @@ respective mount-points."
                        (file-name
                         (user-partition-upper-file-name user-partition)))
                   (mkdir-p target)
+                  (syslog "mounting ~s on ~s~%" file-name target)
                   (mount file-name target mount-type)))
               sorted-partitions)))
 
@@ -1191,6 +1181,7 @@ respective mount-points."
                        (target
                         (string-append (%installer-target-dir)
                                        mount-point)))
+                  (syslog "unmounting ~s~%" target)
                   (umount target)
                   (when crypt-label
                     (luks-close user-partition))))
@@ -1348,7 +1339,7 @@ USER-PARTITIONS, or return nothing."
 
 (define (init-parted)
   "Initialize libparted support."
-  (probe-all-devices)
+  (probe-all-devices!)
   (exception-set-handler (lambda (exception)
                            EXCEPTION-OPTION-UNHANDLED)))
 
@@ -1364,7 +1355,6 @@ the devices not to be used before returning."
   ;; https://mail.gnome.org/archives/commits-list/2013-March/msg18423.html.
   (let ((device-file-names (map device-path devices)))
     (for-each force-device-sync devices)
-    (free-all-devices)
     (for-each (lambda (file-name)
                 (let ((in-use? (with-delay-device-in-use? file-name)))
                   (and in-use?

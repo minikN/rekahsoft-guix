@@ -3,10 +3,11 @@
 ;;; Copyright © 2014 David Thompson <dthompson2@worcester.edu>
 ;;; Copyright © 2015, 2016 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2015 Alex Kost <alezost@gmail.com>
-;;; Copyright © 2015, 2016 Efraim Flashner <efraim@flashner.co.il>
-;;; Copyright © 2017, 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2015, 2016, 2020 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2017, 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018, 2019 Rutger Helling <rhelling@mykolab.com>
 ;;; Copyright © 2018, 2019 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2020 Vincent Legoll <vincent.legoll@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -25,6 +26,7 @@
 
 (define-module (gnu packages man)
   #:use-module (guix licenses)
+  #:use-module (guix git-download)
   #:use-module (guix download)
   #:use-module (guix packages)
   #:use-module (guix build-system gnu)
@@ -40,7 +42,7 @@
 (define-public libpipeline
   (package
     (name "libpipeline")
-    (version "1.5.1")
+    (version "1.5.2")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -48,7 +50,7 @@
                     version ".tar.gz"))
               (sha256
                (base32
-                "0bwh5xz5f2czwb7f564jz1mp4znm8pldnvf65fs0hpw4gmmp0cyn"))))
+                "1ysrn22ixd4nmggy6f7qcsm7waadmlbg2i0n9mh6g7dfq54wcngx"))))
     (build-system gnu-build-system)
     (home-page "http://libpipeline.nongnu.org/")
     (synopsis "C library for manipulating pipelines of subprocesses")
@@ -60,14 +62,14 @@ a flexible and convenient way.")
 (define-public man-db
   (package
     (name "man-db")
-    (version "2.8.5")
+    (version "2.9.3")
     (source (origin
               (method url-fetch)
               (uri (string-append "mirror://savannah/man-db/man-db-"
                                   version ".tar.xz"))
               (sha256
                (base32
-                "1hgnfcgbllmws8cs6zaxklq8b69i05zynxi87f3zxw9lfms54kdn"))))
+                "1f4palf5bdyf3f8sa0981cqxn9cjcr2pz53ngrrsybb9n0da2nps"))))
     (build-system gnu-build-system)
     (arguments
      `(#:phases
@@ -136,10 +138,10 @@ a flexible and convenient way.")
                   (srfi srfi-1))))
     (native-inputs
      `(("pkg-config" ,pkg-config)
+       ("flex" ,flex)
        ("groff" ,groff)))   ;needed at build time (troff, grops, soelim, etc.)
     (inputs
-     `(("flex" ,flex)
-       ("gdbm" ,gdbm)
+     `(("gdbm" ,gdbm)
        ("groff-minimal" ,groff-minimal)
        ("less" ,less)
        ("libpipeline" ,libpipeline)
@@ -162,7 +164,7 @@ the traditional flat-text whatis databases.")
 (define-public man-pages
   (package
     (name "man-pages")
-    (version "5.02")
+    (version "5.07")
     (source
      (origin
        (method url-fetch)
@@ -172,7 +174,7 @@ the traditional flat-text whatis databases.")
               (string-append "mirror://kernel.org/linux/docs/man-pages/Archive/"
                              "man-pages-" version ".tar.xz")))
        (sha256
-        (base32 "1s4pdz2pwf0kvhdwx2s6lqn3xxzi38yz5jfyq5ymdmswc9gaiyn2"))))
+        (base32 "13b3q7c67r0wkla4pdihl1qh09k67ms2z5jgzfqgpdqqy6mgziwd"))))
     (build-system gnu-build-system)
     (arguments
      '(#:phases (modify-phases %standard-phases (delete 'configure))
@@ -198,7 +200,7 @@ Linux kernel and C library interfaces employed by user-space programs.")
 (define-public help2man
   (package
     (name "help2man")
-    (version "1.47.6")
+    (version "1.47.13")
     (source
      (origin
       (method url-fetch)
@@ -206,7 +208,7 @@ Linux kernel and C library interfaces employed by user-space programs.")
                           version ".tar.xz"))
       (sha256
        (base32
-        "0vz4dlrvy4vc6l7w0a7n668pfa0rdm73wr2gar58wqranyah46yr"))))
+        "08q5arxz4j4pyx5q4712c2rn7p7dw7as9xg38yvmsh1c3ynvpy5p"))))
     (build-system gnu-build-system)
     (arguments `(;; There's no `check' target.
                  #:tests? #f))
@@ -216,6 +218,8 @@ Linux kernel and C library interfaces employed by user-space programs.")
        ;; ("perl-LocaleGettext" ,perl-LocaleGettext)
        ;; ("gettext" ,gettext-minimal)
        ))
+    (native-inputs
+     `(("perl" ,perl)))
     (home-page "https://www.gnu.org/software/help2man/")
     (synopsis "Automatically generate man pages from program --help")
     (description
@@ -224,22 +228,10 @@ Linux kernel and C library interfaces employed by user-space programs.")
 automatically.")
     (license gpl3+)))
 
-(define-public help2man/latest
-  (package
-    (inherit help2man)
-    (version "1.47.11")
-    (source (origin
-              (method url-fetch)
-              (uri (string-append "mirror://gnu/help2man/help2man-"
-                                  version ".tar.xz"))
-              (sha256
-               (base32
-                "123vsimgx8zq1h077sbyh3bd0hbmlc3wih2231wwh133z1bv51ar"))))))
-
 (define-public scdoc
   (package
    (name "scdoc")
-   (version "1.9.4")
+   (version "1.10.1")
    (source
     (origin
      (method url-fetch)
@@ -248,18 +240,14 @@ automatically.")
      (file-name (string-append name "-" version ".tar.gz"))
      (sha256
       (base32
-       "00zc3rzj97gscby31djlqyczvqpyhrl66i44czwzmmn7rc5j03m1"))))
+       "13x7g1r56bshvfmlvapvz35ywnbgsh337kywb5kcv8nc6b3j3q40"))))
    (build-system gnu-build-system)
    (arguments
-    `(#:make-flags '("CC=gcc")
+    `(#:make-flags
+      (list "CC=gcc" (string-append "PREFIX=" (assoc-ref %outputs "out")))
       #:phases
       (modify-phases %standard-phases
-        (delete 'configure)
-        (add-before 'install 'hardcode-paths
-          (lambda* (#:key outputs #:allow-other-keys)
-            (substitute* "Makefile"
-                         (("/usr/local") (assoc-ref outputs "out")))
-            #t)))))
+        (delete 'configure))))
    (home-page "https://git.sr.ht/~sircmpwn/scdoc")
    (synopsis "Simple man page generator")
    (description "scdoc is a simple man page generator written for POSIX systems
@@ -273,13 +261,14 @@ in C99.")
     (version "1.6.0")
     (source
      (origin
-       (method url-fetch)
-       (uri (string-append
-             "https://github.com/mvertes/txt2man/archive/txt2man-"
-             version ".tar.gz"))
+       (method git-fetch)
+       (uri (git-reference
+              (url "https://github.com/mvertes/txt2man")
+              (commit (string-append "txt2man-" version))))
+       (file-name (git-file-name name version))
        (sha256
         (base32
-         "168cj96974n2z0igin6j1ic1m45zyic7nm5ark7frq8j78rrx4zn"))))
+         "1razjpvlcp85hqli77mwr9nmn5jnv3lm1fxbbqjpx1brv3h1lvm5"))))
     (build-system gnu-build-system)
     (arguments
      `(#:tests? #f ; no "check" target

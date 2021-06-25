@@ -1,6 +1,7 @@
 # GNU Guix --- Functional package management for GNU
-# Copyright © 2012, 2013, 2014, 2015, 2016, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+# Copyright © 2012, 2013, 2014, 2015, 2016, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 # Copyright © 2016 Mathieu Lirzin <mthl@gnu.org>
+# Copyright © 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 #
 # This file is part of GNU Guix.
 #
@@ -55,8 +56,7 @@ libutil_a_SOURCES =				\
   %D%/libutil/affinity.cc			\
   %D%/libutil/serialise.cc			\
   %D%/libutil/util.cc				\
-  %D%/libutil/hash.cc				\
-  %D%/libutil/gcrypt-hash.cc
+  %D%/libutil/hash.cc
 
 libutil_headers =				\
   %D%/libutil/affinity.hh			\
@@ -64,12 +64,7 @@ libutil_headers =				\
   %D%/libutil/serialise.hh			\
   %D%/libutil/util.hh				\
   %D%/libutil/archive.hh			\
-  %D%/libutil/types.hh				\
-  %D%/libutil/gcrypt-hash.hh			\
-  %D%/libutil/md5.h				\
-  %D%/libutil/sha1.h				\
-  %D%/libutil/sha256.h				\
-  %D%/libutil/sha512.h
+  %D%/libutil/types.hh
 
 libutil_a_CPPFLAGS =				\
   -I$(top_builddir)/nix				\
@@ -155,9 +150,30 @@ noinst_HEADERS =						\
 
 # The '.service' files for systemd.
 systemdservicedir = $(libdir)/systemd/system
-nodist_systemdservice_DATA = etc/guix-daemon.service etc/guix-publish.service
+nodist_systemdservice_DATA =			\
+  etc/gnu-store.mount				\
+  etc/guix-daemon.service			\
+  etc/guix-publish.service
+
+etc/%.mount: etc/%.mount.in	\
+			 $(top_builddir)/config.status
+	$(AM_V_GEN)$(MKDIR_P) "`dirname $@`";	\
+	$(SED) -e 's|@''storedir''@|$(storedir)|' <	\
+	       "$<" > "$@.tmp";		\
+	mv "$@.tmp" "$@"
 
 etc/guix-%.service: etc/guix-%.service.in	\
+			 $(top_builddir)/config.status
+	$(AM_V_GEN)$(MKDIR_P) "`dirname $@`";	\
+	$(SED) -e 's|@''localstatedir''@|$(localstatedir)|' <	\
+	       "$<" > "$@.tmp";		\
+	mv "$@.tmp" "$@"
+
+# The service script for sysvinit.
+sysvinitservicedir = $(sysconfdir)/init.d
+nodist_sysvinitservice_DATA = etc/init.d/guix-daemon
+
+etc/init.d/guix-daemon: etc/init.d/guix-daemon.in	\
 			 $(top_builddir)/config.status
 	$(AM_V_GEN)$(MKDIR_P) "`dirname $@`";	\
 	$(SED) -e 's|@''localstatedir''@|$(localstatedir)|' <	\
@@ -177,7 +193,8 @@ etc/guix-%.conf: etc/guix-%.conf.in	\
 
 CLEANFILES +=					\
   $(nodist_systemdservice_DATA)			\
-  $(nodist_upstartjob_DATA)
+  $(nodist_upstartjob_DATA)			\
+  $(nodist_sysvinitservice_DATA)
 
 EXTRA_DIST +=					\
   %D%/AUTHORS					\
@@ -185,7 +202,8 @@ EXTRA_DIST +=					\
   etc/guix-daemon.service.in			\
   etc/guix-daemon.conf.in			\
   etc/guix-publish.service.in			\
-  etc/guix-publish.conf.in
+  etc/guix-publish.conf.in			\
+  etc/init.d/guix-daemon.in
 
 if CAN_RUN_TESTS
 

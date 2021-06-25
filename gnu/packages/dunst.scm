@@ -1,6 +1,8 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2015, 2017, 2018 Alex Kost <alezost@gmail.com>
 ;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2019 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2020 Brice Waegeneire <brice@waegenei.re>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -19,12 +21,13 @@
 
 (define-module (gnu packages dunst)
   #:use-module (guix packages)
-  #:use-module (guix download)
+  #:use-module (guix git-download)
   #:use-module (guix build-system gnu)
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (gnu packages base)
   #:use-module (gnu packages freedesktop)
   #:use-module (gnu packages glib)
+  #:use-module (gnu packages gnome)
   #:use-module (gnu packages gtk)
   #:use-module (gnu packages perl)
   #:use-module (gnu packages pkg-config)
@@ -33,16 +36,16 @@
 (define-public dunst
   (package
     (name "dunst")
-    (version "1.3.2")
+    (version "1.4.1")
     (source (origin
-              (method url-fetch)
-              (uri (string-append
-                    "https://github.com/dunst-project/dunst/archive/v"
-                    version ".tar.gz"))
-              (file-name (string-append name "-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/dunst-project/dunst")
+                     (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "12nj8qw3y3nl8sm24wizy2a7k06v1p88bnz1xr9l39h527xyidma"))))
+                "0xjj1f2jr1ja5grj6wrx5jjz1sx5fpqnvkw7nqi4452j3nc4p4l2"))))
     (build-system gnu-build-system)
     (arguments
      '(#:tests? #f                      ; no check target
@@ -51,9 +54,16 @@
                           ;; Otherwise it tries to install service file
                           ;; to "dbus" store directory.
                           (string-append "SERVICEDIR_DBUS=" %output
-                                         "/share/dbus-1/services"))
+                                         "/share/dbus-1/services")
+                          "dunstify")
        #:phases (modify-phases %standard-phases
-                  (delete 'configure))))
+                  (delete 'configure)
+                  (add-after 'install 'install-dunstify
+                    (lambda* (#:key outputs #:allow-other-keys)
+                      (let ((out (assoc-ref outputs "out")))
+                        (install-file "dunstify"
+                                      (string-append out "/bin")))
+                      #t)))))
     (native-inputs
      `(("pkg-config" ,pkg-config)
        ("perl" ,perl)                   ; for pod2man
@@ -64,6 +74,7 @@
        ("glib" ,glib)
        ("cairo" ,cairo)
        ("pango" ,pango)
+       ("libnotify" ,libnotify)         ; for dunstify
        ("libx11" ,libx11)
        ("libxscrnsaver" ,libxscrnsaver)
        ("libxinerama" ,libxinerama)

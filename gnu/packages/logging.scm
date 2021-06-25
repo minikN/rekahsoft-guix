@@ -3,9 +3,10 @@
 ;;; Copyright © 2016, 2017, 2018 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2017 Stefan Reichör <stefan@xsteve.at>
 ;;; Copyright © 2017 Eric Bavier <bavier@member.fsf.org>
-;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2019 Gábor Boskovits <boskovits@gmail.com>
 ;;; Copyright © 2019 Meiyo Peng <meiyo@riseup.net>
+;;; Copyright © 2020 Marius Bakke <mbakke@fastmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -53,6 +54,17 @@
                (base32
                 "07gmr3jyaf2239n9sp6h7hwdz1pv7b7aka8n06gmr2fnlmaymfrc"))))
     (build-system gnu-build-system)
+    (arguments
+     '(#:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'do-not-call-stime
+           (lambda _
+             ;; Patch out use of 'stime' which was removed from glibc 2.31.
+             ;; The test would not work in the build container anyway.
+             (substitute* "tests/testDailyRollingFileAppender.cpp"
+               (("if \\(stime\\(&now\\) == -1\\)")
+                "if (1)"))
+             #t)))))
     (synopsis "Log library for C++")
     (description
      "Log4cpp is library of C++ classes for flexible logging to files, syslog,
@@ -142,15 +154,14 @@ commands, displaying the results via a web interface.")
 (define-public multitail
   (package
     (name "multitail")
-    (version "6.4.2")
+    (version "6.5.0")
     (source
      (origin
       (method url-fetch)
       (uri (string-append "https://vanheusden.com/multitail/multitail-"
                           version ".tgz"))
       (sha256
-       (base32
-        "1zd1r89xkxngl1pdrvsc877838nwkfqkbcgfqm3vglwalxc587dg"))))
+       (base32 "1vd9vdxyxsccl64ilx542ya5vlw2bpg6gnkq1x8cfqy6vxvmx7dj"))))
     (build-system gnu-build-system)
     (arguments
      `(#:make-flags
@@ -180,22 +191,24 @@ windows in a terminal, colorize, filter and merge.")
 (define-public spdlog
   (package
     (name "spdlog")
-    (version "1.3.1")
+    (version "1.7.0")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/gabime/spdlog.git")
+             (url "https://github.com/gabime/spdlog")
              (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
        (sha256
         (base32
-         "1rd4zmrlkcdjx0m0wpmjm1g9srj7jak6ai08qkhbn2lsn0niifzd"))))
+         "1ryaa22ppj60461hcdb8nk7jwj84arp4iw4lyw594py92g4vnx3j"))))
     (build-system cmake-build-system)
     ;; TODO run benchmark. Currently not possible, as adding
     ;; (gnu packages benchmark) forms a dependency cycle
     (arguments
      '(#:configure-flags
-       (list "-DSPDLOG_BUILD_BENCH=OFF")))
+       (list "-DSPDLOG_BUILD_BENCH=OFF"
+             "-DSPDLOG_BUILD_TESTS=ON")))
     (home-page "https://github.com/gabime/spdlog")
     (synopsis "Fast C++ logging library")
     (description "Spdlog is a very fast header-only/compiled C++ logging

@@ -1,13 +1,18 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019 Andreas Enge <andreas@enge.fr>
 ;;; Copyright © 2013, 2015, 2017, 2018 Ludovic Courtès <ludo@gnu.org>
-;;; Copyright © 2016, 2017, 2018, 2019 Nicolas Goaziou <mail@nicolasgoaziou.fr>
+;;; Copyright © 2016, 2017, 2018, 2019, 2020 Nicolas Goaziou <mail@nicolasgoaziou.fr>
 ;;; Copyright © 2014, 2018 Mark H Weaver <mhw@netris.org>
 ;;; Copyright © 2016, 2018, 2019 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2017 Efraim Flashner <efraim@flashner.co.il>
-;;; Copyright © 2017, 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2017, 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2017 Marius Bakke <mbakke@fastmail.com>
 ;;; Copyright © 2017, 2019 Eric Bavier <bavier@member.fsf.org>
+;;; Copyright © 2019 Mathieu Othacehe <m.othacehe@gmail.com>
+;;; Copyright © 2020 Björn Höfling <bjoern.hoefling@bjoernhoefling.de>
+;;; Copyright © 2020 Jakub Kądziołka <kuba@kadziolka.net>
+;;; Copyright © 2020 Vincent Legoll <vincent.legoll@gmail.com>
+;;; Copyright © 2020 Vinicius Monego <monego@posteo.net>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -39,6 +44,7 @@
   #:use-module (gnu packages graphviz)
   #:use-module (gnu packages image)
   #:use-module (gnu packages java)
+  #:use-module (gnu packages llvm)
   #:use-module (gnu packages maths)
   #:use-module (gnu packages mpi)
   #:use-module (gnu packages multiprecision)
@@ -91,7 +97,7 @@ implement the floating point approach to complex multiplication are
 implemented.  On the other hand, these comprise asymptotically fast
 multiplication routines such as Toom–Cook and the FFT.")
    (license license:lgpl3+)
-   (home-page "http://mpfrcx.multiprecision.org/")))
+   (home-page "http://www.multiprecision.org/mpfrcx/")))
 
 (define-public gf2x
   (package
@@ -140,7 +146,7 @@ multiplication via floating point approximations.  It consists of libraries
 that can be called from within a C program and of executable command
 line applications.")
    (license license:gpl3+)
-   (home-page "http://cm.multiprecision.org/")))
+   (home-page "http://www.multiprecision.org/cm/")))
 
 (define-public fplll
   (package
@@ -149,7 +155,7 @@ line applications.")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/fplll/fplll.git")
+                    (url "https://github.com/fplll/fplll")
                     (commit version)))
               (file-name (git-file-name name version))
               (sha256
@@ -199,8 +205,9 @@ the real span of the lattice.")
        ;; Github instead.
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/fplll/fpylll.git")
+             (url "https://github.com/fplll/fpylll")
              (commit (string-append version "dev"))))
+       (file-name (git-file-name name version))
        (sha256
         (base32
          "01x2sqdv0sbjj4g4waj0hj4rcn4bq7h17442xaqwbznym9azmn9w"))))
@@ -224,7 +231,7 @@ the real span of the lattice.")
 (define-public pari-gp
   (package
     (name "pari-gp")
-    (version "2.11.2")
+    (version "2.11.4")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -232,7 +239,7 @@ the real span of the lattice.")
                     version ".tar.gz"))
               (sha256
                (base32
-                "0fck8ssmirl8fy7s4mspgrxjs5sag76xbshqlqzkcl3kqyrk4raa"))))
+                "070bjw4kg7r6lqs1hfs08n5fmjv90cpwflp3wr04hbrmyz28zj5z"))))
     (build-system gnu-build-system)
     (native-inputs
      `(("texlive" ,(texlive-union
@@ -266,7 +273,7 @@ PARI is also available as a C library to allow for faster computations.")
 (define-public gp2c
   (package
    (name "gp2c")
-   (version "0.0.11pl2")
+   (version "0.0.11pl4")
    (source (origin
             (method url-fetch)
             (uri (string-append
@@ -274,7 +281,7 @@ PARI is also available as a C library to allow for faster computations.")
                   version ".tar.gz"))
             (sha256
               (base32
-                "0wqsf05wgkqvmmsx7jinvzdqav6rl56sr8haibgs31nzz4x9xz9g"))))
+                "1cnnh7diqc97q76q5pyhpbljbhc0sz8mlrbqgiwi0sjkgh8iqsj0"))))
    (build-system gnu-build-system)
    (native-inputs `(("perl" ,perl)))
    (inputs `(("pari-gp" ,pari-gp)))
@@ -344,19 +351,19 @@ precision.")
 (define-public giac
   (package
     (name "giac")
-    (version "1.5.0-63")
-    (source (origin
-              (method url-fetch)
-              ;; "~parisse/giac" is not used because the maintainer regularly
-              ;; overwrites the release tarball there, introducing a checksum
-              ;; mismatch every time.  See
-              ;; <https://www-fourier.ujf-grenoble.fr/~parisse/debian/dists/stable/main/source/README>
-              (uri (string-append "https://www-fourier.ujf-grenoble.fr/"
-                                  "~parisse/debian/dists/stable/main/"
-                                  "source/giac_" version ".tar.gz"))
-              (sha256
-               (base32
-                "1jp7awyp8j8w6fhn802z8ddbq1fxhkyk9xdf0mq0mm0chpkylwqk"))))
+    (version "1.6.0-7")
+    (source
+     (origin
+       (method url-fetch)
+       ;; "~parisse/giac" is not used because the maintainer regularly
+       ;; overwrites the release tarball there, introducing a checksum
+       ;; mismatch every time.  See
+       ;; <https://www-fourier.ujf-grenoble.fr/~parisse/debian/dists/stable/main/source/README>
+       (uri (string-append "https://www-fourier.ujf-grenoble.fr/"
+                           "~parisse/debian/dists/stable/main/source/"
+                           "giac_" version ".tar.gz"))
+       (sha256
+        (base32 "1pvgp137zcl0rbhdn1j41xxfml7fp771a7x4ph8qrhhlx0hxzn3p"))))
     (build-system gnu-build-system)
     (arguments
      `(#:modules ((ice-9 ftw)
@@ -396,14 +403,14 @@ precision.")
                (delete-file (string-append out "/bin/xcasnew"))
                #t))))))
     (inputs
-     ;;; TODO: Add libnauty.
+;;; TODO: Add libnauty.
      `(("fltk" ,fltk)
        ("glpk" ,glpk)
        ("gmp" ,gmp)
        ("gsl" ,gsl)
        ("lapack" ,lapack)
        ("libao" ,ao)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libpng" ,libpng)
        ("libsamplerate" ,libsamplerate)
        ("libx11" ,libx11)
@@ -430,40 +437,45 @@ maple, mupad and the TI89.  It is available as a standalone program (graphic
 or text interfaces) or as a C++ library.")
     (license license:gpl3+)))
 
-(define-public giac-xcas
-  (deprecated-package "giac-xcas" giac))
-
 (define-public flint
   (package
    (name "flint")
-   (version "2.5.2")
+   (version "2.6.1")
    (source (origin
             (method url-fetch)
             (uri (string-append
                   "http://flintlib.org/flint-"
                   version ".tar.gz"))
             (sha256 (base32
-                     "11syazv1a8rrnac3wj3hnyhhflpqcmq02q8pqk2m6g2k6h0gxwfb"))
-            (patches (search-patches "flint-ldconfig.patch"))))
+                     "16dzmymaavlnc966g58yn154vb532j50byihkdy1s32f4vrw578d"))))
    (build-system gnu-build-system)
+   (inputs
+    `(("ntl" ,ntl)))
    (propagated-inputs
     `(("gmp" ,gmp)
       ("mpfr" ,mpfr))) ; header files from both are included by flint/arith.h
    (arguments
-    `(#:parallel-tests? #f ; seems to be necessary on arm
+    `(#:parallel-tests? #f              ; seems to be necessary on arm
       #:phases
        (modify-phases %standard-phases
+         (add-before 'configure 'newer-c++
+           (lambda _
+             (substitute* "configure"
+               (("-ansi") ""))
+             #t))
          (replace 'configure
            (lambda* (#:key inputs outputs #:allow-other-keys)
              (let ((out (assoc-ref outputs "out"))
                    (gmp (assoc-ref inputs "gmp"))
-                   (mpfr (assoc-ref inputs "mpfr")))
-               ;; do not pass "--enable-fast-install", which makes the
-               ;; homebrew configure process fail
+                   (mpfr (assoc-ref inputs "mpfr"))
+                   (ntl (assoc-ref inputs "ntl")))
+               ;; Do not pass "--enable-fast-install", which makes the
+               ;; homebrew configure process fail.
                (invoke "./configure"
                        (string-append "--prefix=" out)
                        (string-append "--with-gmp=" gmp)
-                       (string-append "--with-mpfr=" mpfr))
+                       (string-append "--with-mpfr=" mpfr)
+                       (string-append "--with-ntl=" ntl))
                #t))))))
    (synopsis "Fast library for number theory")
    (description
@@ -483,16 +495,16 @@ fast arithmetic.")
 (define-public arb
   (package
     (name "arb")
-    (version "2.16.0")
+    (version "2.18.1")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/fredrik-johansson/arb.git")
+                    (url "https://github.com/fredrik-johansson/arb")
                     (commit version)))
               (file-name (git-file-name name version))
               (sha256
                (base32
-                "0478671wfwy3gl26sbxh1jq1ih36z4k72waa8y2y2lvn649gb7cd"))))
+                "15fx3dcbzgwddw9p1nysmx0dbh058afv5m8cj5pdjkcmcl7kw7z9"))))
     (build-system gnu-build-system)
     (propagated-inputs
      `(("flint" ,flint)))               ; flint.h is included by arf.h
@@ -508,8 +520,8 @@ fast arithmetic.")
                    (flint (assoc-ref inputs "flint"))
                    (gmp (assoc-ref inputs "gmp"))
                    (mpfr (assoc-ref inputs "mpfr")))
-               ;; do not pass "--enable-fast-install", which makes the
-               ;; homebrew configure process fail
+               ;; Do not pass "--enable-fast-install", which makes the
+               ;; homebrew configure process fail.
                (invoke "./configure"
                        (string-append "--prefix=" out)
                        (string-append "--with-flint=" flint)
@@ -522,7 +534,7 @@ arithmetic.  It supports efficient high-precision computation with
 polynomials, power series, matrices and special functions over the
 real and complex numbers, with automatic, rigorous error control.")
     (license license:lgpl2.1+)
-    (home-page "http://fredrikj.net/arb/")))
+    (home-page "http://arblib.org")))
 
 (define-public python-flint
   (package
@@ -531,7 +543,7 @@ real and complex numbers, with automatic, rigorous error control.")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/fredrik-johansson/python-flint.git")
+                    (url "https://github.com/fredrik-johansson/python-flint")
                     (commit version)))
               (file-name (git-file-name name version))
               (sha256
@@ -559,47 +571,55 @@ these types and other mathematical functions.")
 (define-public ntl
   (package
    (name "ntl")
-   (version "9.7.0")
+   (version "11.4.3")
    (source (origin
             (method url-fetch)
-            (uri (string-append "http://shoup.net/ntl/ntl-"
+            (uri (string-append "https://shoup.net/ntl/ntl-"
                                 version ".tar.gz"))
-            (sha256 (base32
-                     "115frp5flyvw9wghz4zph1b3llmr5nbxk1skgsggckr81fh3gmxq"))))
+            (sha256
+             (base32
+              "1lisp3064rch3jaa2wrhy1s9kll7i3ka3d0y6lj6l3l4ckfcrhdp"))
+            (modules '((guix build utils)))
+            (snippet
+             '(begin
+                (delete-file-recursively "src/libtool-origin")
+                #t))))
    (build-system gnu-build-system)
    (native-inputs
     `(("libtool" ,libtool)
       ("perl" ,perl))) ; for configuration
-   ;; FIXME: Add optional input gf2x once available; then also add
-   ;; configure flag "NTL_GF2X_LIB=on".
    (inputs
-    `(("gmp" ,gmp)))
+    `(("gmp" ,gmp)
+      ("gf2x" ,gf2x)))
    (arguments
     `(#:phases
       (modify-phases %standard-phases
         (replace 'configure
-         (lambda* (#:key outputs #:allow-other-keys)
+         (lambda* (#:key inputs outputs #:allow-other-keys)
            (chdir "src")
-           (system* "./configure"
+           (invoke "./configure"
                     (string-append "PREFIX=" (assoc-ref outputs "out"))
+                    (string-append "LIBTOOL=" (assoc-ref inputs "libtool") "/bin/libtool")
+                    ;; set the library prefixes explicitly so that they get
+                    ;; embedded in the .la file
+                    (string-append "GMP_PREFIX=" (assoc-ref inputs "gmp"))
+                    (string-append "GF2X_PREFIX=" (assoc-ref inputs "gf2x"))
                     ;; Do not build especially for the build machine.
                     "NATIVE=off"
-                    ;; Also do not tune to the build machine.
-                    "WIZARD=off"
-                    "SHARED=on")
-           #t)))))
+                    "NTL_GF2X_LIB=on"
+                    "SHARED=on"))))))
    (synopsis "C++ library for number theory")
    (description
     "NTL is a C++ library providing data structures and algorithms
 for manipulating signed, arbitrary length integers, and for vectors,
 matrices, and polynomials over the integers and over finite fields.")
    (license license:gpl2+)
-   (home-page "http://shoup.net/ntl/")))
+   (home-page "https://shoup.net/ntl/")))
 
 (define-public singular
   (package
    (name "singular")
-   (version "4.1.2p1")
+   (version "4.1.3p2")
    (source
     (origin
       (method url-fetch)
@@ -613,7 +633,7 @@ matrices, and polynomials over the integers and over finite fields.")
                         #\.) "-")
                       "/singular-" version ".tar.gz"))
              (sha256 (base32
-                      "0kvd55353fiqyq1msmi0kka66n5h0aqs7m3km60r01b1w2f8085m"))))
+                      "1524yrni7gh0hir5ckridq671q5s6avfjdsdyahj51kzdl3wcypf"))))
    (build-system gnu-build-system)
    (native-inputs
     `(("doxygen" ,doxygen)
@@ -681,15 +701,23 @@ binary.")
              (uri (string-append "mirror://gnu/bc/bc-" version ".tar.gz"))
              (sha256
               (base32
-               "0amh9ik44jfg66csyvf4zz1l878c4755kjndq9j0270akflgrbb2"))))
+               "0amh9ik44jfg66csyvf4zz1l878c4755kjndq9j0270akflgrbb2"))
+             (patches (search-patches "bc-fix-cross-compilation.patch"))))
     (build-system gnu-build-system)
     (native-inputs
-     `(("ed" ,ed)
+     `(("automake" ,automake)
+       ("autoconf" ,autoconf)
+       ("ed" ,ed)
        ("flex" ,flex)
        ("texinfo" ,texinfo)))
     (arguments
      '(#:configure-flags
-       (list "--with-readline")))
+       (list "--with-readline")
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'autogen
+           (lambda _
+             (invoke "autoreconf" "-vif"))))))
     (home-page "https://www.gnu.org/software/bc/")
     (synopsis "Arbitrary precision numeric processing language")
     (description
@@ -708,7 +736,7 @@ syntax is similar to that of C, so basic usage is familiar.  It also includes
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/extemporelang/kiss_fft.git")
+                    (url "https://github.com/extemporelang/kiss_fft")
                     (commit version)))
               (file-name (git-file-name name version))
               (sha256
@@ -814,7 +842,7 @@ cosine/ sine transforms or DCT/DST).")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/vkostyukov/la4j.git")
+                    (url "https://github.com/vkostyukov/la4j")
                     (commit version)))
               (file-name (string-append name "-" version "-checkout"))
               (sha256
@@ -856,8 +884,8 @@ the la4j library are:
     (version "1.6")
     (source (origin
               (method url-fetch)
-              (uri (string-append "http://search.maven.org/remotecontent?"
-                                  "filepath=pl/edu/icm/JLargeArrays/"
+              (uri (string-append "https://repo1.maven.org/maven2/"
+                                  "pl/edu/icm/JLargeArrays/"
                                   version "/JLargeArrays-" version
                                   "-sources.jar"))
               (file-name (string-append name "-" version ".jar"))
@@ -883,8 +911,8 @@ that can store up to 263 elements.")
     (version "3.1")
     (source (origin
               (method url-fetch)
-              (uri (string-append "http://search.maven.org/remotecontent?"
-                                  "filepath=com/github/wendykierp/JTransforms/"
+              (uri (string-append "https://repo1.maven.org/maven2/"
+                                  "com/github/wendykierp/JTransforms/"
                                   version "/JTransforms-" version "-sources.jar"))
               (sha256
                (base32
@@ -905,18 +933,82 @@ Fourier Transform} (DFT), @dfn{Discrete Cosine Transform} (DCT), @dfn{Discrete
 Sine Transform} (DST) and @dfn{Discrete Hartley Transform} (DHT).")
     (license license:bsd-2)))
 
+(define-public lmfit
+  (package
+    (name "lmfit")
+    (version "8.2.2")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://jugit.fz-juelich.de/mlz/lmfit.git")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "00bch77a6qgnw6vzsjn2a42n8n683ih3xm0wpr454jxa15hw78vf"))))
+    (build-system cmake-build-system)
+    (native-inputs
+     `(("perl" ,perl)))                   ; for pod2man
+    (home-page "https://jugit.fz-juelich.de/mlz/lmfit")
+    (synopsis "Levenberg-Marquardt minimization and least-squares fitting")
+    (description "lmfit is a C library for Levenberg-Marquardt least-squares
+minimization and curve fitting.  It is mature code, based on decades-old
+algorithms from the FORTRAN library MINPACK.")
+    (license license:bsd-2)))
+
+(define-public symengine
+  (package
+    (name "symengine")
+    (version "0.6.0")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/symengine/symengine")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "129iv9maabmb42ylfdv0l0g94mcbf3y4q3np175008rcqdr8z6h1"))))
+    (build-system cmake-build-system)
+    (arguments
+     '(#:configure-flags
+       ;; These are the suggested build options in the README.
+       '("-DCMAKE_BUILD_TYPE=Release"
+         "-DWITH_GMP=on"
+         "-DWITH_MPFR=on"
+         "-DWITH_MPC=on"
+         "-DINTEGER_CLASS=flint"
+         "-DWITH_LLVM=on"
+         "-DWITH_SYMENGINE_THREAD_SAFE=on"
+         "-DBUILD_SHARED_LIBS=on")))    ;also build libsymengine
+    (native-inputs
+     `(("llvm" ,llvm)))
+    (inputs
+     `(("flint" ,flint)
+       ("gmp" ,gmp)
+       ("mpc" ,mpc)
+       ("mpfr" ,mpfr)))
+    (home-page "https://github.com/symengine/symengine")
+    (synopsis "Fast symbolic manipulation library")
+    (description
+     "SymEngine is a standalone fast C++ symbolic manipulation library.
+Optional thin wrappers allow usage of the library from other languages.")
+    (license (list license:expat        ;SymEngine
+                   license:bsd-3))))    ;3rd party code
+
 (define-public eigen
   (package
     (name "eigen")
-    (version "3.3.5")
+    (version "3.3.7")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://bitbucket.org/eigen/eigen/get/"
                                   version ".tar.bz2"))
               (sha256
                (base32
-                "1qh3yrwn78ms5yhwbpl5wvblk4gbz02cacdygxylr7i9xbrvylkk"))
+                "1km3fyfzyqfdvmnl79drps3fjwnz3zbh0c7l34mfbqyvvs8cy4wz"))
               (file-name (string-append name "-" version ".tar.bz2"))
+              (patches (search-patches "eigen-stabilise-sparseqr-test.patch"))
               (modules '((guix build utils)))
               (snippet
                ;; There are 3 test failures in the "unsupported" directory,
@@ -987,15 +1079,15 @@ features, and more.")
 (define-public xtensor
   (package
     (name "xtensor")
-    (version "0.20.5")
+    (version "0.20.10")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/QuantStack/xtensor.git")
+                    (url "https://github.com/QuantStack/xtensor")
                     (commit version)))
               (sha256
                (base32
-                "0kkc4ar7p2d94jnclmrh46dwv7ldy9lx630vm9gci3pp4hnhbj9f"))
+                "1fmv2hpx610xwhxrndfsfvlbqfyk4l3gi5q5d7pa9m82kblxjj9l"))
               (file-name (git-file-name name version))))
     (build-system cmake-build-system)
     (native-inputs
@@ -1005,7 +1097,7 @@ features, and more.")
      `(#:configure-flags
        '("-DBUILD_TESTS=ON")
        #:test-target "xtest"))
-    (home-page "http://quantstack.net/xtensor")
+    (home-page "https://quantstack.net/xtensor")
     (synopsis "C++ tensors with broadcasting and lazy computing")
     (description "xtensor is a C++ library meant for numerical analysis with
 multi-dimensional array expressions.
@@ -1207,15 +1299,6 @@ objects.")
        ("libtool" ,libtool)))
     (propagated-inputs
      `(("gmp" ,gmp))) ; gmp++.h includes gmpxx.h
-    (arguments
-     `(#:phases
-       (modify-phases %standard-phases
-         (add-before 'bootstrap 'setenv
-           ;; Prevent the autogen.sh script to carry out the configure
-           ;; script, which has not yet been patched to replace /bin/sh.
-           (lambda _
-             (setenv "NOCONFIGURE" "yes")
-             #t)))))
     (synopsis "Algebraic computations with exact rings and fields")
     (description
      "Givaro is a C++ library implementing the basic arithmetic of various
@@ -1254,15 +1337,7 @@ compound objects, such as vectors, matrices and univariate polynomials.")
      `(#:configure-flags
        (list (string-append "--with-blas-libs="
                             (assoc-ref %build-inputs "openblas")
-                            "/lib/libopenblas.so"))
-       #:phases
-       (modify-phases %standard-phases
-         (add-before 'bootstrap 'setenv
-           ;; Prevent the autogen.sh script to carry out the configure
-           ;; script, which has not yet been patched to replace /bin/sh.
-           (lambda _
-             (setenv "NOCONFIGURE" "yes")
-             #t)))))
+                            "/lib/libopenblas.so"))))
     (synopsis "C++ library for linear algebra over finite fields")
     (description
      "FFLAS-FFPACK is a C++ template library for basic linear algebra
@@ -1289,24 +1364,16 @@ algebra, such as the row echelon form.")
               (file-name (git-file-name name version))
               (sha256
                (base32
-                "10j6dspbsq7d2l4q3y0c1l1xwmaqqba2fxg59q5bhgk9h5d7q571"))))
+                "10j6dspbsq7d2l4q3y0c1l1xwmaqqba2fxg59q5bhgk9h5d7q571"))
+              (patches (search-patches "linbox-fix-pkgconfig.patch"))))
     (build-system gnu-build-system)
     (native-inputs
      `(("autoconf" ,autoconf)
        ("automake" ,automake)
        ("libtool" ,libtool)
        ("pkg-config" ,pkg-config)))
-    (inputs
+    (propagated-inputs
      `(("fflas-ffpack" ,fflas-ffpack)))
-    (arguments
-     `(#:phases
-       (modify-phases %standard-phases
-         (add-before 'bootstrap 'setenv
-           ;; Prevent the autogen.sh script to carry out the configure
-           ;; script, which has not yet been patched to replace /bin/sh.
-           (lambda _
-             (setenv "NOCONFIGURE" "yes")
-             #t)))))
     (synopsis "C++ library for linear algebra over exact rings")
     (description
      "LinBox is a C++ template library for exact linear algebra computation
@@ -1451,8 +1518,7 @@ of M4RI from F_2 to F_{2^e}.")
        ("automake" ,automake)
        ("libtool" ,libtool)))
     (inputs
-     `(("gmp" ,gmp)
-       ("ntl" ,ntl)
+     `(("ntl" ,ntl)
        ("pari-gp" ,pari-gp)))
     (synopsis "Ranks of elliptic curves and modular symbols")
     (description "The eclib package includes mwrank (for 2-descent on
@@ -1497,7 +1563,7 @@ cohomology ring of a Grassmann variety.  The software package also includes
 a program that performs fast computation of the more general multiplicative
 structure constants of Schubert polynomials.")
     (license license:gpl2+)
-    (home-page "http://sites.math.rutgers.edu/~asbuch/lrcalc/")))
+    (home-page "https://sites.math.rutgers.edu/~asbuch/lrcalc/")))
 
 (define-public iml
   (package

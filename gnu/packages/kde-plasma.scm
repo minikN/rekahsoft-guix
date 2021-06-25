@@ -25,6 +25,7 @@
   #:use-module (guix download)
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (guix build-system cmake)
+  #:use-module (guix build-system qt)
   #:use-module (gnu packages compression)
   #:use-module (gnu packages freedesktop)
   #:use-module (gnu packages glib)
@@ -37,25 +38,20 @@
 (define-public kdecoration
   (package
     (name "kdecoration")
-    (version "5.15.1")
+    (version "5.18.5")
     (source (origin
               (method url-fetch)
               (uri (string-append "mirror://kde/stable/plasma/" version
                                   "/kdecoration-" version ".tar.xz"))
               (sha256
                (base32
-                "03lxnjbhlnyiw2znflp0f2w77a5pzv5yvsbngvwgp89ig9mansi1"))))
-    (build-system cmake-build-system)
+                "1j59axgpdbj7nlg06h5gb0pix3s3nll32k6s2f88vc1cbwj5d67h"))))
+    (build-system qt-build-system)
     (native-inputs
      `(("extra-cmake-modules" ,extra-cmake-modules)))
     (inputs
      `(("ki18n" ,ki18n)
        ("qtbase" ,qtbase)))
-    (arguments
-     `(#:phases
-       (modify-phases %standard-phases
-         (add-before 'check 'check-setup
-           (lambda _ (setenv "QT_QPA_PLATFORM" "offscreen") #t)))))
     (home-page "https://cgit.kde.org/kdecoration.git")
     (synopsis "Plugin based library to create window decorations")
     (description "KDecoration is a library to create window decorations.
@@ -66,14 +62,14 @@ manager which re-parents a Client window to a window decoration frame.")
 (define-public kscreenlocker
   (package
     (name "kscreenlocker")
-    (version "5.15.1")
+    (version "5.18.5")
     (source (origin
               (method url-fetch)
               (uri (string-append "mirror://kde/stable/plasma/" version
                                   "/kscreenlocker-" version ".tar.xz"))
               (sha256
                (base32
-                "1jp2z1wjsd99is31igkfnscs55h755cmp86ppkj596fcxv1krymq"))))
+                "1lhq9rxafbbxwpwzq8m25xi9hgcdfdfwl8hafqhygzp14z89q9ml"))))
     (build-system cmake-build-system)
     (arguments
      `(#:phases
@@ -96,7 +92,7 @@ manager which re-parents a Client window to a window decoration frame.")
 
        ;; For tests.
        ("dbus" ,dbus)
-       ("xorg-server" ,xorg-server)))
+       ("xorg-server" ,xorg-server-for-tests)))
     (inputs
      `(("kcmutils" ,kcmutils)
        ("kcrash" ,kcrash)
@@ -129,15 +125,15 @@ manager which re-parents a Client window to a window decoration frame.")
 (define-public libkscreen
   (package
     (name "libkscreen")
-    (version "5.15.1")
+    (version "5.18.5")
     (source
      (origin
        (method url-fetch)
        (uri (string-append "mirror://kde/stable/plasma/" version "/"
                            name "-" version ".tar.xz"))
        (sha256
-        (base32 "1zpzqafrb576al10f5873nl1z135gscjza6gd3ickfzlvd9qmr18"))))
-    (build-system cmake-build-system)
+        (base32 "0z18djlfrj510dz3r2n8qx6fswdbp2qmhg5y3bn00hij02832qm9"))))
+    (build-system qt-build-system)
     (native-inputs
      `(("extra-cmake-modules" ,extra-cmake-modules)
        ;; For testing.
@@ -148,16 +144,7 @@ manager which re-parents a Client window to a window decoration frame.")
        ("qtbase" ,qtbase)
        ("qtx11extras" ,qtx11extras)))
     (arguments
-     '(#:tests? #f         ; FIXME: 55% tests passed, 5 tests failed out of 11
-       #:phases
-       (modify-phases %standard-phases
-         (add-before 'check 'pre-check
-           (lambda _
-             ;; For the missing '/etc/machine-id'.
-             (setenv "DBUS_FATAL_WARNINGS" "0")
-             ;; Run the tests offscreen.
-             (setenv "QT_QPA_PLATFORM" "offscreen")
-             #t)))))
+     '(#:tests? #f)) ; FIXME: 55% tests passed, 5 tests failed out of 11
     (home-page "https://community.kde.org/Solid/Projects/ScreenManagement")
     (synopsis "KDE's screen management software")
     (description "KScreen is the new screen management software for KDE Plasma
@@ -168,7 +155,7 @@ basic needs and easy to configure for those who want special setups.")
 (define-public libksysguard
   (package
     (name "libksysguard")
-    (version "5.15.1")
+    (version "5.18.5")
     (source
      (origin
        (method url-fetch)
@@ -176,7 +163,7 @@ basic needs and easy to configure for those who want special setups.")
                            "/libksysguard-" version ".tar.xz"))
        (sha256
         (base32
-         "0ml106yq4q9qagkrcaafgcky18wk76px5a1r6j36wfjqdd6wpzvs"))))
+         "02s40ahqp4r9amjshdf0dhw9hdggvica2jl426i4d9b950507myl"))))
     (native-inputs
      `(("extra-cmake-modules" ,extra-cmake-modules)
        ("pkg-config" ,pkg-config)))
@@ -199,7 +186,7 @@ basic needs and easy to configure for those who want special setups.")
        ("qtx11extras" ,qtx11extras)
        ("plasma" ,plasma-framework)
        ("zlib" ,zlib)))
-    (build-system cmake-build-system)
+    (build-system qt-build-system)
     (arguments
      `(#:configure-flags
        `(,(string-append "-DKDE_INSTALL_DATADIR="
@@ -212,10 +199,6 @@ basic needs and easy to configure for those who want special setups.")
              ;; KF5AuthConfig.cmake.in contains this already.
              (substitute* "processcore/CMakeLists.txt"
                (("KAUTH_HELPER_INSTALL_DIR") "KDE_INSTALL_LIBEXECDIR"))))
-         (add-before 'check 'check-setup
-           (lambda _
-             ;; make Qt render "offscreen", required for tests
-             (setenv "QT_QPA_PLATFORM" "offscreen")))
          (replace 'check
            (lambda _
              ;; TODO: Fix this failing test-case

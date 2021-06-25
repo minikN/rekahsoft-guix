@@ -1,5 +1,5 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2015 Alex Kost <alezost@gmail.com>
 ;;; Copyright © 2019 Ricardo Wurmus <rekado@elephly.net>
 ;;;
@@ -26,6 +26,7 @@
                 #:select (download-to-store url-fetch))
   #:use-module (guix gnupg)
   #:use-module (guix packages)
+  #:use-module (guix diagnostics)
   #:use-module (guix ui)
   #:use-module (guix base32)
   #:use-module (guix gexp)
@@ -51,6 +52,7 @@
             upstream-source-archive-types
             upstream-source-input-changes
 
+            url-predicate
             url-prefix-predicate
             coalesce-sources
 
@@ -161,23 +163,27 @@ S-expression PACKAGE-SEXP."
                              current-propagated new-propagated))))))
     (_ '())))
 
+(define* (url-predicate matching-url?)
+  "Return a predicate that returns true when passed a package whose source is
+an <origin> with the URL-FETCH method, and one of its URLs passes
+MATCHING-URL?."
+  (lambda (package)
+    (match (package-source package)
+      ((? origin? origin)
+       (and (eq? (origin-method origin) url-fetch)
+            (match (origin-uri origin)
+              ((? string? url)
+               (matching-url? url))
+              (((? string? urls) ...)
+               (any matching-url? urls))
+              (_
+               #f))))
+      (_ #f))))
+
 (define (url-prefix-predicate prefix)
   "Return a predicate that returns true when passed a package where one of its
 source URLs starts with PREFIX."
-  (lambda (package)
-    (define matching-uri?
-      (match-lambda
-        ((? string? uri)
-         (string-prefix? prefix uri))
-        (_
-         #f)))
-
-    (match (package-source package)
-      ((? origin? origin)
-       (match (origin-uri origin)
-         ((? matching-uri?) #t)
-         (_                 #f)))
-      (_ #f))))
+  (url-predicate (cut string-prefix? prefix <>)))
 
 (define (upstream-source-archive-types release)
   "Return the available types of archives for RELEASE---a list of strings such
@@ -318,16 +324,27 @@ values: 'interactive' (default), 'always', and 'never'."
                                                      (basename url) tarball)))
                              (mbegin %store-monad
                                (built-derivations (list drv))
-                               (return (derivation->output-path drv)))))))
-
-               (ret  (gnupg-verify* sig data #:key-download key-download)))
-          (if ret
-              tarball
-              (begin
-                (warning (G_ "signature verification failed for `~a'~%")
-                         url)
-                (warning (G_ "(could be because the public key is not in your keyring)~%"))
-                #f))))))
+                               (return (derivation->output-path drv))))))))
+          (let-values (((status data)
+                        (if sig
+                            (gnupg-verify* sig data
+                                           #:key-download key-download)
+                            (values 'missing-signature data))))
+            (match status
+              ('valid-signature
+               tarball)
+              ('missing-signature
+               (warning (G_ "failed to download detached signature from ~a~%")
+                        signature-url)
+               #f)
+              ('invalid-signature
+               (warning (G_ "signature verification failed for '~a' (key: ~a)~%")
+                        url data)
+               #f)
+              ('missing-key
+               (warning (G_ "missing public key ~a for '~a'~%")
+                        data url)
+               #f)))))))
 
 (define (find2 pred lst1 lst2)
   "Like 'find', but operate on items from both LST1 and LST2.  Return two
@@ -352,7 +369,7 @@ SOURCE, an <upstream-source>."
      (let*-values (((archive-type)
                     (match (and=> (package-source package) origin-uri)
                       ((? string? uri)
-                       (let ((type (file-extension (basename uri))))
+                       (let ((type (or (file-extension (basename uri)) "")))
                          ;; Sometimes we have URLs such as
                          ;; "https://github.com/…/tarball/v0.1", in which case
                          ;; we must not consider "1" as the extension.
@@ -400,12 +417,13 @@ values: 'always', 'never', and 'interactive' (default)."
                       #f))))
        (match (assq method %method-updates)
          (#f
-          (raise (condition (&message
-                             (message (format #f (G_ "cannot download for \
+          (raise (make-compound-condition
+                  (formatted-message (G_ "cannot download for \
 this method: ~s")
-                                              method)))
-                            (&error-location
-                             (location (package-location package))))))
+                                     method)
+                  (condition
+                   (&error-location
+                    (location (package-location package)))))))
          ((_ . update)
           (update store package source
                   #:key-download key-download)))))
@@ -437,7 +455,8 @@ new version string if an update was made, and #f otherwise."
     (if version-loc
         (let* ((loc         (package-location package))
                (old-version (package-version package))
-               (old-hash    (origin-sha256 (package-source package)))
+               (old-hash    (content-hash-value
+                             (origin-hash (package-source package))))
                (old-url     (match (origin-uri (package-source package))
                               ((? string? url) url)
                               (_ #f)))
@@ -467,10 +486,8 @@ new version string if an update was made, and #f otherwise."
                 (warning (G_ "~a: could not locate source file")
                          (location-file loc))
                 #f)))
-        (begin
-          (format (current-error-port)
-                  (G_ "~a: ~a: no `version' field in source; skipping~%")
-                  (location->string (package-location package))
-                  name)))))
+        (warning (package-location package)
+                 (G_ "~a: no `version' field in source; skipping~%")
+                 name))))
 
 ;;; upstream.scm ends here

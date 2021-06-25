@@ -1,6 +1,6 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2017 Dave Love <fx@gnu.org>
-;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -173,13 +173,14 @@ memory-efficient event trace data format plus support library.")
 (define-public opari2
   (package
     (name "opari2")
-    (version "2.0.4")
+    (version "2.0.5")
     (source
      (origin
        (method url-fetch)
        (uri (string-append "https://www.vi-hps.org/cms/upload/packages/opari2/"
                            "opari2-" version ".tar.gz"))
-       (sha256 (base32 "0cd1l30x8hygvbh6yay7mn483vjq3z4b7wnsffs80rznj93k57pn"))))
+       (sha256
+        (base32 "1xaf25lcxk4ky1kzfks40ja9mayh8pnmrzch2107c8dcjrsxsd4h"))))
     (build-system gnu-build-system)
     (inputs `(("gfortran" ,gfortran)))
     (native-inputs `(("gawk" ,gawk)     ; for tests
@@ -310,7 +311,7 @@ with calls to the POMP2 measurement interface.")
                  (("^source .*frontend.*$") "")
                  (((assoc-ref outputs "out")) lib))
                #t))))))
-    (home-page "http://www.scalasca.org/software/cube-4.x/download.html")
+    (home-page "https://www.scalasca.org/software/cube-4.x/download.html")
     (synopsis "Performance report explorer for parallel programs")
     (description
      "CUBE (CUBE Uniform Behavioral Encoding) is a tool to display a variety

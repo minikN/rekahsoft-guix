@@ -41,16 +41,16 @@
 (define-public genimage
   (package
     (name "genimage")
-    (version "10")
+    (version "11")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/pengutronix/genimage.git")
+                    (url "https://github.com/pengutronix/genimage")
                     (commit (string-append "v" version))))
               (file-name (string-append name "-" version "-checkout"))
               (sha256
                (base32
-                "0had00p2why2l1fl14mq7nbhmmfbd3na4qnnpg36akdy05g67jbn"))))
+                "15jmh17lvm3jw9c92bjarly7iwhmnfl322d91mprfv10ppb9ip54"))))
     (build-system gnu-build-system)
     (arguments
      `(#:phases
@@ -149,6 +149,7 @@
              (substitute* '("test/ext2test.dump"
                             "test/ext3test.dump"
                             "test/ext4test.dump"
+                            "test/ext2test-percent.dump"
                             "test/mke2fs.dump")
               (("root") "unknown"))
              #t))

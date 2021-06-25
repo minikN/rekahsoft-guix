@@ -7,7 +7,8 @@
 ;;; Copyright © 2017, 2018, 2019 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2017 Leo Famulari <leo@famulari.name>
 ;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
-;;; Copyright © 2018 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2018, 2020 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2019 Mathieu Othacehe <m.othacehe@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -47,16 +48,19 @@
 (define-public lcms
   (package
    (name "lcms")
-   (replacement lcms/fixed)
    (version "2.9")
    (source (origin
             (method url-fetch)
             (uri (string-append "mirror://sourceforge/lcms/lcms/" version
                                 "/lcms2-" version ".tar.gz"))
+
+            (patches (search-patches "lcms-CVE-2018-16435.patch"))
             (sha256 (base32
                      "083xisy6z01zhm7p7rgk4bx9d6zlr8l20qkfv1g29ylnhgwzvij8"))))
    (build-system gnu-build-system)
-   (inputs `(("libjpeg" ,libjpeg)
+   (arguments
+    `(#:configure-flags '("--disable-static")))
+   (inputs `(("libjpeg" ,libjpeg-turbo)
              ("libtiff" ,libtiff)
              ("zlib" ,zlib)))
    (synopsis "Little CMS, a small-footprint colour management engine")
@@ -67,14 +71,6 @@ Consortium standard (ICC), approved as ISO 15076-1.")
    (license license:x11)
    (home-page "http://www.littlecms.com/")
    (properties '((cpe-name . "little_cms_color_engine")))))
-
-(define lcms/fixed
-  (package
-    (inherit lcms)
-    (source
-      (origin
-        (inherit (package-source lcms))
-        (patches (search-patches "lcms-CVE-2018-16435.patch"))))))
 
 (define-public libpaper
   (package
@@ -91,6 +87,25 @@ Consortium standard (ICC), approved as ISO 15076-1.")
             (sha256 (base32
                      "0zhcx67afb6b5r936w5jmaydj3ks8zh83n9rm5sv3m3k8q8jib1q"))))
    (build-system gnu-build-system)
+   (native-inputs
+    `(("automake" ,automake))) ; For up to date 'config.guess' and 'config.sub'.
+   (arguments
+    `(#:configure-flags '("--disable-static")
+      #:phases
+      (modify-phases %standard-phases
+        (add-after 'unpack 'fix-configure
+          (lambda* (#:key inputs native-inputs #:allow-other-keys)
+            ;; Replace outdated config.sub and config.guess:
+            (for-each (lambda (file)
+                        (install-file
+                         (string-append (assoc-ref
+                                         (or native-inputs inputs) "automake")
+                                        "/share/automake-"
+                                        ,(version-major+minor
+                                          (package-version automake))
+                                        "/" file) "."))
+                      '("config.sub" "config.guess"))
+            #t)))))
    (synopsis "Library for handling paper sizes")
    (description
     "The paper library and accompanying files are intended to provide a simple
@@ -144,13 +159,7 @@ printing, and psresize, for adjusting page sizes.")
 (define-public ghostscript
   (package
     (name "ghostscript")
-    (version "9.26")
-
-    ;; The problems addressed by GHOSTSCRIPT/FIXED are not security-related,
-    ;; but they have a significant impact on usability, hence this graft.
-    ;; TODO: Ungraft on next update cycle.
-    (replacement ghostscript/fixed)
-
+    (version "9.52")
     (source
       (origin
         (method url-fetch)
@@ -160,7 +169,7 @@ printing, and psresize, for adjusting page sizes.")
                             "/ghostscript-" version ".tar.xz"))
         (sha256
          (base32
-          "1645f47all5w27bfhiq15vycdm954lmr6agqkrp68ksq6xglgvch"))
+          "0z1w42y2jmcpl2m1l3z0sfii6zmvzcwcgzn6bydklia6ig7jli2p"))
         (patches (search-patches "ghostscript-no-header-creationdate.patch"
                                  "ghostscript-no-header-id.patch"
                                  "ghostscript-no-header-uuid.patch"))
@@ -178,6 +187,13 @@ printing, and psresize, for adjusting page sizes.")
     (outputs '("out" "doc"))                  ;19 MiB of HTML/PS doc + examples
     (arguments
      `(#:disallowed-references ("doc")
+       ;; XXX: Starting with version 9.27, building the tests in parallel
+       ;; occasionally fails like this:
+       ;;  In file included from ./base/memory_.h:23:0,
+       ;;                   from ./obj/gsmd5.h:1,
+       ;;                   from ./obj/gsmd5.c:56:
+       ;;  ./base/std.h:25:10: fatal error: arch.h: No such file or directory
+       #:parallel-tests? #f
        #:configure-flags
        (list (string-append "LDFLAGS=-Wl,-rpath="
                             (assoc-ref %outputs "out") "/lib")
@@ -186,6 +202,10 @@ printing, and psresize, for adjusting page sizes.")
              (string-append "ZLIBDIR="
                             (assoc-ref %build-inputs "zlib") "/include")
              "--enable-dynamic"
+             "--disable-compile-inits"
+             (string-append "--with-fontpath="
+                            (assoc-ref %build-inputs "gs-fonts")
+                            "/share/fonts/type1/ghostscript")
 
              ,@(if (%current-target-system)
                    '(;; Specify the native compiler, which is used to build 'echogs'
@@ -213,10 +233,6 @@ printing, and psresize, for adjusting page sizes.")
             (substitute* "base/gscdef.c"
               (("GS_DOCDIR")
                "\"~/.guix-profile/share/doc/ghostscript\""))
-            ;; The docdir default changed in 9.23 and a compatibility
-            ;; symlink was added from datadir->docdir.  Remove it.
-            (substitute* "base/unixinst.mak"
-              (("ln -s \\$\\(DESTDIR\\)\\$\\(docdir\\).*") ""))
             #t))
          (add-after 'configure 'patch-config-files
            (lambda _
@@ -249,6 +265,7 @@ printing, and psresize, for adjusting page sizes.")
                #t))))))
     (native-inputs
      `(("perl" ,perl)
+       ("pkg-config" ,pkg-config)       ;needed for freetype
        ("python" ,python-wrapper)
        ("tcl" ,tcl)
 
@@ -256,12 +273,14 @@ printing, and psresize, for adjusting page sizes.")
        ;; these libraries.
        ,@(if (%current-target-system)
              `(("zlib/native" ,zlib)
-               ("libjpeg/native" ,libjpeg))
+               ("libjpeg/native" ,libjpeg-turbo))
              '())))
     (inputs
-     `(("freetype" ,freetype)
+     `(("fontconfig" ,fontconfig)
+       ("freetype" ,freetype)
+       ("gs-fonts" ,gs-fonts)
        ("jbig2dec" ,jbig2dec)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libpaper" ,libpaper)
        ("libpng" ,libpng)
        ("libtiff" ,libtiff)
@@ -274,25 +293,6 @@ capabilities of the PostScript language.  It supports a wide variety of
 output file formats and printers.")
     (home-page "https://www.ghostscript.com/")
     (license license:agpl3+)))
-
-(define ghostscript/fixed
-  ;; This adds the Freetype dependency (among other things), which fixes the
-  ;; rendering issues described in <https://issues.guix.gnu.org/issue/34877>.
-  (package/inherit
-   ghostscript
-   (arguments
-    (substitute-keyword-arguments (package-arguments ghostscript)
-      ((#:configure-flags flags ''())
-       `(append (list "--disable-compile-inits"
-                      (string-append "--with-fontpath="
-                                     (assoc-ref %build-inputs "gs-fonts")
-                                     "/share/fonts/type1/ghostscript"))
-                ,flags))))
-   (native-inputs `(("pkg-config" ,pkg-config)    ;needed for freetype
-                    ,@(package-native-inputs ghostscript)))
-   (inputs `(("gs-fonts" ,gs-fonts)
-             ("fontconfig" ,fontconfig)
-             ,@(package-inputs ghostscript)))))
 
 (define-public ghostscript/x
   (package/inherit ghostscript

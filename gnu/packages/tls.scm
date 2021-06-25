@@ -1,18 +1,20 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2014, 2015, 2016, 2017, 2018 Mark H Weaver <mhw@netris.org>
 ;;; Copyright © 2014 Ian Denhardt <ian@zenhack.net>
 ;;; Copyright © 2013, 2015 Andreas Enge <andreas@enge.fr>
 ;;; Copyright © 2015 David Thompson <davet@gnu.org>
 ;;; Copyright © 2015, 2016, 2017, 2018, 2019 Leo Famulari <leo@famulari.name>
 ;;; Copyright © 2016, 2017, 2019 Efraim Flashner <efraim@flashner.co.il>
-;;; Copyright © 2016, 2017, 2018 ng0 <ng0@n0.is>
+;;; Copyright © 2016, 2017, 2018 Nikita <nikita@n0.is>
 ;;; Copyright © 2016 Hartmut Goebel <h.goebel@crazy-compilers.com>
 ;;; Copyright © 2017 Ricardo Wurmus <rekado@elephly.net>
-;;; Copyright © 2017, 2018 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2017, 2018, 2019, 2020 Marius Bakke <mbakke@fastmail.com>
 ;;; Copyright © 2017, 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2017 Rutger Helling <rhelling@mykolab.com>
 ;;; Copyright © 2018 Clément Lassieur <clement@lassieur.org>
+;;; Copyright © 2019 Mathieu Othacehe <m.othacehe@gmail.com>
+;;; Copyright © 2020 Jan (janneke) Nieuwenhuizen <janneke@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -49,6 +51,7 @@
   #:use-module (gnu packages dns)
   #:use-module (gnu packages gawk)
   #:use-module (gnu packages guile)
+  #:use-module (gnu packages hurd)
   #:use-module (gnu packages libbsd)
   #:use-module (gnu packages libffi)
   #:use-module (gnu packages libidn)
@@ -70,7 +73,7 @@
 (define-public libtasn1
   (package
     (name "libtasn1")
-    (version "4.13")
+    (version "4.16.0")
     (source
      (origin
       (method url-fetch)
@@ -78,7 +81,7 @@
                           version ".tar.gz"))
       (sha256
        (base32
-        "1jlc1iahj8k3haz28j55nzg7sgni5h41vqy461i1bpbx6668wlky"))))
+        "179jskl7dmfp1rd2khkzmlibzgki4wi6hvmmwfv7q49r728b03qf"))))
     (build-system gnu-build-system)
     (arguments
      `(#:configure-flags '("--disable-static")))
@@ -122,16 +125,15 @@ in intelligent transportation networks.")
 (define-public p11-kit
   (package
     (name "p11-kit")
-    (version "0.23.15")
+    (version "0.23.20")
     (source
      (origin
       (method url-fetch)
       (uri (string-append "https://github.com/p11-glue/p11-kit/releases/"
-                          "download/" version "/p11-kit-" version ".tar.gz"))
-      (patches (search-patches "p11-kit-jks-timestamps.patch"))
+                          "download/" version "/p11-kit-" version ".tar.xz"))
       (sha256
        (base32
-        "166pwj00cffv4qq4dvx0k53zka0b0r1fa0whc49007vsqyh3khgp"))))
+        "0131maw666ha4d6iyj13fkz18c4pnb3lw2xwv5kvkmnzqcj61n0l"))))
     (build-system gnu-build-system)
     (native-inputs
      `(("pkg-config" ,pkg-config)))
@@ -163,7 +165,9 @@ living in the same process.")
 (define-public gnutls
   (package
     (name "gnutls")
-    (version "3.6.5")
+    ;; XXX Unversion openconnect's "gnutls" input when ungrafting.
+    (replacement gnutls-3.6.14)
+    (version "3.6.12")
     (source (origin
              (method url-fetch)
              (uri
@@ -175,20 +179,12 @@ living in the same process.")
              (patches (search-patches "gnutls-skip-trust-store-test.patch"))
              (sha256
               (base32
-               "0ddvg97dyrh8dkffv1mdc0knxx5my3qdbzv97s4a6jggmk9wwgh7"))
-             (modules '((guix build utils)))
-             (snippet
-              '(begin
-                 ;; XXX: The generated configure script in GnuTLS 3.6.5
-                 ;; apparently does not know about Guile 2.2.
-                 (substitute* "configure"
-                   (("guile_versions_to_search=\"2\\.0 1\\.8\"")
-                    "guile_versions_to_search=\"2.2 2.0 1.8\""))
-                 #t))))
+               "0jvca1qahn9lrwv6f5kfs95icirc15b2a8x9fzczyj996ipg3b5z"))))
     (build-system gnu-build-system)
     (arguments
-     `(; Ensure we don't keep a reference to this buggy software.
-       #:disallowed-references (,net-tools)
+     `(#:tests? ,(not (hurd-target?))
+       ;; Ensure we don't keep a reference to net-tools.
+       #:disallowed-references ,(if (hurd-target?) '() (list net-tools))
        #:configure-flags
        (list
              ;; GnuTLS doesn't consult any environment variables to specify
@@ -201,6 +197,15 @@ living in the same process.")
              ;; fallback, and users have to configure each program
              ;; independently.  This seems suboptimal.
              "--with-default-trust-store-dir=/etc/ssl/certs"
+
+             ;; Tell the build system that we want Guile bindings installed to
+             ;; the output instead of Guiles own module directory.
+             (string-append "--with-guile-site-dir="
+                            "$(datarootdir)/guile/site/$(GUILE_EFFECTIVE_VERSION)")
+             (string-append "--with-guile-site-ccache-dir="
+                            "$(libdir)/guile/$(GUILE_EFFECTIVE_VERSION)/site-ccache")
+             (string-append "--with-guile-extension-dir="
+                            "$(libdir)/guile/$(GUILE_EFFECTIVE_VERSION)/extensions")
 
              ;; FIXME: Temporarily disable p11-kit support since it is not
              ;; working on mips64el.
@@ -223,11 +228,15 @@ living in the same process.")
                "debug"
                "doc"))                            ;4.1 MiB of man pages
     (native-inputs
-     `(("net-tools" ,net-tools)
+     `(,@(if (hurd-target?) '()
+             `(("net-tools" ,net-tools)))
        ("pkg-config" ,pkg-config)
-       ("which" ,which)))
+       ("which" ,which)
+       ,@(if (hurd-target?) '()
+             `(("datefudge" ,datefudge)))         ;tests rely on 'datefudge'
+       ("util-linux" ,util-linux)))               ;one test needs 'setsid'
     (inputs
-     `(("guile" ,guile-2.2)))
+     `(("guile" ,guile-3.0)))
     (propagated-inputs
      ;; These are all in the 'Requires.private' field of gnutls.pc.
      `(("libtasn1" ,libtasn1)
@@ -245,13 +254,29 @@ required structures.")
     (properties '((ftp-server . "ftp.gnutls.org")
                   (ftp-directory . "/gcrypt/gnutls")))))
 
-(define-public gnutls/guile-2.2
-  (deprecated-package "guile2.2-gnutls" gnutls))
+(define-public gnutls-3.6.14
+  (package
+    (inherit gnutls)
+    (version "3.6.14")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append "mirror://gnupg/gnutls/v"
+                                  (version-major+minor version)
+                                  "/gnutls-" version ".tar.xz"))
+              (patches (search-patches "gnutls-skip-trust-store-test.patch"
+                                       "gnutls-cross.patch"))
+              (sha256
+               (base32
+                "0qwxsfizynly0ns537vnhnlm5lh03la4vbsmz675n0n7vqd7ac2n"))))
+    (native-inputs
+     `(,@(if (%current-target-system)             ;for cross-build
+             `(("guile" ,guile-3.0))              ;to create .go files
+             '())
+       ,@(package-native-inputs gnutls)))))
 
 (define-public gnutls/guile-2.0
   ;; GnuTLS for Guile 2.0.
-  (package
-    (inherit gnutls)
+  (package/inherit gnutls
     (name "guile2.0-gnutls")
     (inputs `(("guile" ,guile-2.0)
               ,@(alist-delete "guile" (package-inputs gnutls))))))
@@ -261,17 +286,27 @@ required structures.")
   ;; Authentication of Named Entities.  This is required for GNS functionality
   ;; by GNUnet and gnURL.  This is done in an extra package definition
   ;; to have the choice between GnuTLS with Dane and without Dane.
-  (package
-    (inherit gnutls)
+  (package/inherit gnutls
     (name "gnutls-dane")
     (inputs `(("unbound" ,unbound)
               ,@(package-inputs gnutls)))))
 
+(define-public guile2.2-gnutls
+  (package
+    (inherit gnutls)
+    (name "guile2.2-gnutls")
+    (inputs `(("guile" ,guile-2.2)
+              ,@(alist-delete "guile"
+                              (package-inputs gnutls))))))
+
+(define-public guile3.0-gnutls
+  (deprecated-package "guile3.0-gnutls" gnutls))
+
 (define-public openssl
   (package
    (name "openssl")
-   (replacement openssl/fixed)
-   (version "1.0.2p")
+   (version "1.1.1f")
+   (replacement openssl-1.1.1g)
    (source (origin
              (method url-fetch)
              (uri (list (string-append "https://www.openssl.org/source/openssl-"
@@ -283,18 +318,15 @@ required structures.")
                                        "/openssl-" version ".tar.gz")))
              (sha256
               (base32
-               "003xh9f898i56344vpvpxxxzmikivxig4xwlm7vbi7m8n43qxaah"))
-             (patches (search-patches "openssl-runpath.patch"
-                                      "openssl-c-rehash-in.patch"))))
+               "0d9zv9srjqivs8nn099fpbjv1wyhfcb8lzy491dpmfngdvz6nv0q"))
+             (patches (search-patches "openssl-1.1-c-rehash-in.patch"))))
    (build-system gnu-build-system)
    (outputs '("out"
-              "doc"                               ;1.5MiB of man3 pages
-              "static"))                          ;6MiB of .a files
+              "doc"         ;6.8 MiB of man3 pages and full HTML documentation
+              "static"))    ;6.4 MiB of .a files
    (native-inputs `(("perl" ,perl)))
    (arguments
-    `(#:disallowed-references (,perl)
-      #:parallel-build? #f
-      #:parallel-tests? #f
+    `(#:parallel-tests? #f
       #:test-target "test"
 
       ;; Changes to OpenSSL sometimes cause Perl to "sneak in" to the closure,
@@ -302,41 +334,51 @@ required structures.")
       #:disallowed-references ,(list (canonical-package perl))
       #:phases
       (modify-phases %standard-phases
-        (add-before
-         'configure 'patch-Makefile.org
-         (lambda* (#:key outputs #:allow-other-keys)
-           ;; The default MANDIR is some unusual place.  Fix that.
-           (let ((out (assoc-ref outputs "out")))
-             (patch-makefile-SHELL "Makefile.org")
-             (substitute* "Makefile.org"
-               (("^MANDIR[[:blank:]]*=.*$")
-                (string-append "MANDIR = " out "/share/man\n")))
-             #t)))
-        (replace
-         'configure
-         (lambda* (#:key outputs #:allow-other-keys)
-           (let ((out (assoc-ref outputs "out")))
-             (invoke "./config"
-                     "shared"                 ;build shared libraries
-                     "--libdir=lib"
+	,@(if (%current-target-system)
+	      '((add-before
+		    'configure 'set-cross-compile
+		  (lambda* (#:key target outputs #:allow-other-keys)
+		    (setenv "CROSS_COMPILE" (string-append target "-"))
+		    (setenv "CONFIGURE_TARGET_ARCH"
+			    (cond
+			     ((string-prefix? "i586" target)
+			      "hurd-x86")
+			     ((string-prefix? "i686" target)
+			      "linux-x86")
+			     ((string-prefix? "x86_64" target)
+			      "linux-x86_64")
+			     ((string-prefix? "arm" target)
+			      "linux-armv4")
+			     ((string-prefix? "aarch64" target)
+			      "linux-aarch64")))
+		    #t)))
+	      '())
+        (replace 'configure
+          (lambda* (#:key outputs #:allow-other-keys)
+            (let* ((out (assoc-ref outputs "out"))
+                   (lib (string-append out "/lib")))
+              ;; It's not a shebang so patch-source-shebangs misses it.
+              (substitute* "config"
+                (("/usr/bin/env")
+                 (string-append (assoc-ref %build-inputs "coreutils")
+                                "/bin/env")))
+              (invoke ,@(if (%current-target-system)
+			    '("./Configure")
+			    '("./config"))
+                      "shared"       ;build shared libraries
+                      "--libdir=lib"
 
-                     ;; The default for this catch-all directory is
-                     ;; PREFIX/ssl.  Change that to something more
-                     ;; conventional.
-                     (string-append "--openssldir=" out
-                                    "/share/openssl-" ,version)
+                      ;; The default for this catch-all directory is
+                      ;; PREFIX/ssl.  Change that to something more
+                      ;; conventional.
+                      (string-append "--openssldir=" out
+                                     "/share/openssl-" ,version)
 
-                     (string-append "--prefix=" out)))))
-        (add-after
-         'install 'make-libraries-writable
-         (lambda* (#:key outputs #:allow-other-keys)
-           ;; Make libraries writable so that 'strip' does its job.
-           (let ((out (assoc-ref outputs "out")))
-             (for-each (lambda (file)
-                         (chmod file #o644))
-                       (find-files (string-append out "/lib")
-                                   "\\.so"))
-             #t)))
+                      (string-append "--prefix=" out)
+                      (string-append "-Wl,-rpath," lib)
+		      ,@(if (%current-target-system)
+			    '((getenv "CONFIGURE_TARGET_ARCH"))
+			    '())))))
         (add-after 'install 'move-static-libraries
           (lambda* (#:key outputs #:allow-other-keys)
             ;; Move static libraries to the "static" output.
@@ -349,31 +391,20 @@ required structures.")
                           (delete-file file))
                         (find-files lib "\\.a$"))
               #t)))
-        (add-after 'install 'move-man3-pages
+        (add-after 'install 'move-extra-documentation
           (lambda* (#:key outputs #:allow-other-keys)
-            ;; Move section 3 man pages to "doc".
-            (let* ((out    (assoc-ref outputs "out"))
-                   (man3   (string-append out "/share/man/man3"))
-                   (doc    (assoc-ref outputs "doc"))
-                   (target (string-append doc "/share/man/man3")))
-              (mkdir-p target)
-              (for-each (lambda (file)
-                          (rename-file file
-                                       (string-append target "/"
-                                                      (basename file))))
-                        (find-files man3))
-              (delete-file-recursively man3)
-              #t)))
-        (add-before
-         'patch-source-shebangs 'patch-tests
-         (lambda* (#:key inputs native-inputs #:allow-other-keys)
-           (let ((bash (assoc-ref (or native-inputs inputs) "bash")))
-             (substitute* (find-files "test" ".*")
-               (("/bin/sh")
-                (string-append bash "/bin/sh"))
-               (("/bin/rm")
-                "rm"))
-             #t)))
+               ;; Move man3 pages and full HTML documentation to "doc".
+               (let* ((out    (assoc-ref outputs "out"))
+                      (man3   (string-append out "/share/man/man3"))
+                      (html (string-append out "/share/doc/openssl"))
+                      (doc    (assoc-ref outputs "doc"))
+                      (man-target (string-append doc "/share/man/man3"))
+                      (html-target (string-append doc "/share/doc/openssl")))
+                 (copy-recursively man3 man-target)
+                 (delete-file-recursively man3)
+                 (copy-recursively html html-target)
+                 (delete-file-recursively html)
+                 #t)))
         (add-after
          'install 'remove-miscellany
          (lambda* (#:key outputs #:allow-other-keys)
@@ -399,21 +430,11 @@ required structures.")
    (license license:openssl)
    (home-page "https://www.openssl.org/")))
 
-(define-public openssl/fixed
-  (hidden-package
-   (package
-     (inherit openssl)
-     (source (origin
-               (inherit (package-source openssl))
-               (patches (append (origin-patches (package-source openssl))
-                                (search-patches "openssl-CVE-2019-1559.patch"))))))))
-
-(define-public openssl-next
+(define openssl-1.1.1g
   (package
-    (inherit openssl)
-    (name "openssl")
-    (version "1.1.1d")
-    (source (origin
+   (inherit openssl)
+   (version "1.1.1g")
+   (source (origin
              (method url-fetch)
              (uri (list (string-append "https://www.openssl.org/source/openssl-"
                                        version ".tar.gz")
@@ -422,58 +443,93 @@ required structures.")
                         (string-append "ftp://ftp.openssl.org/source/old/"
                                        (string-trim-right version char-set:letter)
                                        "/openssl-" version ".tar.gz")))
-              (patches (search-patches "openssl-1.1-c-rehash-in.patch"))
+             (patches (search-patches "openssl-1.1-c-rehash-in.patch"))
+             (sha256
+              (base32
+               "0ikdcc038i7jk8h7asq5xcn8b1xc2rrbc88yfm4hqbz3y5s4gc6x"))))))
+
+(define-public openssl-1.0
+  (package
+    (inherit openssl)
+    (name "openssl")
+    (version "1.0.2u")
+    (source (origin
+              (method url-fetch)
+              (uri (list (string-append "https://www.openssl.org/source/openssl-"
+                                        version ".tar.gz")
+                         (string-append "ftp://ftp.openssl.org/source/"
+                                        "openssl-" version ".tar.gz")
+                         (string-append "ftp://ftp.openssl.org/source/old/"
+                                        (string-trim-right version char-set:letter)
+                                        "/openssl-" version ".tar.gz")))
               (sha256
                (base32
-                "1whinyw402z3b9xlb3qaxv4b9sk4w1bgh9k0y8df1z4x3yy92fhy"))))
+                "05lxcs4hzyfqd5jn0d9p0fvqna62v2s4pc9qgmq0dpcknkzwdl7c"))
+              (patches (search-patches "openssl-runpath.patch"
+                                       "openssl-c-rehash-in.patch"))))
     (outputs '("out"
-               "doc"        ; 6.8 MiB of man3 pages and full HTML documentation
-               "static"))   ; 6.4 MiB of .a files
+               "doc"                    ;1.5MiB of man3 pages
+               "static"))               ;6MiB of .a files
     (arguments
      (substitute-keyword-arguments (package-arguments openssl)
+       ;; Parallel build is not supported in 1.0.x.
+       ((#:parallel-build? _ #f) #f)
        ((#:phases phases)
         `(modify-phases ,phases
-           (delete 'patch-tests)          ; These two phases are not needed by
-           (delete 'patch-Makefile.org)   ; OpenSSL 1.1.
-
-           ;; Override configure phase since -rpath is now a configure option.
-           (replace 'configure
-             (lambda* (#:key outputs #:allow-other-keys)
-               (let* ((out (assoc-ref outputs "out"))
-                      (lib (string-append out "/lib")))
-                 ;; It's not a shebang so patch-source-shebangs misses it.
-                 (substitute* "config"
-                   (("/usr/bin/env")
-                    (string-append (assoc-ref %build-inputs "coreutils")
-                                   "/bin/env")))
-                 (invoke "./config"
-                         "shared"       ;build shared libraries
-                         "--libdir=lib"
-
-                         ;; The default for this catch-all directory is
-                         ;; PREFIX/ssl.  Change that to something more
-                         ;; conventional.
-                         (string-append "--openssldir=" out
-                                        "/share/openssl-" ,version)
-
-                         (string-append "--prefix=" out)
-                         (string-append "-Wl,-rpath," lib)))))
-
-           (delete 'move-man3-pages)
-           (add-after 'install 'move-extra-documentation
-             (lambda* (#:key outputs #:allow-other-keys)
-               ;; Move man3 pages and full HTML documentation to "doc".
-               (let* ((out    (assoc-ref outputs "out"))
-                      (man3   (string-append out "/share/man/man3"))
-                      (html (string-append out "/share/doc/openssl"))
-                      (doc    (assoc-ref outputs "doc"))
-                      (man-target (string-append doc "/share/man/man3"))
-                      (html-target (string-append doc "/share/doc/openssl")))
-                 (copy-recursively man3 man-target)
-                 (delete-file-recursively man3)
-                 (copy-recursively html html-target)
-                 (delete-file-recursively html)
+           (add-before 'patch-source-shebangs 'patch-tests
+             (lambda* (#:key inputs native-inputs #:allow-other-keys)
+               (let ((bash (assoc-ref (or native-inputs inputs) "bash")))
+                 (substitute* (find-files "test" ".*")
+                   (("/bin/sh")
+                    (string-append bash "/bin/sh"))
+                   (("/bin/rm")
+                    "rm"))
                  #t)))
+           (add-before 'configure 'patch-Makefile.org
+             (lambda* (#:key outputs #:allow-other-keys)
+               ;; The default MANDIR is some unusual place.  Fix that.
+               (let ((out (assoc-ref outputs "out")))
+                 (patch-makefile-SHELL "Makefile.org")
+                 (substitute* "Makefile.org"
+                   (("^MANDIR[[:blank:]]*=.*$")
+                    (string-append "MANDIR = " out "/share/man\n")))
+                 #t)))
+	   (replace 'configure
+	     ;; Override this phase because OpenSSL 1.0 does not understand -rpath.
+	     (lambda* (#:key outputs #:allow-other-keys)
+	       (let ((out (assoc-ref outputs "out")))
+		 (invoke ,@(if (%current-target-system)
+			       '("./Configure")
+			       '("./config"))
+			 "shared"                 ;build shared libraries
+			 "--libdir=lib"
+
+			 ;; The default for this catch-all directory is
+			 ;; PREFIX/ssl.  Change that to something more
+			 ;; conventional.
+			 (string-append "--openssldir=" out
+					"/share/openssl-" ,version)
+
+			 (string-append "--prefix=" out)
+			 ,@(if (%current-target-system)
+			       '((getenv "CONFIGURE_TARGET_ARCH"))
+			       '())))))
+        (delete 'move-extra-documentation)
+        (add-after 'install 'move-man3-pages
+          (lambda* (#:key outputs #:allow-other-keys)
+            ;; Move section 3 man pages to "doc".
+            (let* ((out    (assoc-ref outputs "out"))
+                   (man3   (string-append out "/share/man/man3"))
+                   (doc    (assoc-ref outputs "doc"))
+                   (target (string-append doc "/share/man/man3")))
+              (mkdir-p target)
+              (for-each (lambda (file)
+                          (rename-file file
+                                       (string-append target "/"
+                                                      (basename file))))
+                        (find-files man3))
+              (delete-file-recursively man3)
+              #t)))
            ;; XXX: Duplicate this phase to make sure 'version' evaluates
            ;; in the current scope and not the inherited one.
            (replace 'remove-miscellany
@@ -488,14 +544,14 @@ required structures.")
 (define-public libressl
   (package
     (name "libressl")
-    (version "2.7.4")
+    (version "3.0.2")
     (source (origin
               (method url-fetch)
               (uri (string-append "mirror://openbsd/LibreSSL/"
-                                  name "-" version ".tar.gz"))
+                                  "libressl-" version ".tar.gz"))
               (sha256
                (base32
-                "19kxa5i97q7p6rrps9qm0nd8zqhdjvzx02j72400c73cl2nryfhy"))))
+                "13ir2lpxz8y1m151k7lrx306498nzfhwlvgkgv97v5cvywmifyyz"))))
     (build-system gnu-build-system)
     (arguments
      ;; Do as if 'getentropy' was missing since older Linux kernels lack it
@@ -505,15 +561,13 @@ required structures.")
                            ;; Provide a TLS-enabled netcat.
                            "--enable-nc")))
     (native-search-paths
-      ;; FIXME: These two variables must designate a single file or directory
-      ;; and are not actually "search paths."  In practice it works OK in
-      ;; user profiles because there's always just one item that matches the
-      ;; specification.
      (list (search-path-specification
             (variable "SSL_CERT_DIR")
+            (separator #f)              ;single entry
             (files '("etc/ssl/certs")))
            (search-path-specification
             (variable "SSL_CERT_FILE")
+            (separator #f)              ;single entry
             (files '("etc/ssl/certs/ca-certificates.crt")))))
     (home-page "https://www.libressl.org/")
     (synopsis "SSL/TLS implementation")
@@ -532,13 +586,13 @@ netcat implementation that supports TLS.")
   (package
     (name "python-acme")
     ;; Remember to update the hash of certbot when updating python-acme.
-    (version "0.37.2")
+    (version "1.3.0")
     (source (origin
               (method url-fetch)
               (uri (pypi-uri "acme" version))
               (sha256
                (base32
-                "0p3zqhna9p8iy5i9mfhzdf5bmjigs05r6rlwnxykk4n67fp8yyc8"))))
+                "03fjmg0fgfy7xfn3i8rzn9i0i4amajmijkash84qb8mlphgrxpn0"))))
     (build-system python-build-system)
     (arguments
      `(#:phases
@@ -589,7 +643,7 @@ netcat implementation that supports TLS.")
               (uri (pypi-uri "certbot" version))
               (sha256
                (base32
-                "1xbfv4fwkgfp9qqzlk8wxbhchc61349m26q9fg35j9fnm253cm74"))))
+                "1n5i0k6kwmd6wvivshfl3k4djwcpwx390c39xmr2hhrgpk5r285w"))))
     (build-system python-build-system)
     (arguments
      `(,@(substitute-keyword-arguments (package-arguments python-acme)
@@ -623,6 +677,7 @@ netcat implementation that supports TLS.")
        ("python-pyopenssl" ,python-pyopenssl)
        ("python-configobj" ,python-configobj)
        ("python-configargparse" ,python-configargparse)
+       ("python-distro" ,python-distro)
        ("python-zope-component" ,python-zope-component)
        ("python-parsedatetime" ,python-parsedatetime)
        ("python-six" ,python-six)
@@ -836,21 +891,29 @@ then ported to the GNU / Linux environment.")
 (define-public mbedtls-apache
   (package
     (name "mbedtls-apache")
-    (version "2.16.2")
+    ;; XXX Check whether ‘-Wformat-signedness’ still breaks mbedtls-for-hiawatha
+    ;; when updating.
+    (version "2.23.0")
     (source
      (origin
-       (method url-fetch)
-       ;; XXX: The download links on the website are script redirection links
-       ;; which effectively lead to the format listed in the uri here.
-       (uri (string-append "https://tls.mbed.org/download/mbedtls-"
-                           version "-apache.tgz"))
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/ARMmbed/mbedtls")
+             (commit (string-append "mbedtls-" version))))
        (sha256
-        (base32
-         "1906hbwlkq32075hca4vjad03dcc36aycvmaz8yvhr3ygg6lz0x6"))))
+        (base32 "13fa9h2i989cbf8n8c0j019mshv6wg213va18my1s787lhcq2d62"))
+       (file-name (git-file-name name version))))
     (build-system cmake-build-system)
     (arguments
      `(#:configure-flags
-       (list "-DUSE_SHARED_MBEDTLS_LIBRARY=ON")))
+       (list "-DUSE_SHARED_MBEDTLS_LIBRARY=ON"
+             "-DUSE_STATIC_MBEDTLS_LIBRARY=OFF")
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'make-source-writable
+           (lambda _
+             (for-each make-file-writable (find-files "."))
+             #t)))))
     (native-inputs
      `(("perl" ,perl)
        ("python" ,python)))
@@ -869,54 +932,67 @@ coding footprint.")
    (package
      (inherit mbedtls-apache)
      (arguments
-      (substitute-keyword-arguments
-          `(#:phases
-            (modify-phases %standard-phases
-              (add-after 'configure 'configure-extra-features
-                (lambda _
-                  (for-each (lambda (feature)
-                              (invoke "scripts/config.pl" "set" feature))
-                            (list "MBEDTLS_THREADING_C"
-                                  "MBEDTLS_THREADING_PTHREAD"))
-                  #t)))
-            ,@(package-arguments mbedtls-apache)))))))
+      (substitute-keyword-arguments (package-arguments mbedtls-apache)
+        ((#:phases phases)
+         `(modify-phases ,phases
+            (add-before 'configure 'configure-extra-features
+              (lambda _
+                (for-each (lambda (feature)
+                            (invoke "scripts/config.pl" "set" feature))
+                          (list "MBEDTLS_THREADING_C"
+                                "MBEDTLS_THREADING_PTHREAD"))
+                ;; XXX The above enables code that breaks with -Werror…
+                (substitute* "CMakeLists.txt"
+                  ((" -Wformat-signedness") ""))
+                #t)))))))))
 
 (define-public dehydrated
   (package
     (name "dehydrated")
-    (version "0.6.2")
+    (version "0.6.5")
     (source (origin
               (method url-fetch)
               (uri (string-append
-                    "https://github.com/lukas2511/dehydrated/releases/download/"
+                    "https://github.com/dehydrated-io/dehydrated/releases/download/"
                     "v" version "/dehydrated-" version ".tar.gz"))
               (sha256
                (base32
-                "03p80yj6bnzjc6dkp5hb9wpplmlrla8n5src71cnzw4rj53q8cqn"))))
+                "0dgskgbdd95p13jx6s13p77y15wngb5cm6p4305cf2s54w0bvahh"))))
     (build-system trivial-build-system)
     (arguments
-     `(#:modules ((guix build utils))
+     `(#:modules ((guix build utils)
+                  (srfi srfi-26))
        #:builder
        (begin
-         (use-modules (guix build utils))
+         (use-modules (guix build utils)
+                      (srfi srfi-26))
          (let* ((source (assoc-ref %build-inputs "source"))
                 (tar (assoc-ref %build-inputs "tar"))
                 (gz  (assoc-ref %build-inputs "gzip"))
                 (out (assoc-ref %outputs "out"))
                 (bin (string-append out "/bin"))
-                (doc (string-append out "/share/doc/"))
+                (doc (string-append out "/share/doc/" ,name "-" ,version))
+                (man (string-append out "/share/man"))
                 (bash (in-vicinity (assoc-ref %build-inputs "bash") "bin")))
 
            (setenv "PATH" (string-append gz "/bin"))
            (invoke (string-append tar "/bin/tar") "xvf" source)
            (chdir (string-append ,name "-" ,version))
 
+           (copy-recursively "docs" doc)
+           (install-file "LICENSE" doc)
+
+           (mkdir-p man)
+           (rename-file (string-append doc "/man")
+                        (string-append man "/man1"))
+           (for-each (cut invoke "gzip" "-9" <>)
+                     (find-files man ".*"))
+
            (install-file "dehydrated" bin)
-           (install-file "LICENSE" (string-append doc ,name "-" ,version))
            (with-directory-excursion bin
              (patch-shebang "dehydrated" (list bash))
 
-             ;; Do not try to write in the store.
+             ;; Do not try to write to the store.
              (substitute* "dehydrated"
                (("SCRIPTDIR=\"\\$.*\"") "SCRIPTDIR=~/.dehydrated"))
 
@@ -955,8 +1031,8 @@ relatively simple Bash script.")
     (license license:expat)))
 
 (define-public go-github-com-certifi-gocertifi
-  (let ((commit "d2eda712971317d7dd278bc2a52acda7e945f97e")
-        (revision "0"))
+  (let ((commit "a5e0173ced670013bfb649c7e806bc9529c986ec")
+        (revision "1"))
     (package
       (name "go-github-com-certifi-gocertifi")
       (version (git-version "2018.01.18" revision commit))
@@ -968,7 +1044,7 @@ relatively simple Bash script.")
                 (file-name (git-file-name name version))
                 (sha256
                  (base32
-                  "0f3v26xps7gadw4qfmh1kxbpgp0cgqdd61a257xnnvnd7ll6k8dh"))))
+                  "1n9drccl3q1rr8wg3nf60slkf1lgsmz5ahifrglbdrc6har3rryj"))))
       (build-system go-build-system)
       (arguments
        '(#:import-path "github.com/certifi/gocertifi"))

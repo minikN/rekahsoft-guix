@@ -67,16 +67,16 @@ to easily create cross-compiled binaries.")
 (define-public windowmaker
   (package
     (name "windowmaker")
-    (version "0.95.8")
+    (version "0.95.9")
     (synopsis "NeXTSTEP-like window manager")
     (source (origin
               (method url-fetch)
               (uri (string-append
-                    "http://windowmaker.org/pub/source/release/WindowMaker-"
-                    version ".tar.gz"))
+                    "https://github.com/window-maker/wmaker/releases/download/"
+                    "wmaker-" version "/WindowMaker-" version ".tar.gz"))
               (sha256
                (base32
-                "12p8kljqgx5hnic0zvs5mxwp7kg21sb6qjagb2qw8ydvf5amrgwx"))))
+                "055pqvlkhipyjn7m6bb3fs4zz9rd1ynzl0mmwbhp05ihc3zmh8zj"))))
     (build-system gnu-build-system)
     (arguments
      `(#:modules ((guix build gnu-build-system)
@@ -113,39 +113,39 @@ to easily create cross-compiled binaries.")
                (call-with-output-file
                    (string-append xsessions "/windowmaker.desktop")
                  (lambda (port)
-                  (format port "~
+                   (format port "~
                     [Desktop Entry]~@
                     Name=Window Maker~@
                     Comment=~a~@
                     Exec=~a/bin/wmaker~@
                     Type=Application~%"
-                          (string-map (match-lambda
-                                        (#\newline #\space)
-                                        (chr chr))
-                                      ,synopsis) out))))
+                           (string-map (match-lambda
+                                         (#\newline #\space)
+                                         (chr chr))
+                                       ,synopsis) out))))
              #t))
          (add-after 'install-xsession 'wrap
-            (lambda* (#:key outputs #:allow-other-keys)
-              (let* ((out (assoc-ref outputs "out"))
-                     (bin (string-append out "/bin")))
-                ;; In turn, 'wmaker.inst' wants to invoke 'wmmenugen'
-                ;; etc., so make sure everything is in $PATH.
-                (wrap-program (string-append bin "/wmaker.inst")
-                  `("PATH" ":" prefix (,bin)))
-                #t))))))
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (bin (string-append out "/bin")))
+               ;; In turn, 'wmaker.inst' wants to invoke 'wmmenugen'
+               ;; etc., so make sure everything is in $PATH.
+               (wrap-program (string-append bin "/wmaker.inst")
+                 `("PATH" ":" prefix (,bin)))
+               #t))))))
     (inputs
      `(("libxmu" ,libxmu)
        ("libxft" ,libxft)
        ("libx11" ,libx11)
        ("libxinerama" ,libxinerama)
        ("fontconfig" ,fontconfig)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("giflib" ,giflib)
        ("libpng" ,libpng)
        ("libtiff" ,libtiff)))
     (native-inputs
      `(("pkg-config" ,pkg-config)))
-    (home-page "http://windowmaker.org/")
+    (home-page "https://windowmaker.org/")
     (description
      "Window Maker is an X11 window manager originally designed to provide
 integration support for the GNUstep Desktop Environment.  In every way
@@ -158,7 +158,7 @@ interface.  It is fast, feature rich, easy to configure, and easy to use.")
 (define-public wmbattery
   (package
     (name "wmbattery")
-    (version "2.51")
+    (version "2.54")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -166,7 +166,7 @@ interface.  It is fast, feature rich, easy to configure, and easy to use.")
                     version ".orig.tar.gz"))
               (sha256
                (base32
-                "084a3irxbmgms4bqaga80mlx9wgvlkx6d2w0ns939yrpfzg87laj"))))
+                "1r4n58mwkm69y1pjs7l64hg8r1lpndrzyrfl2rdgd4zi6v0jhyyw"))))
     (build-system gnu-build-system)
     (arguments '(#:tests? #f)) ; no "check" target
     (inputs
@@ -176,10 +176,8 @@ interface.  It is fast, feature rich, easy to configure, and easy to use.")
        ("libxpm" ,libxpm)
        ("upower" ,upower)))
     (native-inputs
-     `(("autoconf" ,autoconf)
-       ("automake" ,automake)
-       ("pkg-config" ,pkg-config)))
-    (home-page "http://www.dockapps.net/wmbattery")
+     `(("pkg-config" ,pkg-config)))
+    (home-page "https://www.dockapps.net/wmbattery")
     (synopsis "Display laptop battery info")
     (description
      "Wmbattery displays the status of your laptop's battery in a small icon.
@@ -233,7 +231,7 @@ other compatible window managers.")
        ("libxpm" ,libxpm)))
     (native-inputs
      `(("pkg-config" ,pkg-config)))
-    (home-page "http://www.dockapps.net/wmcpuload")
+    (home-page "https://www.dockapps.net/wmcpuload")
     (synopsis "Monitor CPU usage")
     (description
      "Wmcpuload displays the current CPU usage, expressed as a percentile and a
@@ -265,7 +263,7 @@ on.")
      `(("autoconf" ,autoconf)
        ("automake" ,automake)
        ("pkg-config" ,pkg-config)))
-    (home-page "http://www.dockapps.net/wmclock")
+    (home-page "https://www.dockapps.net/wmclock")
     (synopsis "Display the date and time")
     (description
      "wmclock is an applet for Window Maker which displays the date and time in

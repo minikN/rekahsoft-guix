@@ -7,13 +7,21 @@
 ;;; Copyright © 2016 Andreas Enge <andreas@enge.fr>
 ;;; Copyright © 2017 Manolis Fragkiskos Ragkousis <manolis837@gmail.com>
 ;;; Copyright © 2017, 2018 Ben Woodcroft <donttrustben@gmail.com>
-;;; Copyright © 2017, 2018 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2017, 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018 Mathieu Othacehe <m.othacehe@gmail.com>
 ;;; Copyright © 2018 Alex Kost <alezost@gmail.com>
 ;;; Copyright © 2018 Kei Kebreau <kkebreau@posteo.net>
-;;; Copyright © 2019 Mark H Weaver <mhw@netris.org>
+;;; Copyright © 2019, 2020 Mark H Weaver <mhw@netris.org>
 ;;; Copyright © 2019 Carlo Zancanaro <carlo@zancanaro.id.au>
 ;;; Copyright © 2019 Steve Sprang <scs@stevesprang.com>
+;;; Copyright © 2019 John Soo <jsoo1@asu.edu>
+;;; Copyright © 2019 Pierre Neidhardt <mail@ambrevar.xyz>
+;;; Copyright © 2019, 2020 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2019 Tanguy Le Carrour <tanguy@bioneland.org>
+;;; Copyright © 2020 Jakub Kądziołka <kuba@kadziolka.net>
+;;; Copyright © 2020 Nicolas Goaziou <mail@nicolasgoaziou.fr>
+;;; Copyright © 2020 Raghav Gururajan <raghavgururajan@disroot.org>
+;;; Copyright © 2020 Maxim Cournoyer <maxim.cournoyer@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -35,15 +43,18 @@
   #:use-module (gnu packages algebra)
   #:use-module (gnu packages audio)
   #:use-module (gnu packages autotools)
+  #:use-module (gnu packages base)
   #:use-module (gnu packages bash)
   #:use-module (gnu packages bison)
   #:use-module (gnu packages boost)
   #:use-module (gnu packages check)
   #:use-module (gnu packages compression)
+  #:use-module (gnu packages datastructures)
   #:use-module (gnu packages documentation)
   #:use-module (gnu packages flex)
   #:use-module (gnu packages fonts)
   #:use-module (gnu packages fontutils)
+  #:use-module (gnu packages gettext)
   #:use-module (gnu packages ghostscript)
   #:use-module (gnu packages gl)
   #:use-module (gnu packages glib)
@@ -54,11 +65,13 @@
   #:use-module (gnu packages image)
   #:use-module (gnu packages imagemagick)
   #:use-module (gnu packages jemalloc)
+  #:use-module (gnu packages maths)
   #:use-module (gnu packages multiprecision)
   #:use-module (gnu packages pdf)
   #:use-module (gnu packages perl)
   #:use-module (gnu packages photo)
   #:use-module (gnu packages pkg-config)
+  #:use-module (gnu packages plotutils)
   #:use-module (gnu packages pth)
   #:use-module (gnu packages pulseaudio)  ; libsndfile, libsamplerate
   #:use-module (gnu packages python)
@@ -67,6 +80,7 @@
   #:use-module (gnu packages readline)
   #:use-module (gnu packages sdl)
   #:use-module (gnu packages swig)
+  #:use-module (gnu packages tbb)
   #:use-module (gnu packages video)
   #:use-module (gnu packages xml)
   #:use-module (gnu packages xorg)
@@ -75,21 +89,132 @@
   #:use-module (guix build-system python)
   #:use-module (guix download)
   #:use-module (guix git-download)
+  #:use-module (guix hg-download)
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (guix packages)
   #:use-module (guix utils))
 
+(define-public fox
+  (package
+    (name "fox")
+    (version "1.6.57")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+        (string-append "https://fox-toolkit.org/ftp/fox-" version ".tar.gz"))
+       (sha256
+        (base32 "08w98m6wjadraw1pi13igzagly4b2nfa57kdqdnkjfhgkvg1bvv5"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'patch
+           (lambda _
+             (substitute* "configure"
+               (("-I/usr/include/freetype2")
+                (string-append "-I"
+                               (string-append
+                                (assoc-ref %build-inputs "freetype")
+                                "/include/freetype2"))))
+             #t)))))
+    (native-inputs
+     `(("doxygen" ,doxygen)))
+    (inputs
+     `(("bzip2" ,lbzip2)
+       ("freetype" ,freetype)
+       ("gl" ,mesa)
+       ("glu" ,glu)
+       ("jpeg" ,libjpeg-turbo)
+       ("png" ,libpng)
+       ("tiff" ,libtiff)
+       ("x11" ,libx11)
+       ("xcursor" ,libxcursor)
+       ("xext" ,libxext)
+       ("xfixes" ,libxfixes)
+       ("xft" ,libxft)
+       ("xinput" ,libxi)
+       ("xrandr" ,libxrandr)
+       ("xrender" ,libxrender)
+       ("xshm" ,libxshmfence)
+       ("zlib" ,zlib)))
+    (synopsis "Widget Toolkit for building GUI")
+    (description"FOX (Free Objects for X) is a C++ based Toolkit for developing
+Graphical User Interfaces easily and effectively.   It offers a wide, and
+growing, collection of Controls, and provides state of the art facilities such
+as drag and drop, selection, as well as OpenGL widgets for 3D graphical
+manipulation.  FOX also implements icons, images, and user-convenience features
+such as status line help, and tooltips.  Tooltips may even be used for 3D
+objects!")
+    (home-page "http://www.fox-toolkit.org")
+    (license license:lgpl2.1+)))
+
+(define-public autotrace
+  (let ((commit "travis-20190624.59")
+        (version-base "0.40.0"))
+    (package
+      (name "autotrace")
+      (version (string-append version-base "-"
+                              (if (string-prefix? "travis-" commit)
+                                  (string-drop commit 7)
+                                  commit)))
+      (source (origin
+                (method git-fetch)
+                (uri (git-reference
+                      (url "https://github.com/autotrace/autotrace")
+                      (commit commit)))
+                (file-name (git-file-name name version))
+                (sha256
+                 (base32
+                  "0mk4yavy42dj0pszr1ggnggpvmzs4ds46caa9wr55cqsypn7bq6s"))))
+      (build-system gnu-build-system)
+      (arguments
+       `(#:phases (modify-phases %standard-phases
+                    ;; See: https://github.com/autotrace/autotrace/issues/27.
+                    (add-after 'unpack 'include-spline.h-header
+                      (lambda _
+                        (substitute* "Makefile.am"
+                          ((".*src/types.h.*" all)
+                           (string-append all "\t\tsrc/spline.h \\\n")))
+                        #t))
+                    ;; See: https://github.com/autotrace/autotrace/issues/26.
+                    (replace 'check
+                      (lambda _
+                        (invoke "sh" "tests/runtests.sh"))))))
+      (native-inputs
+       `(("which" ,which)
+         ("pkg-config" ,pkg-config)
+         ("autoconf" ,autoconf)
+         ("automake" ,automake)
+         ("intltool" ,intltool)
+         ("libtool" ,libtool)
+         ("gettext" ,gettext-minimal)))
+      (inputs
+       `(("glib" ,glib)
+         ("libjpeg" ,libjpeg-turbo)
+         ("libpng" ,libpng)
+         ("imagemagick" ,imagemagick)
+         ("pstoedit" ,pstoedit)))
+      (home-page "https://github.com/autotrace/autotrace")
+      (synopsis "Bitmap to vector graphics converter")
+      (description "AutoTrace is a utility for converting bitmap into vector
+graphics.  It can trace outlines and midlines, effect color reduction or
+despeckling and has support for many input and output formats.  It can be used
+with the @command{autotrace} utility or as a C library, @code{libautotrace}.")
+      (license (list license:gpl2+         ;for the utility itself
+                     license:lgpl2.1+))))) ;for use as a library
+
 (define-public blender
   (package
     (name "blender")
-    (version "2.80")
+    (version "2.83.3")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://download.blender.org/source/"
-                                  "blender-" version ".tar.gz"))
+                                  "blender-" version ".tar.xz"))
               (sha256
                (base32
-                "1h550jisdbis50hxwk5kxrvrk1a6sh2fsri3yyj66vhzbi87x7fd"))))
+                "18m27abp4j3xv48dr6ddr2mqcvx2vkjffr487z90059yv9k0yh2p"))))
     (build-system cmake-build-system)
     (arguments
       (let ((python-version (version-major+minor (package-version python))))
@@ -108,11 +233,11 @@
                "-DWITH_MOD_OCEANSIM=ON"
                "-DWITH_OPENSUBDIV=ON"
                "-DWITH_PYTHON_INSTALL=OFF"
-               (string-append "-DPYTHON_LIBRARY=python" ,python-version "m")
+               (string-append "-DPYTHON_LIBRARY=python" ,python-version)
                (string-append "-DPYTHON_LIBPATH=" (assoc-ref %build-inputs "python")
                               "/lib")
                (string-append "-DPYTHON_INCLUDE_DIR=" (assoc-ref %build-inputs "python")
-                              "/include/python" ,python-version "m")
+                              "/include/python" ,python-version)
                (string-append "-DPYTHON_VERSION=" ,python-version)
                (string-append "-DPYTHON_NUMPY_PATH="
                               (assoc-ref %build-inputs "python-numpy")
@@ -121,11 +246,11 @@
          (modify-phases %standard-phases
            ;; XXX This file doesn't exist in the Git sources but will probably
            ;; exist in the eventual 2.80 source tarball.
-;           (add-after 'unpack 'fix-broken-import
-;             (lambda _
-;               (substitute* "release/scripts/addons/io_scene_fbx/json2fbx.py"
-;                 (("import encode_bin") "from . import encode_bin"))
-;               #t))
+           (add-after 'unpack 'fix-broken-import
+             (lambda _
+               (substitute* "release/scripts/addons/io_scene_fbx/json2fbx.py"
+                 (("import encode_bin") "from . import encode_bin"))
+               #t))
            (add-after 'set-paths 'add-ilmbase-include-path
              (lambda* (#:key inputs #:allow-other-keys)
                ;; OpenEXR propagates ilmbase, but its include files do not appear
@@ -140,12 +265,14 @@
      `(("boost" ,boost)
        ("jemalloc" ,jemalloc)
        ("libx11" ,libx11)
+       ("libxi" ,libxi)
+       ("libxrender" ,libxrender)
        ("openimageio" ,openimageio)
        ("openexr" ,openexr)
        ("opensubdiv" ,opensubdiv)
        ("ilmbase" ,ilmbase)
        ("openjpeg" ,openjpeg)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libpng" ,libpng)
        ("libtiff" ,libtiff)
        ("ffmpeg" ,ffmpeg)
@@ -157,6 +284,7 @@
        ("openal" ,openal)
        ("python" ,python)
        ("python-numpy" ,python-numpy)
+       ("tbb" ,tbb)
        ("zlib" ,zlib)))
     (home-page "https://blender.org/")
     (synopsis "3D graphics creation suite")
@@ -179,7 +307,14 @@ application can be customized via its API for Python scripting.")
                (base32
                 "1g4kcdqmf67srzhi3hkdnr4z1ph4h9sza1pahz38mrj998q4r52c"))
               (patches (search-patches "blender-2.79-newer-ffmpeg.patch"
-                                       "blender-2.79-python-3.7-fix.patch"))))
+                                       "blender-2.79-oiio2.patch"
+                                       ;; The following patches may be
+                                       ;; needed when the default GCC is
+                                       ;; updated:
+                                       ;;   "blender-2.79-gcc8.patch"
+                                       ;;   "blender-2.79-gcc9.patch"
+                                       "blender-2.79-python-3.7-fix.patch"
+                                       "blender-2.79-python-3.8-fix.patch"))))
     (build-system cmake-build-system)
     (arguments
       (let ((python-version (version-major+minor (package-version python))))
@@ -201,11 +336,11 @@ application can be customized via its API for Python scripting.")
                "-DWITH_PYTHON_INSTALL=OFF"
                "-DWITH_PYTHON_INSTALL=OFF"
                "-DWITH_SYSTEM_OPENJPEG=ON"
-               (string-append "-DPYTHON_LIBRARY=python" ,python-version "m")
+               (string-append "-DPYTHON_LIBRARY=python" ,python-version)
                (string-append "-DPYTHON_LIBPATH=" (assoc-ref %build-inputs "python")
                               "/lib")
                (string-append "-DPYTHON_INCLUDE_DIR=" (assoc-ref %build-inputs "python")
-                              "/include/python" ,python-version "m")
+                              "/include/python" ,python-version)
                (string-append "-DPYTHON_VERSION=" ,python-version))
          #:phases
          (modify-phases %standard-phases
@@ -228,11 +363,11 @@ application can be customized via its API for Python scripting.")
      `(("boost" ,boost)
        ("jemalloc" ,jemalloc)
        ("libx11" ,libx11)
-       ("openimageio" ,openimageio-1.7)
+       ("openimageio" ,openimageio)
        ("openexr" ,openexr)
        ("ilmbase" ,ilmbase)
-       ("openjpeg" ,openjpeg-1)
-       ("libjpeg" ,libjpeg)
+       ("openjpeg" ,openjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libpng" ,libpng)
        ("libtiff" ,libtiff)
        ("ffmpeg" ,ffmpeg)
@@ -263,7 +398,7 @@ OpenGL 3.  It is retained for use with older computers.")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/assimp/assimp.git")
+                    (url "https://github.com/assimp/assimp")
                     (commit (string-append "v" version))))
               (file-name (git-file-name name version))
               (sha256
@@ -286,7 +421,7 @@ more.")
 (define-public cgal
   (package
     (name "cgal")
-    (version "4.8.1")
+    (version "4.14.2")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -294,19 +429,15 @@ more.")
                     "CGAL-" version "/CGAL-" version ".tar.xz"))
               (sha256
                (base32
-                "1c41yzl2jg3d6zx5k0iccwqwibp950q7dr7z7pp4xi9wlph3c87s"))))
+                "08lrp3hfwdypggz4138bnkh6bjxn441zg2y9xnq5mrjfc5ini6w1"))))
     (build-system cmake-build-system)
     (arguments
-     '(;; "RelWithDebInfo" is not supported.
-       #:build-type "Release"
-
-       ;; No 'test' target.
-       #:tests? #f))
+     '(#:tests? #f))                    ; no test target
     (inputs
      `(("mpfr" ,mpfr)
        ("gmp" ,gmp)
        ("boost" ,boost)))
-    (home-page "http://cgal.org/")
+    (home-page "https://www.cgal.org/")
     (synopsis "Computational geometry algorithms library")
     (description
      "CGAL provides easy access to efficient and reliable geometric algorithms
@@ -325,18 +456,25 @@ many more.")
 (define-public ilmbase
   (package
     (name "ilmbase")
-    (version "2.3.0")
+    (version "2.5.2")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/openexr/openexr/releases"
-                                  "/download/v" version "/ilmbase-"
-                                  version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/openexr/openexr")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name "ilmbase" version))
               (sha256
                (base32
-                "0qiq5bqq9rxhqjiym2k36sx4vq8adgrz6xf6qwizi9bqm78phsa5"))
+                "1vf8bqld2bpcdi99jbr043y6vp01cp3fvbiasrn66xn91mf6imbn"))
               (patches (search-patches "ilmbase-fix-tests.patch"))))
-    (build-system gnu-build-system)
-    (home-page "http://www.openexr.com/")
+    (build-system cmake-build-system)
+    (arguments
+     `(#:phases (modify-phases %standard-phases
+                  (add-after 'unpack 'change-directory
+                    (lambda _
+                      (chdir "IlmBase")
+                      #t)))))
+    (home-page "https://www.openexr.com/")
     (synopsis "Utility C++ libraries for threads, maths, and exceptions")
     (description
      "IlmBase provides several utility libraries for C++.  Half is a class
@@ -346,53 +484,174 @@ quaternions and other useful 2D and 3D math functions.  Iex is an
 exception-handling library.")
     (license license:bsd-3)))
 
+(define-public lib2geom
+  ;; Use the latest master commit, as the 1.0 release suffer build problems.
+  (let ((revision "2")
+        (commit "f98256d2a923955af74b8cff3d456f0df1ee4b59"))
+    (package
+      (name "lib2geom")
+      (version (git-version "1.0" revision commit))
+      (source (origin
+                (method git-fetch)
+                (uri (git-reference
+                      (url "https://gitlab.com/inkscape/lib2geom.git")
+                      (commit commit)))
+                (file-name (git-file-name name version))
+                (sha256
+                 (base32
+                  "0w6ijaai8i80d0f35c0shgdspqlsdhw3cvz106k1gm7bmnz1wzpq"))
+                (patches
+                 ;; Patches submitted to upstream (see:
+                 ;; https://gitlab.com/inkscape/lib2geom/merge_requests/17,
+                 ;; https://gitlab.com/inkscape/lib2geom/-/merge_requests/32).
+                 (search-patches "lib2geom-enable-assertions.patch"
+                                 "lib2geom-fix-tests.patch"))
+                (modules '((guix build utils)))
+                (snippet
+                 '(begin
+                    ;; Fix py2geom module initialization (see:
+                    ;; https://gitlab.com/inkscape/lib2geom/merge_requests/18).
+                    (substitute* "src/py2geom/__init__.py"
+                      (("_py2geom") "py2geom._py2geom"))
+                    #t))))
+      (build-system cmake-build-system)
+      (arguments
+       `(#:imported-modules ((guix build python-build-system)
+                             ,@%cmake-build-system-modules)
+         #:configure-flags '("-D2GEOM_BUILD_SHARED=ON"
+                             "-D2GEOM_BOOST_PYTHON=ON"
+                             ;; Compiling the Cython bindings fail (see:
+                             ;; https://gitlab.com/inkscape/lib2geom/issues/21).
+                             "-D2GEOM_CYTHON_BINDINGS=OFF")
+         #:phases
+         (modify-phases %standard-phases
+           (add-after 'unpack 'patch-python-lib-install-path
+             (lambda* (#:key inputs outputs #:allow-other-keys)
+               (let* ((python-version (@ (guix build python-build-system)
+                                         python-version))
+                      (python-maj-min-version (python-version
+                                               (assoc-ref inputs "python")))
+                      (site-package (string-append
+                                     (assoc-ref outputs "out")
+                                     "/lib/python" python-maj-min-version
+                                     "/site-packages")))
+                 (substitute* '("src/cython/CMakeLists.txt"
+                                "src/py2geom/CMakeLists.txt")
+                   (("PYTHON_LIB_INSTALL \"[^\"]*\"")
+                    (format #f "PYTHON_LIB_INSTALL ~s" site-package))))
+               #t)))))
+      (native-inputs `(("python" ,python-wrapper)
+                       ("googletest" ,googletest)
+                       ("pkg-config" ,pkg-config)))
+      (inputs `(("cairo" ,cairo)
+                ("pycairo" ,python-pycairo)
+                ("double-conversion" ,double-conversion)
+                ("glib" ,glib)
+                ("gsl" ,gsl)))
+      (propagated-inputs
+       `(("boost" ,boost)))             ;referred to in 2geom/pathvector.h.
+      (home-page "https://gitlab.com/inkscape/lib2geom/")
+      (synopsis "C++ 2D graphics library")
+      (description "2geom is a C++ library of mathematics for paths, curves,
+and other geometric calculations.  Designed for vector graphics, it tackles
+Bézier curves, conic sections, paths, intersections, transformations, and
+basic geometries.")
+      ;; Because the library is linked with the GNU Scientific Library
+      ;; (GPLv3+), the combined work must be licensed as GPLv3+ (see:
+      ;; https://gitlab.com/inkscape/inkscape/issues/784).
+      (license license:gpl3+))))
+
+(define-public pstoedit
+  (package
+    (name "pstoedit")
+    (version "3.75")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append "mirror://sourceforge/pstoedit/pstoedit/"
+                                  version "/pstoedit-" version ".tar.gz"))
+              (sha256
+               (base32
+                "1kv46g2wsvsvcngkavxl5gnw3l6g5xqnh4kmyx4b39a01d8xiddp"))))
+    (build-system gnu-build-system)
+    (native-inputs
+     `(("pkg-config" ,pkg-config)))
+    (inputs
+     `(("ghostscript" ,ghostscript)
+       ("imagemagick" ,imagemagick)
+       ("libplot" ,plotutils)
+       ("libjpeg" ,libjpeg-turbo)
+       ("zlib" ,zlib)))               ;else libp2edrvmagick++.so fails to link
+    (home-page "http://www.pstoedit.net/")
+    (synopsis "Converter for PostScript and PDF graphics")
+    (description "The @code{pstoedit} utility allows translating graphics
+in the PostScript or PDF (Portable Document Format) formats to various
+other vector formats such as:
+@itemize
+@item Tgif (.obj)
+@item gnuplot
+@item xfig (.fig)
+@item Flattened PostScript
+@item DXF, a CAD (Computed-Aided Design) exchange format
+@item PIC (for troff/groff)
+@item MetaPost (for usage with TeX/LaTeX)
+@item LaTeX2e picture
+@item GNU Metafile (for use with plotutils/libplot)
+@item Any format supported by ImageMagick
+@end itemize")
+    (license license:gpl2+)))
+
 (define-public ogre
   (package
     (name "ogre")
-    (version "1.10.11")
+    (version "1.12.5")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
-              (url "https://github.com/OGRECave/ogre.git")
-              (commit (string-append "v" version))))
+             (url "https://github.com/OGRECave/ogre")
+             (commit (string-append "v" version))
+             (recursive? #t)))          ;for Dear ImGui submodule
        (file-name (git-file-name name version))
        (sha256
-        (base32
-         "072rzw9mxymbiypgkrbkk9h10rgly6gczik4dlmssk6xkpqckaqr"))))
+        (base32 "1sx0jsw4kmb4ycf62bgx3ygwv8k1cgjx52y47d7dk07z6gk6wpyj"))))
     (build-system cmake-build-system)
     (arguments
      '(#:phases
        (modify-phases %standard-phases
          (add-before 'configure 'pre-configure
-           (lambda* (#:key inputs #:allow-other-keys)
-             (substitute* "Tests/CMakeLists.txt"
-               (("URL(.*)$")
-                (string-append "URL " (assoc-ref inputs "googletest-source"))))
+           ;; CMakeLists.txt forces CMAKE_INSTALL_RPATH value.  As
+           ;; a consequence, we cannot suggest ours in configure flags.  Fix
+           ;; it.
+           (lambda* (#:key inputs outputs #:allow-other-keys)
+             (substitute* "CMakeLists.txt"
+               (("set\\(CMAKE_INSTALL_RPATH .*") ""))
              #t)))
        #:configure-flags
-       (list "-DOGRE_BUILD_TESTS=TRUE"
-             (string-append "-DCMAKE_INSTALL_RPATH="
-                            (assoc-ref %outputs "out") "/lib:"
-                            (assoc-ref %outputs "out") "/lib/OGRE:"
-                            (assoc-ref %build-inputs "googletest") "/lib")
-             "-DOGRE_INSTALL_DOCS=TRUE"
-             "-DOGRE_INSTALL_SAMPLES=TRUE"
-             "-DOGRE_INSTALL_SAMPLES_SOURCE=TRUE")))
+       (let* ((out (assoc-ref %outputs "out"))
+              (runpath
+               (string-join (list (string-append out "/lib")
+                                  (string-append out "/lib/OGRE"))
+                            ";")))
+         (list (string-append "-DCMAKE_INSTALL_RPATH=" runpath)
+               "-DOGRE_BUILD_DEPENDENCIES=OFF"
+               "-DOGRE_BUILD_TESTS=TRUE"
+               "-DOGRE_INSTALL_DOCS=TRUE"
+               "-DOGRE_INSTALL_SAMPLES=TRUE"
+               "-DOGRE_INSTALL_SAMPLES_SOURCE=TRUE"))))
     (native-inputs
      `(("boost" ,boost)
        ("doxygen" ,doxygen)
-       ("googletest-source" ,(package-source googletest))
+       ("googletest" ,googletest-1.8)
        ("pkg-config" ,pkg-config)))
     (inputs
      `(("font-dejavu" ,font-dejavu)
        ("freeimage" ,freeimage)
        ("freetype" ,freetype)
        ("glu" ,glu)
-       ("googletest" ,googletest)
-       ("sdl2" ,sdl2)
        ("libxaw" ,libxaw)
        ("libxrandr" ,libxrandr)
+       ("pugixml" ,pugixml)
+       ("sdl2" ,sdl2)
        ("tinyxml" ,tinyxml)
        ("zziplib" ,zziplib)))
     (synopsis "Scene-oriented, flexible 3D engine written in C++")
@@ -401,49 +660,57 @@ exception-handling library.")
 flexible 3D engine written in C++ designed to make it easier and more intuitive
 for developers to produce applications utilising hardware-accelerated 3D
 graphics.")
-    (home-page "http://www.ogre3d.org/")
+    (home-page "https://www.ogre3d.org/")
     (license license:expat)))
 
 (define-public openexr
   (package
     (name "openexr")
-    (version "2.3.0")
+    (version (package-version ilmbase))
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/openexr/openexr/releases"
-                                  "/download/v" version "/openexr-"
-                                  version ".tar.gz"))
-              (sha256
-               (base32
-                "19jywbs9qjvsbkvlvzayzi81s976k53wg53vw4xj66lcgylb6v7x"))
+              (inherit (package-source ilmbase))
+              (file-name (git-file-name "openexr" version))
               (modules '((guix build utils)))
               (snippet
                '(begin
-                  (substitute* (find-files "." "tmpDir\\.h")
+                  (substitute* (find-files "OpenEXR" "tmpDir\\.h")
                     (("\"/var/tmp/\"")
                      "\"/tmp/\""))
                   #t))))
-    (build-system gnu-build-system)
+    (build-system cmake-build-system)
     (arguments
-     '(#:phases
+     `(#:phases
        (modify-phases %standard-phases
-         (add-after 'unpack 'disable-broken-test
-           ;; This test fails on i686. Upstream developers suggest that
-           ;; this test is broken on i686 and can be safely disabled:
-           ;; https://github.com/openexr/openexr/issues/67#issuecomment-21169748
+         (add-after 'unpack 'change-directory
            (lambda _
-             (substitute* "IlmImfTest/main.cpp"
-               (("#include \"testOptimizedInterleavePatterns.h\"")
-                 "//#include \"testOptimizedInterleavePatterns.h\"")
-               (("TEST \\(testOptimizedInterleavePatterns")
-                 "//TEST (testOptimizedInterleavePatterns"))
-             #t)))))
+             (chdir "OpenEXR")
+             #t))
+         (add-after 'change-directory 'increase-test-timeout
+           (lambda _
+             ;; On armhf-linux, we need to override the CTest default
+             ;; timeout of 1500 seconds for the OpenEXR.IlmImf test.
+             (substitute* "IlmImfTest/CMakeLists.txt"
+               (("add_test\\(NAME OpenEXR\\.IlmImf.*" all)
+                (string-append
+                 all
+                 "set_tests_properties(OpenEXR.IlmImf PROPERTIES TIMEOUT 2000)")))
+             #t))
+         ,@(if (not (target-64bit?))
+               `((add-after 'change-directory 'disable-broken-test
+                   ;; This test fails on i686. Upstream developers suggest that
+                   ;; this test is broken on i686 and can be safely disabled:
+                   ;; https://github.com/openexr/openexr/issues/67#issuecomment-21169748
+                   (lambda _
+                     (substitute* "IlmImfTest/main.cpp"
+                       ((".*testOptimizedInterleavePatterns.*") ""))
+                     #t)))
+               '()))))
     (native-inputs
      `(("pkg-config" ,pkg-config)))
     (propagated-inputs
      `(("ilmbase" ,ilmbase)                       ;used in public headers
        ("zlib" ,zlib)))                           ;OpenEXR.pc reads "-lz"
-    (home-page "http://www.openexr.com")
+    (home-page "https://www.openexr.com/")
     (synopsis "High-dynamic range file format library")
     (description
      "OpenEXR is a high dynamic-range (HDR) image file format developed for
@@ -454,32 +721,35 @@ storage of the \"EXR\" file format for storing 16-bit floating-point images.")
 (define-public openimageio
   (package
     (name "openimageio")
-    (version "1.8.17")
+    (version "2.0.13")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/OpenImageIO/oiio.git")
+                    (url "https://github.com/OpenImageIO/oiio")
                     (commit (string-append "Release-" version))))
               (file-name (git-file-name name version))
               (sha256
                (base32
-                "0zq34szprgkrrayg5sl3whrsx2l6lr8nw4hdrnwv2qhn70jbi2w2"))))
+                "0czcls82v71wkw1syib16ncg7463hx0py0xclycsiv4w6i3wlkzz"))))
     (build-system cmake-build-system)
     ;; FIXME: To run all tests successfully, test image sets from multiple
     ;; third party sources have to be present.  For details see
     ;; https://github.com/OpenImageIO/oiio/blob/master/INSTALL
-    (arguments `(#:tests? #f))
+    (arguments
+     `(#:tests? #f))
     (native-inputs
      `(("pkg-config" ,pkg-config)))
     (inputs
      `(("boost" ,boost)
        ("libpng" ,libpng)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libtiff" ,libtiff)
        ("giflib" ,giflib)
        ("openexr" ,openexr)
        ("ilmbase" ,ilmbase)
-       ("python" ,python-2)
+       ("python" ,python-wrapper)
+       ("pybind11" ,pybind11)
+       ("robin-map" ,robin-map)
        ("zlib" ,zlib)))
     (synopsis "C++ library for reading and writing images")
     (description
@@ -487,29 +757,13 @@ storage of the \"EXR\" file format for storing 16-bit floating-point images.")
 related classes, utilities, and applications.  There is a particular emphasis
 on formats and functionality used in professional, large-scale animation and
 visual effects work for film.")
-    (home-page "http://www.openimageio.org")
+    (home-page "https://www.openimageio.org")
     (license license:bsd-3)))
-
-;; This older version of OpenImageIO is required for Blender 2.79.
-(define-public openimageio-1.7
-  (package
-    (inherit openimageio)
-    (name "openimageio")
-    (version "1.7.19")
-    (source (origin
-              (method git-fetch)
-              (uri (git-reference
-                    (url "https://github.com/OpenImageIO/oiio.git")
-                    (commit (string-append "Release-" version))))
-              (file-name (git-file-name name version))
-              (sha256
-               (base32
-                "0yxxy43l3lllw7maqg42dlkgqms2d4772sxzxk7kmxg4lnhsvndc"))))))
 
 (define-public openscenegraph
   (package
     (name "openscenegraph")
-    (version "3.6.3")
+    (version "3.6.5")
     (source
      (origin
        (method git-fetch)
@@ -517,14 +771,13 @@ visual effects work for film.")
              (url "https://github.com/openscenegraph/OpenSceneGraph")
              (commit (string-append "OpenSceneGraph-" version))))
        (sha256
-        (base32
-         "0h32z15sa8sbq276j0iib0n707m8bs4p5ji9z2ah411446paad9q"))
+        (base32 "00i14h82qg3xzcyd8p02wrarnmby3aiwmz0z43l50byc9f8i05n1"))
        (file-name (git-file-name name version))))
     (properties
      `((upstream-name . "OpenSceneGraph")))
     (build-system cmake-build-system)
     (arguments
-     `(#:tests? #f ; no test target available
+     `(#:tests? #f                      ; no test target available
        ;; Without this flag, 'rd' will be added to the name of the
        ;; library binaries and break linking with other programs.
        #:build-type "Release"
@@ -537,14 +790,15 @@ visual effects work for film.")
        ("unzip" ,unzip)))
     (inputs
      `(("giflib" ,giflib)
+       ("libjpeg" ,libjpeg-turbo)       ; required for the JPEG texture plugin.
        ("jasper" ,jasper)
        ("librsvg" ,librsvg)
        ("libxrandr" ,libxrandr)
        ("ffmpeg" ,ffmpeg)
        ("mesa" ,mesa)))
-    (synopsis "High performance real-time graphics toolkit")
+    (synopsis "High-performance real-time graphics toolkit")
     (description
-     "The OpenSceneGraph is a high performance 3D graphics toolkit
+     "The OpenSceneGraph is a high-performance 3D graphics toolkit
 used by application developers in fields such as visual simulation, games,
 virtual reality, scientific visualization and modeling.")
     (home-page "http://www.openscenegraph.org")
@@ -575,8 +829,44 @@ virtual reality, scientific visualization and modeling.")
           "-DCMAKE_CXX_FLAGS=-fpermissive"
           ,flags))))
     (inputs
-     `(("libjpeg" ,libjpeg)
+     `(("libjpeg" ,libjpeg-turbo)
        ,@(package-inputs openscenegraph)))))
+
+
+(define-public openmw-openscenegraph
+  ;; OpenMW prefers its own fork of openscenegraph:
+  ;; https://wiki.openmw.org/index.php?title=Development_Environment_Setup#OpenSceneGraph.
+  (let ((commit "36a962845a2c87a6671fd822157e0729d164e940"))
+    (hidden-package
+     (package
+       (inherit openscenegraph)
+       (version (git-version "3.6" "1" commit))
+       (source
+        (origin
+          (method git-fetch)
+          (uri (git-reference
+                (url "https://github.com/OpenMW/osg/")
+                (commit commit)))
+          (file-name (git-file-name (package-name openscenegraph) version))
+          (sha256
+           (base32
+            "05yhgq3qm5q277y32n5sf36vx5nv5qd3zlhz4csgd3a6190jrnia"))))
+       (arguments
+        (substitute-keyword-arguments (package-arguments openscenegraph)
+          ((#:configure-flags flags)
+           ;; As per the above wiki link, the following plugins are enough:
+           `(append
+             '("-DBUILD_OSG_PLUGINS_BY_DEFAULT=0"
+               "-DBUILD_OSG_PLUGIN_OSG=1"
+               "-DBUILD_OSG_PLUGIN_DDS=1"
+               "-DBUILD_OSG_PLUGIN_TGA=1"
+               "-DBUILD_OSG_PLUGIN_BMP=1"
+               "-DBUILD_OSG_PLUGIN_JPEG=1"
+               "-DBUILD_OSG_PLUGIN_PNG=1"
+               "-DBUILD_OSG_DEPRECATED_SERIALIZERS=0"
+               ;; The jpeg plugin requires conversion between integers and booleans
+               "-DCMAKE_CXX_FLAGS=-fpermissive")
+             ,flags))))))))
 
 (define-public povray
   (package
@@ -604,7 +894,7 @@ virtual reality, scientific visualization and modeling.")
        ("pkg-config" ,pkg-config)))
     (inputs
      `(("boost" ,boost)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libpng" ,libpng)
        ("libtiff" ,libtiff)
        ("openexr" ,openexr)
@@ -615,7 +905,6 @@ virtual reality, scientific visualization and modeling.")
        (list "COMPILED_BY=Guix"
              (string-append "--with-boost-libdir="
                             (assoc-ref %build-inputs "boost") "/lib")
-             "CXXFLAGS=-std=c++11"
              "--disable-optimiz-arch")
        #:phases
        (modify-phases %standard-phases
@@ -705,7 +994,7 @@ realistic reflections, shading, perspective and other effects.")
        ("graphviz" ,graphviz)
        ("intltool" ,intltool)
        ("pkg-config" ,pkg-config)
-       ("xvfb" ,xorg-server)))
+       ("xvfb" ,xorg-server-for-tests)))
     (home-page "https://rapicorn.testbit.org/")
     (synopsis "Toolkit for rapid development of user interfaces")
     (description
@@ -758,7 +1047,7 @@ output.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/wdas/brdf.git")
+                      (url "https://github.com/wdas/brdf")
                       (commit commit)))
                 (sha256
                  (base32
@@ -797,7 +1086,7 @@ exec -a \"$0\" ~a/.brdf-real~%"
          ("glew" ,glew)
          ("freeglut" ,freeglut)
          ("zlib" ,zlib)))
-      (home-page "http://www.disneyanimation.com/technology/brdf.html")
+      (home-page "https://www.disneyanimation.com/technology/brdf.html")
       (synopsis
        "Analyze bidirectional reflectance distribution functions (BRDFs)")
       (description
@@ -866,28 +1155,25 @@ rendering SVG graphics.")
 (define-public python-pastel
   (package
     (name "python-pastel")
-    (version "0.1.0")
+    (version "0.2.0")
     (source
      (origin
        (method url-fetch)
        (uri (pypi-uri "pastel" version))
        (sha256
         (base32
-         "1hqbm934n5yjwn31aq8h7shrr0rcy326wrqfc856vyn0gr0sy21i"))))
+         "0dnaw44ss10i10z4ksy0xljknvjap7rb7g0b8p6yzm5x4g2my5a6"))))
     (build-system python-build-system)
+    (arguments
+     `(#:phases (modify-phases %standard-phases
+                  (replace 'check
+                    (lambda _ (invoke "pytest" "pastel" "tests/"))))))
     (native-inputs
      `(("python-pytest" ,python-pytest)))
     (home-page "https://github.com/sdispater/pastel")
     (synopsis "Library to colorize strings in your terminal")
     (description "Pastel is a simple library to help you colorize strings in
-your terminal.  It comes bundled with predefined styles:
-@enumerate
-@item info: green
-@item comment: yellow
-@item question: black on cyan
-@item error: white on red
-@end enumerate
-")
+your terminal.")
     (license license:expat)))
 
 (define-public python2-pastel
@@ -960,7 +1246,7 @@ your terminal.  It comes bundled with predefined styles:
      `(("imagemagick" ,imagemagick)
        ("lcms" ,lcms)
        ("fbida" ,fbida)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("zip" ,zip)
        ("perl" ,perl)
        ("perl-cpanel-json-xs" ,perl-cpanel-json-xs)
@@ -979,12 +1265,13 @@ requirements.")
 (define-public opensubdiv
   (package
     (name "opensubdiv")
-    (version "3_4_0")
+    (version "3.4.0")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                     (url "https://github.com/PixarAnimationStudios/OpenSubdiv")
-                     (commit (string-append "v" version))))
+                    (url "https://github.com/PixarAnimationStudios/OpenSubdiv")
+                    (commit (string-append "v" (string-join (string-split version #\.)
+                                                            "_")))))
               (file-name (git-file-name name version))
               (sha256
                (base32
@@ -1004,7 +1291,7 @@ requirements.")
                       (setenv "DISPLAY" ":1")
                       #t)))))
     (native-inputs
-     `(("xorg-server" ,xorg-server)))
+     `(("xorg-server" ,xorg-server-for-tests)))
     (inputs
      `(("glew" ,glew)
        ("libxrandr" ,libxrandr)
@@ -1013,7 +1300,7 @@ requirements.")
        ("libxi" ,libxi)
        ("zlib" ,zlib)
        ("glfw" ,glfw)))
-    (home-page "http://graphics.pixar.com/opensubdiv/")
+    (home-page "https://graphics.pixar.com/opensubdiv/")
     (synopsis "High performance subdivision surface evaluation")
     (description "OpenSubdiv is a set of libraries that implement high
 performance subdivision surface (subdiv) evaluation on massively parallel CPU
@@ -1029,7 +1316,7 @@ and GPU architectures.")
        (origin
          (method git-fetch)
          (uri (git-reference
-               (url "https://github.com/floriankirsch/OpenCSG.git")
+               (url "https://github.com/floriankirsch/OpenCSG")
                (commit (string-append "opencsg-"
                                       (string-map dot-to-dash version)
                                       "-release"))))
@@ -1059,3 +1346,88 @@ For example, two shapes can be combined by uniting them, by intersecting them,
 or by subtracting one shape from the other.")
       (home-page "http://www.opencsg.org/")
       (license license:gpl2))))
+
+(define-public coin3D
+  ;; The ‘4.0.0’ zip archive isn't stable, nor in fact a release.  See:
+  ;; https://bitbucket.org/Coin3D/coin/issues/179/coin-400-srczip-has-been-modified
+  (let ((revision 1)
+        (changeset "ab8d0e47a4de3230a8137feb39c142d6ba45f97d"))
+    (package
+      (name "coin3D")
+      (version
+       (simple-format #f "3.1.3-~A-~A" revision (string-take changeset 7)))
+      (source
+       (origin
+         (method hg-fetch)
+         (uri (hg-reference
+               (url "https://bitbucket.org/Coin3D/coin")
+               (changeset changeset)))
+         (file-name (git-file-name name version))
+         (sha256
+          (base32 "1ff44jz6lg4rylljvy69n1hcjh9y6achbv9jpn1cv2sf8cxn3r2j"))
+         (modules '((guix build utils)))
+         (snippet
+          '(begin
+             (for-each delete-file
+                       '("cfg/csubst.exe"
+                         "cfg/wrapmsvc.exe"))
+             #t))))
+      (build-system cmake-build-system)
+      (native-inputs
+       `(("doxygen" ,doxygen)
+         ("graphviz" ,graphviz)))
+      (inputs
+       `(("boost" ,boost)
+         ("freeglut" ,freeglut)
+         ("glew" ,glew)))
+      (arguments
+       `(#:configure-flags
+         (list
+          "-DCOIN_BUILD_DOCUMENTATION_MAN=ON"
+          (string-append "-DBOOST_ROOT="
+                         (assoc-ref %build-inputs "boost")))))
+      (home-page "https://bitbucket.org/Coin3D/coin/wiki/Home")
+      (synopsis
+       "High-level 3D visualization library with Open Inventor 2.1 API")
+      (description
+       "Coin is a 3D graphics library with an Application Programming Interface
+based on the Open Inventor 2.1 API.  For those who are not familiar with
+Open Inventor, it is a scene-graph based retain-mode rendering and model
+interaction library, written in C++, which has become the de facto
+standard graphics library for 3D visualization and visual simulation
+software in the scientific and engineering community.")
+      (license license:bsd-3))))
+
+(define-public superfamiconv
+  (package
+    (name "superfamiconv")
+    (version "0.8.8")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/Optiroc/SuperFamiconv")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32
+         "0848szv6a2b8wdganh6mw5i8vn8cqvn1kbwzx7mb9wlrf5wzqn37"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:tests? #f ; no tests
+       #:phases
+       (modify-phases %standard-phases
+         (delete 'configure)
+         (replace 'install
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let* ((outdir (assoc-ref outputs "out"))
+                    (bindir (string-append outdir "/bin")))
+               (install-file "bin/superfamiconv" bindir)
+               #t))))))
+    (home-page "https://github.com/Optiroc/SuperFamiconv")
+    (synopsis "Tile graphics converter supporting SNES, Game Boy Color
+and PC Engine formats")
+    (description "SuperFamiconv is a converter for tiled graphics, supporting
+the graphics formats of the SNES, Game Boy Color and PC Engine game consoles.
+Automated palette selection is supported.")
+    (license license:expat)))

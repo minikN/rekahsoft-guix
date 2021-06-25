@@ -5,15 +5,22 @@
 ;;; Copyright © 2015, 2016, 2017, 2019 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2015, 2017, 2018, 2019 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2015 David Hashe <david.hashe@dhashe.com>
-;;; Copyright © 2016, 2017 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2016, 2017, 2019 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2016 Kei Kebreau <kkebreau@posteo.net>
+;;; Copyright © 2017 Nikita <nikita@n0.is>
 ;;; Copyright © 2017, 2018 Mark H Weaver <mhw@netris.org>
-;;; Copyright © 2017, 2018, 2019 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2017, 2018, 2019, 2020 Marius Bakke <mbakke@fastmail.com>
 ;;; Copyright © 2017, 2018, 2019 Rutger Helling <rhelling@mykolab.com>
-;;; Copyright © 2017 Brendan Tildesley <mail@brendan.scot>
-;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2017, 2020 Brendan Tildesley <mail@brendan.scot>
+;;; Copyright © 2018, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018 Pierre Neidhardt <mail@ambrevar.xyz>
 ;;; Copyright © 2018 Stefan Stefanović <stefanx2ovic@gmail.com>
+;;; Copyright © 2019 Reza Alizadeh Majd <r.majd@pantherx.org>
+;;; Copyright © 2019, 2020 Guillaume Le Vaillant <glv@posteo.net>
+;;; Copyright © 2020 Jakub Kądziołka <kuba@kadziolka.net>
+;;; Copyright © 2020 Rene Saavedra <pacoon@protonmail.com>
+;;; Copyright © 2020 Nicolò Balzarotti <nicolo@nixo.xyz>
+;;; Copyright © 2020 Anders Thuné <asse.97@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -41,10 +48,12 @@
   #:use-module (guix build-system meson)
   #:use-module (guix build-system perl)
   #:use-module (guix build-system python)
+  #:use-module (guix build-system glib-or-gtk)
   #:use-module (gnu packages)
   #:use-module (gnu packages acl)
   #:use-module (gnu packages admin)
   #:use-module (gnu packages autotools)
+  #:use-module (gnu packages base)
   #:use-module (gnu packages bash)
   #:use-module (gnu packages boost)
   #:use-module (gnu packages check)
@@ -53,6 +62,8 @@
   #:use-module (gnu packages disk)
   #:use-module (gnu packages docbook)
   #:use-module (gnu packages documentation)
+  #:use-module (gnu packages fontutils)
+  #:use-module (gnu packages gawk)
   #:use-module (gnu packages gettext)
   #:use-module (gnu packages ghostscript)
   #:use-module (gnu packages gl)
@@ -66,13 +77,16 @@
   #:use-module (gnu packages libunwind)
   #:use-module (gnu packages libusb)
   #:use-module (gnu packages linux)
+  #:use-module (gnu packages man)
   #:use-module (gnu packages m4)
   #:use-module (gnu packages nss)
+  #:use-module (gnu packages package-management)
   #:use-module (gnu packages perl)
   #:use-module (gnu packages perl-check)
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages polkit)
   #:use-module (gnu packages python)
+  #:use-module (gnu packages python-crypto)
   #:use-module (gnu packages python-xyz)
   #:use-module (gnu packages sqlite)
   #:use-module (gnu packages valgrind)
@@ -104,12 +118,19 @@
        ("libxslt" ,libxslt)
        ("w3m" ,w3m)
        ("xmlto" ,xmlto)))
-    (propagated-inputs
-     `(("perl-file-mimeinfo" ,perl-file-mimeinfo) ; for mimeopen fallback
+    (inputs
+     `(("awk" ,gawk)
+       ("coreutils" ,coreutils)
+       ("grep" ,grep)
+       ("inetutils" ,inetutils) ; xdg-screensaver uses `hostname'
+       ("perl-file-mimeinfo" ,perl-file-mimeinfo) ; for mimeopen fallback
+       ("sed" ,sed)
        ("xprop" ,xprop) ; for Xfce detecting
        ("xset" ,xset))) ; for xdg-screensaver
     (arguments
      `(#:tests? #f   ; no check target
+       #:modules ((srfi srfi-26)
+                  ,@%gnu-build-system-modules)
        #:phases
        (modify-phases %standard-phases
          (add-after 'unpack 'patch-hardcoded-paths
@@ -141,6 +162,21 @@
                                  "/manpages/docbook.xsl man")))
                (setenv "STYLESHEET"
                        (string-append xsldoc "/html/docbook.xsl"))
+               #t)))
+         (add-after 'install 'wrap-executables
+           (lambda* (#:key inputs outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out")))
+               (with-directory-excursion (string-append out "/bin")
+                 (let ((path-ext
+                        (map (cute string-append <> "/bin")
+                             (cons out
+                                   (map (cute assoc-ref inputs <>)
+                                        '("awk" "coreutils" "grep" "inetutils"
+                                          "perl-file-mimeinfo" "sed" "xprop"
+                                          "xset"))))))
+                   (for-each (cute wrap-program <>
+                                   `("PATH" ":" prefix ,path-ext))
+                             (find-files "."))))
                #t))))))
     (home-page "https://www.freedesktop.org/wiki/Software/xdg-utils/")
     (synopsis "Freedesktop.org scripts for desktop integration")
@@ -150,19 +186,25 @@ freedesktop.org project.")
     (license license:expat)))
 
 (define-public libinput
+  ;; Updating this will rebuild over 700 packages through libinput-minimal.
   (package
     (name "libinput")
-    (version "1.13.4")
+    (version "1.15.5")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://freedesktop.org/software/libinput/"
                                   "libinput-" version ".tar.xz"))
               (sha256
                (base32
-                "07a0w7rak7rvnh6g4j0akwjxwinxfszc1xi9mrx12fv82k3mgsyk"))))
+                "15ww4jl3lcxyi8m8idg8canklbqv729gnwpkz7r98c1w8a7zq3m9"))))
     (build-system meson-build-system)
     (arguments
-     `(#:configure-flags '("-Ddocumentation=false")))
+     `(#:configure-flags '("-Ddocumentation=false")
+
+       ;; XXX: Using 'debug' or 'debugoptimized' pulls in an additional test that
+       ;; hangs, and the comments around it suggests that we should be using this
+       ;; Meson target anyway.
+       #:build-type "release"))
     (native-inputs
      `(("check" ,check)
        ("pkg-config" ,pkg-config)))
@@ -201,13 +243,14 @@ other applications that need to directly deal with input devices.")
     (name "libxdg-basedir")
     (version "1.2.0")
     (source (origin
-              (method url-fetch)
-              (uri (string-append
-                    "https://github.com/devnev/libxdg-basedir/archive/"
-                    name "-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/devnev/libxdg-basedir")
+                     (commit (string-append name "-" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "0s28c7sfwqimsmb3kn91mx7wi55fs3flhbmynl9k60rrllr00aqw"))))
+                "12yz53ny5bi2dii3zwcr6b9ay0yy1g1xv13jg097k7gjligcq11m"))))
     (build-system gnu-build-system)
     (arguments
      '(#:phases
@@ -232,7 +275,7 @@ the freedesktop.org XDG Base Directory specification.")
 (define-public elogind
   (package
     (name "elogind")
-    (version "241.3")
+    (version "243.4")
     (source (origin
               (method git-fetch)
               (uri (git-reference
@@ -241,7 +284,7 @@ the freedesktop.org XDG Base Directory specification.")
               (file-name (git-file-name name version))
               (sha256
                (base32
-                "0jpb55prqq5cm3w2gy9766cbaqknjvbrbniyshb8bz1q31vf4jlq"))))
+                "141frvgyk4fafcxsix94qc0d9ffrwksld8lqq4hq6xsgjlvv0mrs"))))
     (build-system meson-build-system)
     (arguments
      `(#:configure-flags
@@ -249,9 +292,11 @@ the freedesktop.org XDG Base Directory specification.")
               (sysconf (string-append out "/etc"))
               (libexec (string-append out "/libexec/elogind"))
               (dbuspolicy (string-append out "/etc/dbus-1/system.d"))
+              (shadow (assoc-ref %build-inputs "shadow"))
               (shepherd (assoc-ref %build-inputs "shepherd"))
               (halt-path (string-append shepherd "/sbin/halt"))
               (kexec-path "")           ;not available in Guix yet
+              (nologin-path (string-append shadow "/sbin/nologin"))
               (poweroff-path (string-append shepherd "/sbin/shutdown"))
               (reboot-path (string-append shepherd "/sbin/reboot")))
          (list
@@ -265,9 +310,10 @@ the freedesktop.org XDG Base Directory specification.")
           (string-append "-Dkexec-path=" kexec-path)
           (string-append "-Dpoweroff-path=" poweroff-path)
           (string-append "-Dreboot-path=" reboot-path)
+          (string-append "-Dnologin-path=" nologin-path)
           "-Dcgroup-controller=elogind"
+          "-Dman=true"
           ;; Disable some tests.
-          "-Dtests=false"
           "-Dslow-tests=false"))
        #:phases
        (modify-phases %standard-phases
@@ -276,6 +322,54 @@ the freedesktop.org XDG Base Directory specification.")
              (substitute* "meson.build"
                (("join_paths\\(bindir, 'pkttyagent'\\)")
                 "'\"/run/current-system/profile/bin/pkttyagent\"'"))
+             #t))
+         (add-after 'unpack 'adjust-dbus-socket-address
+           (lambda _
+             ;; Look for the D-Bus socket in /var/run instead of /run.  Remove
+             ;; this for versions > 243.4.
+             (substitute* "src/libelogind/sd-bus/bus-internal.h"
+               (("=/run/dbus/system_bus_socket")
+                "=/var/run/dbus/system_bus_socket"))
+             #t))
+         (add-after 'unpack 'adjust-tests
+           (lambda _
+             ;; This test tries to copy some bytes from /usr/lib/os-release,
+             ;; which does not exist in the build container.  Choose something
+             ;; more likely to be available.
+             (substitute* "src/test/test-copy.c"
+               (("/usr/lib/os-release")
+                "/etc/passwd"))
+             ;; Use a shebang that works in the build container.
+             (substitute* "src/test/test-exec-util.c"
+               (("#!/bin/sh")
+                (string-append "#!" (which "sh"))))
+             ;; Do not look for files or directories that do not exist.
+             (substitute* "src/test/test-fs-util.c"
+               (("usr") "etc")
+               (("/etc/machine-id") "/etc/passwd"))
+             ;; FIXME: Why is sd_id128_get_machine_app_specific failing.
+             ;; Disable for now by hooking into the kernel support check.
+             (substitute* "src/test/test-id128.c"
+               (("if \\(r == -EOPNOTSUPP\\)")
+                "if (1)"))
+             ;; This test expects that /sys is available.
+             (substitute* "src/test/test-mountpoint-util.c"
+               (("assert_se\\(path_is_mount_point\\(\"/sys.*")
+                ""))
+             ;; /bin/sh does not exist in the build container.
+             (substitute* "src/test/test-path-util.c"
+               (("/bin/sh") (which "sh")))
+             ;; This test uses sd_device_new_from_syspath to allocate a
+             ;; loopback device, but that fails because /sys is unavailable.
+             (substitute* "src/libelogind/sd-device/test-sd-device-thread.c"
+               ((".*sd_device_new_from_syspath.*/sys/class/net/lo.*")
+                "return 77;"))
+             ;; Most of these tests require cgroups or an actual live
+             ;; logind system so that it can flicker the monitor, etc.
+             ;; Just skip it until a more narrow selection can be made.
+             (substitute* "src/libelogind/sd-login/test-login.c"
+               (("r = sd_pid_get_slice.*")
+                "return 77;"))
              #t))
          (add-after 'unpack 'change-pid-file-path
            (lambda _
@@ -296,6 +390,7 @@ the freedesktop.org XDG Base Directory specification.")
     (inputs
      `(("linux-pam" ,linux-pam)
        ("libcap" ,libcap)
+       ("shadow" ,shadow)                    ;for 'nologin'
        ("shepherd" ,shepherd)                ;for 'halt' and 'reboot', invoked
                                              ;when pressing the power button
        ("dbus" ,dbus)
@@ -442,7 +537,7 @@ of a the system to know what users are logged in, and where.")
                                     (find-files ".." "^(kbd-model-map|language-fallback-map)$"))
                           #t)))))))
     (native-inputs (package-native-inputs elogind))
-    (inputs `(("libmount" ,util-linux)
+    (inputs `(("libmount" ,util-linux "lib")
               ("xkeyboard-config" ,xkeyboard-config)
               ("kbd" ,kbd)
               ,@(package-inputs elogind)))
@@ -458,7 +553,7 @@ with localed.  This package is extracted from the broader systemd package.")
 (define-public packagekit
   (package
     (name "packagekit")
-    (version "1.1.11")
+    (version "1.1.13")
     (source (origin
              (method url-fetch)
              (uri (string-append
@@ -467,7 +562,7 @@ with localed.  This package is extracted from the broader systemd package.")
                    "PackageKit-" version ".tar.xz"))
              (sha256
               (base32
-               "0fi6wn54y03zh5sn92nmmxkh4cd8yn44cyk0l8phw60ivfwmkh1q"))))
+               "1dr1laic65ld95abp2yxbwvijnngh0dwyb1x49x4wjm5rhq43dl8"))))
     (build-system gnu-build-system)
     (arguments
      `(#:tests? #f
@@ -582,7 +677,7 @@ applications, X servers (rootless or fullscreen) or other display servers.")
 (define-public wayland-protocols
   (package
     (name "wayland-protocols")
-    (version "1.17")
+    (version "1.18")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -590,7 +685,7 @@ applications, X servers (rootless or fullscreen) or other display servers.")
                     "wayland-protocols-" version ".tar.xz"))
               (sha256
                (base32
-                "0bw1sqixqk2a7mqw630cs4dlgcp5yib90vyikzm3lr05jz7ij4yz"))))
+                "1cvl93h83ymbfhb567jv5gzyq08181w7c46rsw4xqqqpcvkvfwrx"))))
     (build-system gnu-build-system)
     (inputs
      `(("wayland" ,wayland)))
@@ -604,14 +699,15 @@ applications, X servers (rootless or fullscreen) or other display servers.")
 (define-public waylandpp
   (package
     (name "waylandpp")
-    (version "0.2.5")
+    (version "0.2.7")
     (home-page "https://github.com/NilsBrause/waylandpp")
     (source (origin
               (method git-fetch)
               (uri (git-reference (url home-page) (commit version)))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "16h57hzd688664qcyznzhjp3hxipdkzgv46x82yhkww24av8b55n"))))
+                "1r4m0xhvwpcqxrqvp3hz1bzlkxqj2jiymd5r6hj8xjzz536hyprz"))))
     (build-system cmake-build-system)
     (arguments
      `(#:tests? #f))                    ;no tests
@@ -652,7 +748,7 @@ applications, X servers (rootless or fullscreen) or other display servers.")
        ("lcms" ,lcms)
        ("libevdev" ,libevdev)
        ("libinput" ,libinput-minimal)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libunwind" ,libunwind)
        ("libva" ,libva)
        ("libwebp" ,libwebp)
@@ -715,10 +811,47 @@ composes the final output.  A Wayland compositor is essentially a
 multiplexer to the KMS/DRM Linux kernel devices.")
     (license license:expat)))
 
+(define-public wev
+  ;; There simple tool has no version or release yet.
+  (let ((commit "cee3dfb2a8b40ee303611018c68ae182d84a7f46"))
+    (package
+      (name "wev")
+      (version (string-append "2020-02-06-" (string-take commit 8)))
+      (source (origin
+                (method git-fetch)
+                (uri (git-reference
+                      (url "https://git.sr.ht/~sircmpwn/wev")
+                      (commit commit)))
+                (file-name (git-file-name name version))
+                (sha256
+                 (base32
+                  "0l71v3fzgiiv6xkk365q1l08qvaymxd4kpaya6r2g8yzkr7i2hms"))))
+      (build-system gnu-build-system)
+      (arguments
+       `(#:tests? #f ; no tests
+         #:make-flags
+         (list "CC=gcc" (string-append "PREFIX=" (assoc-ref %outputs "out")))
+         #:phases
+         (modify-phases %standard-phases
+           (delete 'configure))))
+      (native-inputs
+       `(("pkg-config" ,pkg-config)
+         ("scdoc" ,scdoc)))
+      (inputs
+       `(("libxkbcommon" ,libxkbcommon)
+         ("wayland" ,wayland)
+         ("wayland-protocols" ,wayland-protocols)))
+      (home-page "https://git.sr.ht/~sircmpwn/wev")
+      (synopsis "Wayland event viewer")
+      (description "Wev is a tool that opens a window, printing all events
+sent to a Wayland window, such as key presses.  It is analogous to the X11 tool
+XEv.")
+      (license license:expat))))
+
 (define-public exempi
   (package
     (name "exempi")
-    (version "2.5.1")
+    (version "2.5.2")
     (source (origin
              (method url-fetch)
              (uri (string-append
@@ -726,11 +859,22 @@ multiplexer to the KMS/DRM Linux kernel devices.")
                    name "-" version ".tar.bz2"))
              (sha256
               (base32
-               "1j4vx054l1c2cggw4aka4iw48jkcf68qk5y064pbqw1k3ddks2qh"))))
+               "1mdfxb36p8251n5m7l55gx3fcqpk46yz9v568xfr8igxmqa47xaj"))))
     (build-system gnu-build-system)
     (arguments
      `(#:configure-flags (list (string-append "--with-boost="
-                               (assoc-ref %build-inputs "boost")))))
+                                              (assoc-ref %build-inputs "boost")))
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'install 'remove-static-library
+           (lambda* (#:key outputs #:allow-other-keys)
+             ;; XXX: Some tests fail to build with --disable-static due to
+             ;; symbols not being visible in the shared library:
+             ;; <https://gitlab.freedesktop.org/libopenraw/exempi/-/issues/17>.
+             ;; Simply delete the static library instead to save ~4.3 MiB.
+             (delete-file (string-append (assoc-ref outputs "out")
+                                         "/lib/libexempi.a"))
+             #t)))))
     (native-inputs
      `(("boost" ,boost))) ; tests
     (inputs
@@ -769,7 +913,7 @@ Analysis and Reporting Technology) functionality.")
 (define-public udisks
   (package
     (name "udisks")
-    (version "2.7.7")
+    (version "2.8.4")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -777,7 +921,7 @@ Analysis and Reporting Technology) functionality.")
                     version "/udisks-" version ".tar.bz2"))
               (sha256
                (base32
-                "1dnlxqgy9v0mjdknv3b1s64szdykyk3hk0rxj3chwhpd415lrwgs"))))
+                "06cq52kp1nyy15qzylywy9s7hhhqc45k0s3y68crf0zsmjyng0yj"))))
     (build-system gnu-build-system)
     (native-inputs
      `(("docbook-xml" ,docbook-xml-4.3) ; to build the manpages
@@ -806,7 +950,6 @@ Analysis and Reporting Technology) functionality.")
        #:disallowed-references ("doc")            ;enforce separation of "doc"
        #:configure-flags
        (list "--enable-man"
-             "--enable-gtk-doc" ; Without this the HTML doc does not seem to build automatically.
              "--enable-available-modules" ; Such as lvm2, btrfs, etc.
              "--localstatedir=/var"
              "--enable-fhs-media"     ;mount devices in /media, not /run/media
@@ -870,13 +1013,13 @@ message bus.")
   (package
     (name "accountsservice")
     (version "0.6.50")
-    (source (origin
-              (method url-fetch)
-              (uri (string-append "https://www.freedesktop.org/software/"
-                                  name "/" name "-" version ".tar.xz"))
-              (sha256
-               (base32
-                "0jn7vg1z4vxnna0hl33hbcb4bb3zpilxc2vyclh24vx4vvsjhn83"))))
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "https://www.freedesktop.org/software/"
+                           "accountsservice/accountsservice-" version ".tar.xz"))
+       (sha256
+        (base32 "0jn7vg1z4vxnna0hl33hbcb4bb3zpilxc2vyclh24vx4vvsjhn83"))))
     (build-system gnu-build-system)
     (arguments
      '(#:tests? #f ; XXX: tests require DocBook 4.1.2
@@ -886,6 +1029,11 @@ message bus.")
          "--enable-elogind")
        #:phases
        (modify-phases %standard-phases
+         (add-after 'unpack 'patch-/bin/cat
+           (lambda _
+             (substitute* "src/user.c"
+               (("/bin/cat") (which "cat")))
+             #t))
          (add-before
           'configure 'pre-configure
           (lambda* (#:key inputs #:allow-other-keys)
@@ -920,7 +1068,7 @@ interfaces, based on the useradd, usermod and userdel commands.")
 (define-public libmbim
   (package
     (name "libmbim")
-    (version "1.20.0")
+    (version "1.20.2")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -928,7 +1076,7 @@ interfaces, based on the useradd, usermod and userdel commands.")
                     "libmbim-" version ".tar.xz"))
               (sha256
                (base32
-                "0rm8j4zh9gnb3yi324cnxy91gdimc1vg5gv1kxc2m5lymb3wdxrc"))))
+                "16q550sy84izi5ic3sbbhjnnka2fwhj8vvdrirpn9xspbsgbc3sm"))))
     (build-system gnu-build-system)
     (native-inputs
      `(("glib:bin" ,glib "bin") ; for glib-mkenums
@@ -951,7 +1099,7 @@ which speak the Mobile Interface Broadband Model (MBIM) protocol.")
 (define-public libqmi
   (package
     (name "libqmi")
-    (version "1.22.4")
+    (version "1.24.14")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -959,7 +1107,7 @@ which speak the Mobile Interface Broadband Model (MBIM) protocol.")
                     "libqmi-" version ".tar.xz"))
               (sha256
                (base32
-                "1wgrrb9vb3myl8xgck8ik86876ycbg8crylybs3ssi21vrxqwnsc"))))
+                "0zshxqbm9ldybgrzh7pjmwmfjvvvfd0xh8qhgl8xiqdb9ply73r0"))))
     (build-system gnu-build-system)
     (inputs
      `(("libgudev" ,libgudev)))
@@ -982,7 +1130,7 @@ which speak the Qualcomm MSM Interface (QMI) protocol.")
 (define-public modem-manager
   (package
     (name "modem-manager")
-    (version "1.4.14")
+    (version "1.12.10")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -990,15 +1138,11 @@ which speak the Qualcomm MSM Interface (QMI) protocol.")
                     "ModemManager-" version ".tar.xz"))
               (sha256
                (base32
-                "18hvffwcncwz14kdzk42jbkh362n0kjv3kgx7axbqx572pawvrmb"))))
+                "1apq9camys2gaw6y6ic1ld20cncfwpmxnzvh4j5zkbbjpf5hbcxj"))))
     (build-system gnu-build-system)
     (arguments
      '(#:configure-flags
-       `(,(string-append "--with-udev-base-dir=" %output "/lib/udev")
-         ;; FIXME: Without this flag the build fails with "error: assignment
-         ;; from incompatible pointer type" whenever the return value of
-         ;; "g_object_ref" is assigned to "ctx->self".
-         "--disable-more-warnings")))
+       `(,(string-append "--with-udev-base-dir=" %output "/lib/udev"))))
     (native-inputs
      `(("glib:bin" ,glib "bin") ; for glib-mkenums
        ("gobject-introspection" ,gobject-introspection)
@@ -1095,14 +1239,15 @@ messaging clients such as Empathy, GNOME Shell or KDE Telepathy.")
 (define-public telepathy-mission-control
   (package
     (name "telepathy-mission-control")
-    (version "5.16.4")
-    (source (origin
-              (method url-fetch)
-              (uri (string-append "https://telepathy.freedesktop.org/releases/"
-                                  name "/" name "-" version ".tar.gz"))
-              (sha256
-               (base32
-                "1jz6wwgsfxixha6ys2hbzbk5faqnj9kh2m5qdlgx5anqgandsscp"))))
+    (version "5.16.5")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "https://telepathy.freedesktop.org/releases/"
+                           "telepathy-mission-control/"
+                           "telepathy-mission-control-" version ".tar.gz"))
+       (sha256
+        (base32 "00xxv38cfdirnfvgyd56m60j0nkmsv5fz6p2ydyzsychicxl6ssc"))))
     (build-system gnu-build-system)
     (native-inputs
      `(("glib:bin" ,glib "bin") ; for glib-compile-schemas, etc.
@@ -1156,28 +1301,36 @@ wish to perform colour calibration.")
 (define-public libfprint
   (package
     (name "libfprint")
-    (version "0.6.0")
-    (source (origin
-              (method url-fetch)
-              (uri (string-append "https://people.freedesktop.org/~hadess/"
-                                  name "-" version ".tar.xz"))
-              (sha256
-               (base32
-                "1giwh2z63mn45galsjb59rhyrvgwcy01hvvp4g01iaa2snvzr0r5"))))
-    (build-system gnu-build-system)
+    (version "1.90.1")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://gitlab.freedesktop.org/libfprint/libfprint")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "0fdaak7qjr9b4482g7fhhqpyfdqpxq5kpmyzkp7f5i7qq2ynb78a"))))
+    (build-system meson-build-system)
     (arguments
-     '(#:configure-flags (list (string-append "--with-udev-rules-dir="
-                                              (assoc-ref %outputs "out")
-                                              "/lib/udev/rules.d"))))
+     '(#:configure-flags
+       (list (string-append "-Dudev_rules_dir=" (assoc-ref %outputs "out")
+                            "/lib/udev/rules.d"))))
     (native-inputs
-     `(("pkg-config" ,pkg-config)))
+     `(("eudev" ,eudev)
+       ("glib:bin" ,glib "bin")         ; for {glib-,}mkenums
+       ("gobject-introspection" ,gobject-introspection)
+       ("gtk-doc" ,gtk-doc)             ; for 88 KiB of API documentation
+       ("pkg-config" ,pkg-config)))
     (inputs
-     `(("libusb" ,libusb)
-       ("nss" ,nss)
-       ("glib" ,glib)
-       ("eudev" ,eudev)
+     `(("glib" ,glib)
+       ("gusb" ,gusb)
+       ("nss" ,nss)                     ; for the URU4x00 driver
+
+       ;; Replacing this with cairo works but just results in a reference
+       ;; (only) to pixman in the end.
        ("pixman" ,pixman)))
-    (home-page "https://www.freedesktop.org/wiki/Software/fprint/libfprint/")
+    (home-page "https://fprint.freedesktop.org/")
     (synopsis "Library to access fingerprint readers")
     (description
      "libfprint is a library designed to make it easy for application
@@ -1188,37 +1341,90 @@ software.")
 (define-public fprintd
   (package
     (name "fprintd")
-    (version "0.7.0")
-    (source (origin
-              (method url-fetch)
-              (uri (string-append
-                    "https://people.freedesktop.org/~hadess/fprintd-"
-                    version ".tar.xz"))
-              (sha256
-               (base32
-                "05915i0bv7q62fqrs5diqwr8dz3pwqa1c1ivcgggkjyw0xk4ldp5"))))
-    (build-system gnu-build-system)
+    (version "1.90.1")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://gitlab.freedesktop.org/libfprint/fprintd")
+             (commit version)))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "0mbzk263x7f58i9cxhs44mrngs7zw5wkm62j5r6xlcidhmfn03cg"))))
+    (build-system meson-build-system)
     (arguments
-     '(#:phases (modify-phases %standard-phases
-                  (add-before 'build 'set-sysconfdir
-                    (lambda* (#:key outputs #:allow-other-keys)
-                      ;; Work around a bug whereby the 'SYSCONFDIR' macro
-                      ;; expands literally to '${prefix}/etc'.
-                      (let ((out (assoc-ref outputs "out")))
-                        (substitute* "src/main.c"
-                          (("SYSCONFDIR, \"fprintd.conf\"")
-                           (string-append "\"" out "/etc\", "
-                                          "\"fprintd.conf\"")))
-                        #t))))))
+     `(#:configure-flags
+       (list "-Dsystemd_system_unit_dir=/tmp"
+             (string-append "-Ddbus_service_dir=" (assoc-ref %outputs "out")
+                            "/share/dbus-1/system-services")
+             (string-append "-Dpam_modules_dir=" (assoc-ref %outputs "out")
+                            "/lib/security"))
+       #:phases
+       (modify-phases %standard-phases
+         (add-before 'configure 'patch-output-directories
+           ;; Install files to our output, not that of the ‘owner’ package.
+           ;; These are not exposed as Meson options and must be patched.
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out")))
+               (substitute* "meson.build"
+                 (("(dbus_interfaces_dir = ).*" _ set)
+                  (string-append set "'" out "/share/dbus-1/interfaces'\n"))
+                 (("(polkit_policy_directory = ).*" _ set)
+                  (string-append set "'" out "/share/polkit-1/actions/'\n"))
+                 (("(dbus_data_dir = ).*" _ set)
+                  (string-append set "get_option('prefix')"
+                                 " / get_option('datadir')\n")))
+               #t)))
+         (add-before 'configure 'patch-mistake
+           (lambda _
+             (substitute* "meson.build"
+               (("(storage_path = )(get_option\\('prefix'\\))(.*)"
+                 _ set mistake value)
+                (string-append set "''" value "\n")))
+             #t))
+         (add-before 'configure 'patch-systemd-dependencies
+           (lambda _
+             (substitute* "meson.build"
+               (("'(libsystemd|systemd)'") "'libelogind'"))
+             #t))
+         (add-before 'configure 'ignore-test-dependencies
+           (lambda _
+             (substitute* "meson.build"
+               (("pam_wrapper_dep .*") "")
+               ((".*'(cairo|dbus|dbusmock|gi|pypamtest)': .*,.*") ""))
+             #t))
+         (add-before 'install 'no-polkit-magic
+           ;; Meson ‘magically’ invokes pkexec, which fails (not setuid).
+           (lambda _
+             (setenv "PKEXEC_UID" "something")
+             #t)))
+       #:tests? #f))                    ; XXX depend on unpackaged packages
     (native-inputs
-     `(("pkg-config" ,pkg-config)
-       ("intltool" ,intltool)))
+     `(("gettext" ,gettext-minimal)
+       ("glib:bin" ,glib "bin")         ; for glib-genmarshal
+       ("libxslt" ,libxslt)             ; for xsltproc
+       ("perl" ,perl)                   ; for pod2man
+       ("pkg-config" ,pkg-config)))
+       ;; For tests.
+       ;;("pam_wrapper" ,pam_wrapper)
+       ;;("python-pycairo" ,python-pycairo)
+       ;;("python-dbus" ,python-dbus)
+       ;;("python-dbusmock" ,python-dbusmock)
+       ;;("python-pygobject" ,python-pygobject)
+       ;;("python-pypamtest" ,python-pypamtest)
     (inputs
-     `(("libfprint" ,libfprint)
-       ("dbus-glib" ,dbus-glib)
+     `(("dbus-glib" ,dbus-glib)
+       ("elogind" ,elogind)
+       ("libfprint" ,libfprint)
+       ("linux-pam" ,linux-pam)
        ("polkit" ,polkit)
-       ("linux-pam" ,linux-pam)))                 ;for pam_fprintd
-    (home-page "https://www.freedesktop.org/wiki/Software/fprint/fprintd/")
+
+       ;; XXX These are in libfprint's Requires.private.  Meson refuses to grant
+       ;; the ‘libfprint-2’ dependency if they are not provided here.
+       ("gusb" ,gusb)
+       ("nss" ,nss)
+       ("pixman" ,pixman)))
+    (home-page "https://fprint.freedesktop.org/")
     (synopsis "D-Bus daemon that exposes fingerprint reader functionality")
     (description
      "fprintd is a D-Bus daemon that offers functionality of libfprint, a
@@ -1230,14 +1436,15 @@ to applications simultaneously competing for fingerprint readers.")
 (define-public desktop-file-utils
   (package
     (name "desktop-file-utils")
-    (version "0.23")
+    (version "0.24")
     (source (origin
               (method url-fetch)
-              (uri (string-append "https://www.freedesktop.org/software/" name
-                                  "/releases/" name "-" version ".tar.xz"))
+              (uri (string-append "https://www.freedesktop.org/software/"
+                                  "desktop-file-utils/releases/"
+                                  "desktop-file-utils-" version ".tar.xz"))
               (sha256
                (base32
-                "119kj2w0rrxkhg4f9cf5waa55jz1hj8933vh47vcjipcplql02bc"))))
+                "1nc3bwjdrpcrkbdmzvhckq0yngbcxspwj2n1r7jr3gmx1jk5vpm1"))))
     (build-system gnu-build-system)
     (native-inputs
      `(("pkg-config" ,pkg-config)))
@@ -1409,3 +1616,413 @@ This package also contains two related utilities:
 their MIME type.
 @end itemize")
     (license license:perl-license)))
+
+(define-public uchardet
+  (package
+    (name "uchardet")
+    (version "0.0.6")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (string-append "https://www.freedesktop.org/software/"
+                            name "/releases/" name "-" version ".tar.xz"))
+        (sha256
+          (base32 "0q9c02b6nmw41yfsiqsnphgc3f0yg3fj31wkccp47cmwvy634lc3"))))
+    (build-system cmake-build-system)
+    (home-page "https://www.freedesktop.org/wiki/Software/uchardet/")
+    (synopsis "Encoding detector library")
+    (description "uchardet is an encoding detector library, which takes a
+sequence of bytes in an unknown character encoding without any additional
+information, and attempts to determine the encoding of the text.  Returned
+encoding names are iconv-compatible.")
+
+    ;; This combines code under MPL 1.1, LGPL 2.1+, and GPL 2.0+, so the
+    ;; combination is GPL 2.0+.
+    (license license:gpl2+)))
+
+(define-public udiskie
+  (package
+    (name "udiskie")
+    (version "2.1.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "udiskie" version))
+       (sha256
+        (base32
+         "0smib8vbs9q37n7ynhzyw97q16fgdkcdw7fw69lci0xvyq00v1dz"))
+       ;; Remove support for the libappindicator library of the
+       ;; Unity desktop environment which is not in Guix.
+       (patches (search-patches "udiskie-no-appindicator.patch"))))
+    (build-system python-build-system)
+    (native-inputs
+     `(("asciidoc" ,asciidoc)
+       ("gettext" ,gettext-minimal)
+       ("gobject-introspection" ,gobject-introspection)))
+    (inputs
+     `(("gobject-introspection" ,gobject-introspection)
+       ("gtk+" ,gtk+)
+       ("libnotify" ,libnotify)
+       ("udisks" ,udisks)))
+    (propagated-inputs
+     `(("python-docopt" ,python-docopt)
+       ("python-pygobject" ,python-pygobject)
+       ("python-keyutils" ,python-keyutils)
+       ("python-pyxdg" ,python-pyxdg)
+       ("python-pyyaml" ,python-pyyaml)))
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-after 'install 'wrap-gi-typelib
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out"))
+                   (gi-typelib-path (getenv "GI_TYPELIB_PATH")))
+               (wrap-program (string-append out "/bin/udiskie")
+                 `("GI_TYPELIB_PATH" ":" prefix (,gi-typelib-path))))
+             #t)))))
+    (home-page "https://github.com/coldfix/udiskie")
+    (synopsis "Automounter for removable media")
+    (description
+     "The @command{udiskie} program is a udisks2 front-end that
+manages removable media such as CDs or flash drives from userspace.
+
+Its features include:
+
+@itemize
+@item automount removable media,
+@item notifications,
+@item tray icon,
+@item command line tools for manual (un)mounting,
+@item LUKS encrypted devices,
+@item unlocking with keyfiles,
+@item loop devices (mounting ISO archives),
+@item password caching.
+@end itemize
+")
+    (license license:expat)))
+
+(define-public plymouth
+  (package
+    (name "plymouth")
+    (version "0.9.4")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "https://www.freedesktop.org/software/"
+                           "plymouth/releases/" name "-" version ".tar.xz"))
+       (sha256
+        (base32
+         "0l8kg7b2vfxgz9gnrn0v2w4jvysj2cirp0nxads5sy05397pl6aa"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:configure-flags
+       (list (string-append "--with-logo="
+                            "/etc/plymouth/logo.png")
+             (string-append "--with-background-color="
+                            "0x00ff00")
+             (string-append "--with-background-start-color-stop="
+                            "0xff0000")
+             (string-append "--with-background-end-color-stop="
+                            "0x0000ff")
+             "--localstatedir=/var"
+             "--with-boot-tty=/dev/console"
+             "--without-system-root-install"
+             "--without-rhgb-compat-link"
+             "--enable-drm"
+             "--disable-systemd-integration"
+             ;; Disable GTK to dramatically reduce the closure
+             ;; size from ~800 MiB to a little more than 200 MiB
+             "--disable-gtk")
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'make-reproducible
+           (lambda _
+             (substitute* "src/main.c"
+               (("__DATE__") "\"guix\""))
+             #t))
+         (add-before 'configure 'fix-docbook
+           (lambda* (#:key inputs #:allow-other-keys)
+             (substitute* "docs/Makefile.in"
+               (("http://docbook.sourceforge.net/release/xsl/current/manpages/docbook.xsl")
+                (string-append (assoc-ref inputs "docbook-xsl")
+                               "/xml/xsl/docbook-xsl-"
+                               ,(package-version docbook-xsl)
+                               "/manpages/docbook.xsl")))
+             (setenv "XML_CATALOG_FILES"
+                     (string-append (assoc-ref inputs "docbook-xml")
+                                    "/xml/dtd/docbook/catalog.xml"))
+             #t)))))
+    (inputs
+     `(("glib" ,glib)
+       ("pango" ,pango)
+       ("libdrm" ,libdrm)
+       ("libpng" ,libpng)
+       ("eudev" ,eudev)))
+    (native-inputs
+     `(("pkg-config" ,pkg-config)
+       ("libxslt" ,libxslt)
+       ("docbook-xsl" ,docbook-xsl)
+       ("docbook-xml" ,docbook-xml)))
+    (synopsis "Graphical boot animation (splash) and logger")
+    (home-page "https://www.freedesktop.org/wiki/Software/Plymouth/")
+    (description
+     "Plymouth is an application that runs very early in the boot process and
+that provides a graphical boot animation while the boot process happens in the
+background.  You are not supposed to install this on your own, it is only
+useful with system integration.")
+    (license license:gpl2+)))
+
+(define-public libindicator
+  (package
+    (name "libindicator")
+    (version "12.10.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append
+             "https://launchpad.net/libindicator/"
+             (version-major+minor version) "/" version
+             "/+download/libindicator-" version ".tar.gz"))
+       (sha256
+        (base32
+         "0zs4z7l9b57jldwz0ban77f3c2zq43ambd0dssf5qg9i216f9lmj"))))
+    (build-system gnu-build-system)
+    (native-inputs
+     `(("dbus-test-runner" ,dbus-test-runner)
+       ("glib:bin" ,glib "bin")
+       ("pkg-config" ,pkg-config)
+       ("xvfb" ,xorg-server-for-tests)))
+    (inputs
+     `(("gtk+" ,gtk+)
+       ("glib" ,glib)))
+    (arguments
+     `(#:make-flags '("CFLAGS=-Wno-error")
+       #:phases
+       (modify-phases %standard-phases
+         (add-before 'configure 'fix-missing-space-for-libm
+           (lambda* (#:key outputs #:allow-other-keys)
+             (substitute* "configure"
+               (("LIBM=\"-lm\"") "LIBM=\" -lm\""))
+             #t))
+         (add-before 'configure 'fix-test-paths
+           (lambda* (#:key inputs #:allow-other-keys)
+             (substitute* "tests/Makefile.in"
+               (("/bin/sh") (which "sh"))
+               (("#!/bin/bash") (string-append "#!" (which "bash")))
+               (("/usr/share")
+                (string-append (assoc-ref inputs "dbus-test-runner") "/share")))
+             #t)))))
+    (home-page "https://launchpad.net/libindicator")
+    (synopsis "Ayatana indicators symbols and functions")
+    (description "A set of symbols and convenience functions for Ayatana indicators.")
+    (license license:gpl3)))
+
+(define-public libappindicator
+  (package
+    (name "libappindicator")
+    (version "12.10.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append
+             "https://launchpad.net/libappindicator/"
+             (version-major+minor version) "/" version
+             "/+download/libappindicator-" version ".tar.gz"))
+       (sha256
+        (base32
+         "17xlqd60v0zllrxp8bgq3k5a1jkj0svkqn8rzllcyjh8k0gpr46m"))))
+    (build-system gnu-build-system)
+    (native-inputs
+     `(("dbus-test-runner" ,dbus-test-runner)
+       ("glib:bin" ,glib "bin")
+       ("gobject-introspection" ,gobject-introspection)
+       ("pkg-config" ,pkg-config)
+       ("xvfb" ,xorg-server-for-tests)))
+    (inputs
+     `(("dbus-glib" ,dbus-glib)
+       ("gtk+" ,gtk+)
+       ("libdbusmenu" ,libdbusmenu)
+       ("libindicator" ,libindicator)
+       ("python@2" ,python-2)
+       ("python2-pygtk" ,python2-pygtk)
+       ("python2-pygobject-2" ,python2-pygobject-2)
+       ;; ("mono" ,mono) ; requires non-packaged gapi
+       ("vala" ,vala)))
+    (arguments
+     ;; FIXME: do not hardcode gtk version
+     `(#:configure-flags '("--with-gtk=3")
+       #:make-flags '("CFLAGS=-Wno-error")
+       #:tests? #f ; One test does not pass (it succeeds when it should fail).
+       #:phases
+       (modify-phases %standard-phases
+         (add-before 'configure 'fix-paths
+           (lambda* (#:key inputs #:allow-other-keys)
+             (substitute* "docs/reference/Makefile.in"
+               (("/bin/sh") (which "sh")))
+             (substitute* "tests/Makefile.in"
+               (("/bin/sh") (which "sh"))
+               (("#!/bin/bash") (string-append "#!" (which "bash")))
+               (("/usr") (string-append (assoc-ref inputs "dbus-test-runner"))))
+             (substitute* "bindings/python/Makefile.in"
+               (("-lappindicator") "-lappindicator3"))
+             #t))
+         (add-after 'unpack 'fix-codegen-path
+           (lambda _
+             (substitute* "configure"
+               (("PYGTK_CODEGEN=.*") "PYGTK_CODEGEN=pygtk-codegen-2.0\n"))
+             #t))
+         (add-after 'build 'build-bindings
+           (lambda _
+             (invoke "make" "-C" "bindings/python")
+             #t))
+         (add-after 'install 'install-bindings
+           (lambda _
+             (invoke "make" "-C" "bindings/python" "install")
+             #t)))))
+    (home-page "https://launchpad.net/libappindicator")
+    (synopsis "Allow applications to export a menu into the Unity menu bar")
+    (description "A library to allow applications to export a menu, originally
+into the Unity menu bar.  Based on KSNI, it also works in KDE and will
+fallback to generic Systray support if none of those are available.")
+    (license license:lgpl2.1+)))
+
+(define-public libportal
+  (let ((commit "bff3289")
+        (revision "1"))
+    (package
+      (name "libportal")
+      (version (git-version "0.3" revision commit))
+      (source (origin
+                (method git-fetch)
+                (uri (git-reference
+                      (url "https://github.com/flatpak/libportal")
+                      (commit commit)))
+                (file-name (git-file-name name version))
+                (sha256
+                 (base32
+                  "104b91qircr1i9jkmm6f725awywky52aimrki303kiaadn2v8b5i"))))
+      (build-system meson-build-system)
+      (arguments
+       `(#:phases
+         (modify-phases %standard-phases
+           (add-after 'install 'move-doc
+             (lambda* (#:key outputs #:allow-other-keys)
+               (let ((out (assoc-ref outputs "out"))
+                     (doc (assoc-ref outputs "doc"))
+                     (html "/share/gtk-doc"))
+                 (copy-recursively (string-append out html)
+                                   (string-append doc html))
+                 (delete-file-recursively (string-append out html))
+                 #t))))))
+      (native-inputs
+       `(("pkg-config" ,pkg-config)
+         ("gtk-doc" ,gtk-doc)
+         ("docbook-xsl" ,docbook-xsl)
+         ("docbook-xml" ,docbook-xml)
+         ("libxml2" ,libxml2)
+         ("glib:bin" ,glib "bin")))
+      (propagated-inputs
+       `(("glib" ,glib)))
+      (outputs '("out" "doc"))
+      (home-page "https://github.com/flatpak/libportal")
+      (synopsis "Flatpak portal library")
+      (description
+       "libportal provides GIO-style async APIs for most Flatpak portals.")
+      (license license:lgpl2.1+))))
+
+(define-public xdg-desktop-portal
+  (package
+    (name "xdg-desktop-portal")
+    (version "1.7.2")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/flatpak/xdg-desktop-portal")
+                     (commit version)))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0rkwpsmbn3d3spkzc2zsd50l2r8pp4la390zcpsawaav8w7ql7xm"))))
+    (build-system gnu-build-system)
+    (native-inputs
+     `(("pkg-config" ,pkg-config)
+       ("autoconf" ,autoconf)
+       ("automake" ,automake)
+       ("libtool" ,libtool)
+       ("glib:bin" ,glib "bin")
+       ("which" ,which)
+       ("gettext" ,gettext-minimal)))
+    (inputs
+     `(("glib" ,glib)
+       ("flatpak" ,flatpak)
+       ("fontconfig" ,fontconfig)
+       ("json-glib" ,json-glib)
+       ("libportal" ,libportal)
+       ("dbus" ,dbus)
+       ("geoclue" ,geoclue)
+       ("pipewire" ,pipewire-0.3)
+       ("fuse" ,fuse)))
+    (home-page "https://github.com/flatpak/xdg-desktop-portal")
+    (synopsis "Desktop integration portal for sandboxed apps")
+    (description
+     "xdg-desktop-portal is a @dfn{portal front-end service} for Flatpak and
+possibly other desktop containment frameworks.  It works by exposing a series
+of D-Bus interfaces known as portals under a well-known
+name (@code{org.freedesktop.portal.Desktop}) and object
+path (@code{/org/freedesktop/portal/desktop}).
+
+The portal interfaces include APIs for file access, opening URIs, printing
+and others.")
+    (license license:lgpl2.1+)))
+
+(define-public xdg-desktop-portal-gtk
+  (package
+    (name "xdg-desktop-portal-gtk")
+    (version "1.7.1")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/flatpak/xdg-desktop-portal-gtk")
+                     (commit version)))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "183iha9dxmvprn99ymgz17jx1lyn1fj5jyj6ghxl716zn9mxmird"))))
+    (build-system glib-or-gtk-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'po-chmod
+           (lambda _
+             ;; Make sure 'msgmerge' can modify the PO files.
+             (for-each (lambda (po)
+                         (chmod po #o666))
+                       (find-files "po" "\\.po$"))
+             #t)))))
+    (native-inputs
+     `(("pkg-config" ,pkg-config)
+       ("autoconf" ,autoconf)
+       ("automake" ,automake)
+       ("libtool" ,libtool)
+       ("xdg-desktop-portal" ,xdg-desktop-portal)
+       ("glib:bin" ,glib "bin")
+       ("which" ,which)
+       ("gettext" ,gettext-minimal)))
+    (inputs
+     `(("glib" ,glib)
+       ("gtk" ,gtk+)
+       ("fontconfig" ,fontconfig)
+       ("gnome-desktop" ,gnome-desktop)
+       ("gsettings-desktop-schemas" ,gsettings-desktop-schemas)))
+    (native-search-paths
+     (list (search-path-specification
+            (variable "XDG_DESKTOP_PORTAL_DIR")
+            (files '("share/xdg-desktop-portal/portals")))))
+    (home-page "https://github.com/flatpak/xdg-desktop-portal-gtk")
+    (synopsis "GTK implementation of xdg-desktop-portal")
+    (description
+     "This package provides a backend implementation for xdg-desktop-portal
+which uses GTK+ and various pieces of GNOME infrastructure, such as the
+@code{org.gnome.Shell.Screenshot} or @code{org.gnome.SessionManager} D-Bus
+interfaces.")
+    (license license:lgpl2.1+)))

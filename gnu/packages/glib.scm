@@ -3,13 +3,16 @@
 ;;; Copyright © 2013, 2015 Andreas Enge <andreas@enge.fr>
 ;;; Copyright © 2013 Nikita Karetnikov <nikita@karetnikov.org>
 ;;; Copyright © 2014, 2015, 2016, 2017, 2018 Mark H Weaver <mhw@netris.org>
-;;; Copyright © 2016 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2016, 2020 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2016 Lukas Gradl <lgradl@openmailbox.org>
-;;; Copyright © 2017, 2018 Ricardo Wurmus <rekado@elephly.net>
+;;; Copyright © 2017, 2018, 2019 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2017 Petter <petter@mykolab.ch>
 ;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018 Alex Vong <alexvong1995@gmail.com>
+;;; Copyright © 2019 Maxim Cournoyer <maxim.cournoyer@gmail.com>
 ;;; Copyright © 2019 Giacomo Leidi <goodoldpaul@autistici.org>
+;;; Copyright © 2019, 2020 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2020 Nicolò Balzarotti <nicolo@nixo.xyz>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -30,10 +33,11 @@
   #:use-module (gnu packages)
   #:use-module (gnu packages backup)
   #:use-module (gnu packages base)
-  #:use-module (gnu packages bash)
   #:use-module (gnu packages bison)
   #:use-module (gnu packages check)
   #:use-module (gnu packages compression)
+  #:use-module (gnu packages docbook)
+  #:use-module (gnu packages documentation)
   #:use-module (gnu packages enlightenment)
   #:use-module (gnu packages file)
   #:use-module (gnu packages flex)
@@ -51,6 +55,8 @@
   #:use-module (gnu packages perl-check)
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages python)
+  #:use-module (gnu packages python-xyz)
+  #:use-module (gnu packages selinux)
   #:use-module (gnu packages web)
   #:use-module (gnu packages xml)
   #:use-module (gnu packages xorg)
@@ -62,6 +68,7 @@
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (guix packages)
   #:use-module (guix utils)
+  #:use-module ((srfi srfi-1) #:hide (zip))
 
   ;; Export variables up-front to allow circular dependency with the 'xorg'
   ;; module.
@@ -80,7 +87,7 @@
 (define dbus
   (package
     (name "dbus")
-    (version "1.12.12")
+    (version "1.12.16")
     (replacement dbus/fixed)
     (source (origin
               (method url-fetch)
@@ -89,7 +96,7 @@
                     version ".tar.gz"))
               (sha256
                (base32
-                "1y7mxhkw2shd9mi9s62k81lz8npjkrafapr4fyfms7hs04kg4ilm"))
+                "107ckxaff1cv4q6kmfdi2fb1nlsv03312a7kf6lb4biglhpjv8jl"))
               (patches (search-patches "dbus-helper-search-path.patch"))))
     (build-system gnu-build-system)
     (arguments
@@ -100,6 +107,9 @@
 
         ;; Install the session bus socket under /tmp.
         "--with-session-socket-dir=/tmp"
+
+        ;; Build shared libraries only.
+        "--disable-static"
 
         ;; Use /etc/dbus-1 for system-wide config.
         ;; Look for configuration file under
@@ -120,14 +130,21 @@
                             "sysconfdir=/tmp/dummy"
                             "install"))))))
     (native-inputs
-     `(("pkg-config" ,pkg-config)))
+     `(("pkg-config" ,pkg-config)
+       ;; Dependencies to generate the doc.
+       ("docbook-xml" ,docbook-xml-4.4)
+       ("docbook-xsl" ,docbook-xsl)
+       ("doxygen" ,doxygen)
+       ("xmlto" ,xmlto)
+       ("libxml2" ,libxml2)             ;for XML_CATALOG_FILES
+       ("libxslt" ,libxslt)
+       ("yelp-tools" ,yelp-tools)))
     (inputs
      `(("expat" ,expat)
-
        ;; Add a dependency on libx11 so that 'dbus-launch' has support for
        ;; '--autolaunch'.
        ("libx11" ,libx11)))
-
+    (outputs '("out" "doc"))            ;22 MiB of HTML doc
     (home-page "https://www.freedesktop.org/wiki/Software/dbus/")
     (synopsis "Message bus for inter-process communication (IPC)")
     (description
@@ -148,18 +165,19 @@ or through unencrypted TCP/IP suitable for use behind a firewall with
 shared NFS home directories.")
     (license license:gpl2+)))                     ; or Academic Free License 2.1
 
+;; Replacement package to fix CVE-2020-12049.
 (define dbus/fixed
   (package
     (inherit dbus)
     (source (origin
               (inherit (package-source dbus))
-              (patches (append (search-patches "dbus-CVE-2019-12749.patch")
+              (patches (append (search-patches "dbus-CVE-2020-12049.patch")
                                (origin-patches (package-source dbus))))))))
 
 (define glib
   (package
    (name "glib")
-   (version "2.56.3")
+   (version "2.62.6")
    (source (origin
             (method url-fetch)
             (uri (string-append "mirror://gnome/sources/"
@@ -167,31 +185,53 @@ shared NFS home directories.")
                                 name "-" version ".tar.xz"))
             (sha256
              (base32
-              "1cjcqz77m62zrx7224vl3f2cxwqf28r5xpqb2jy7av0vr2scb959"))
-            (patches (search-patches "glib-tests-timer.patch"))))
-   (build-system gnu-build-system)
+              "174bsmbmcvaw69ff9g60q5sx0fn23rkhqcwqz17h5s7sprps4kqh"))
+            (patches (search-patches "glib-tests-timer.patch"))
+            (modules '((guix build utils)))
+            (snippet
+             '(begin
+                (substitute* "tests/spawn-test.c"
+                  (("/bin/sh") "sh"))
+                #t))))
+   (build-system meson-build-system)
    (outputs '("out"           ; everything
-              "bin"           ; glib-mkenums, gtester, etc.; depends on Python
-              "doc"))         ; 20 MiB of GTK-Doc reference
+              "bin"))         ; glib-mkenums, gtester, etc.; depends on Python
    (propagated-inputs
-    `(("pcre" ,pcre))) ; in the Requires.private field of glib-2.0.pc
-   (inputs
-    `(("coreutils" ,coreutils)
-      ("util-linux" ,util-linux)  ; for libmount
-      ("libffi" ,libffi)
+    `(("pcre" ,pcre)  ; in the Requires.private field of glib-2.0.pc
+      ("libffi" ,libffi) ; in the Requires.private field of gobject-2.0.pc
+      ;; These are in the Requires.private field of gio-2.0.pc
+      ("util-linux" ,util-linux "lib")  ;for libmount
+      ("libselinux" ,libselinux)
       ("zlib" ,zlib)))
    (native-inputs
     `(("gettext" ,gettext-minimal)
+      ("m4" ,m4) ; for installing m4 macros
       ("dbus" ,dbus)                              ; for GDBus tests
       ("pkg-config" ,pkg-config)
       ("python" ,python-wrapper)
       ("perl" ,perl)                              ; needed by GIO tests
-      ("bash" ,bash)
       ("tzdata" ,tzdata-for-tests)))                  ; for tests/gdatetime.c
    (arguments
     `(#:disallowed-references (,tzdata-for-tests)
       #:phases
       (modify-phases %standard-phases
+        (add-after 'unpack 'patch-dbus-launch-path
+          (lambda* (#:key inputs #:allow-other-keys)
+            (let ((dbus (assoc-ref inputs "dbus")))
+              (substitute* "gio/gdbusaddress.c"
+                (("command_line = g_strdup_printf \\(\"dbus-launch")
+                 (string-append "command_line = g_strdup_printf (\""
+                                dbus "/bin/dbus-launch")))
+              #t)))
+        (add-after 'unpack 'patch-gio-launch-desktop
+          (lambda* (#:key outputs #:allow-other-keys)
+            (let ((out (assoc-ref outputs "out")))
+              ;; See also <https://gitlab.gnome.org/GNOME/glib/issues/1633>
+              ;; for another future fix.
+              (substitute* "gio/gdesktopappinfo.c"
+               (("gio-launch-desktop")
+                (string-append out "/libexec/gio-launch-desktop")))
+              #t)))
         (add-before 'build 'pre-build
           (lambda* (#:key inputs outputs #:allow-other-keys)
             ;; For tests/gdatetime.c.
@@ -202,14 +242,8 @@ shared NFS home directories.")
             ;; Some tests want write access there.
             (setenv "HOME" (getcwd))
             (setenv "XDG_CACHE_HOME" (getcwd))
-
-            (substitute* '("glib/gspawn.c"
-                           "glib/tests/utils.c"
-                           "tests/spawn-test.c")
-              (("/bin/sh")
-               (string-append (assoc-ref inputs "bash") "/bin/sh")))
             #t))
-        (add-before 'check 'disable-failing-tests
+        (add-after 'unpack 'disable-failing-tests
           (lambda _
             (let ((disable
                    (lambda (test-file test-paths)
@@ -227,6 +261,15 @@ shared NFS home directories.")
                        ;; as found on hydra.gnu.org, and strace(1) doesn't
                        ;; recognize it.
                        "/thread/thread4"))
+
+                     ;; This tries to find programs in FHS directories.
+                     ("glib/tests/utils.c"
+                      ("/utils/find-program"))
+
+                     ;; This fails because "glib/tests/echo-script" cannot be
+                     ;; found.
+                     ("glib/tests/spawn-singlethread.c"
+                      ("/gthread/spawn-script"))
 
                      ("glib/tests/timer.c"
                       (;; fails if compiler optimizations are enabled, which they
@@ -269,20 +312,54 @@ shared NFS home directories.")
                       (;; Requires /etc/machine-id.
                        "/gdbus/codegen-peer-to-peer"))
 
-                     ("gio/tests/gdbus-unix-addresses.c"
+                     ("gio/tests/gdbus-address-get-session.c"
                       (;; Requires /etc/machine-id.
-                       "/gdbus/x11-autolaunch")))))
+                       "/gdbus/x11-autolaunch"))
+
+                     ("gio/tests/gsocketclient-slow.c"
+                      (;; These tests tries to resolve "localhost", and fails.
+                       "/socket-client/happy-eyeballs/slow"
+                       "/socket-client/happy-eyeballs/cancellation/delayed"))
+
+                     )))
               (for-each (lambda (x) (apply disable x)) failing-tests)
-              #t))))
-
-      ;; Note: `--docdir' and `--htmldir' are not honored, so work around it.
-      #:configure-flags (list (string-append "--with-html-dir="
-                                             (assoc-ref %outputs "doc")
-                                             "/share/gtk-doc/html"))
-
-      ;; In 'gio/tests', 'gdbus-test-codegen-generated.h' is #included in a
-      ;; file that gets compiled possibly before it has been fully generated.
-      #:parallel-tests? #f))
+              #t)))
+        (replace 'check
+          (lambda _
+            (setenv "MESON_TESTTHREADS"
+                    (number->string (parallel-job-count)))
+            ;; Do not run tests marked as "flaky".
+            (invoke "meson" "test" "--no-suite" "flaky")))
+        ;; TODO: meson does not permit the bindir to be outside of prefix.
+        ;; See https://github.com/mesonbuild/meson/issues/2561
+        ;; We can remove this once meson is patched.
+        (add-after 'install 'move-executables
+          (lambda* (#:key outputs #:allow-other-keys)
+            (let ((out (assoc-ref outputs "out"))
+                  (bin (assoc-ref outputs "bin")))
+              (mkdir-p bin)
+              (rename-file (string-append out "/bin")
+                           (string-append bin "/bin"))
+              ;; This one is an implementation detail of glib.
+              ;; It is wrong that that's in "/bin" in the first place,
+              ;; but that's what upstream is doing right now.
+              ;; See <https://gitlab.gnome.org/GNOME/glib/issues/1633>.
+              (mkdir (string-append out "/libexec"))
+              (rename-file (string-append bin "/bin/gio-launch-desktop")
+                           (string-append out "/libexec/gio-launch-desktop"))
+              ;; Do not refer to "bindir", which points to "${prefix}/bin".
+              ;; We don't patch "bindir" to point to "$bin/bin", because that
+              ;; would create a reference cycle between the "out" and "bin"
+              ;; outputs.
+              (substitute* (list (string-append out "/lib/pkgconfig/gio-2.0.pc")
+                                 (string-append out "/lib/pkgconfig/glib-2.0.pc"))
+                (("bindir=\\$\\{prefix\\}/bin") "")
+                (("=\\$\\{bindir\\}/") "="))
+              #t))))))
+      ;; TODO: see above for explanation.
+      ;; #:configure-flags (list (string-append "--bindir="
+      ;;                                        (assoc-ref %outputs "bin")
+      ;;                                        "/bin"))
 
    (native-search-paths
     ;; This variable is not really "owned" by GLib, but several related
@@ -297,6 +374,7 @@ shared NFS home directories.")
            (variable "GIO_EXTRA_MODULES")
            (files '("lib/gio/modules")))))
    (search-paths native-search-paths)
+   (properties '((hidden? . #t)))
 
    (synopsis "Thread-safe general utility library; basis of GTK+ and GNOME")
    (description
@@ -306,33 +384,65 @@ dynamic loading, and an object system.")
    (home-page "https://developer.gnome.org/glib/")
    (license license:lgpl2.1+)))
 
+(define-public glib-with-documentation
+  ;; glib's doc must be built in a separate package since it requires gtk-doc,
+  ;; which in turn depends on glib.
+  (package
+    (inherit glib)
+    (properties (alist-delete 'hidden? (package-properties glib)))
+    (outputs (cons "doc" (package-outputs glib))) ; 20 MiB of GTK-Doc reference
+    (native-inputs
+     `(("gtk-doc" ,gtk-doc)             ; for the doc
+       ("docbook-xml" ,docbook-xml)
+       ("libxml2" ,libxml2)
+       ,@(package-native-inputs glib)))
+    (arguments
+     (substitute-keyword-arguments (package-arguments glib)
+       ((#:configure-flags flags ''())
+        `(cons "-Dgtk_doc=true" ,flags))
+       ((#:phases phases)
+        `(modify-phases ,phases
+           (add-after 'install 'move-doc
+             (lambda* (#:key outputs #:allow-other-keys)
+               (let ((out (assoc-ref outputs "out"))
+                     (doc (assoc-ref outputs "doc"))
+                     (html (string-append "/share/gtk-doc")))
+                 (copy-recursively (string-append out html)
+                                   (string-append doc html))
+                 (delete-file-recursively (string-append out html))
+                 #t)))))))))
+
 (define gobject-introspection
   (package
     (name "gobject-introspection")
-    (version "1.56.1")
+    (version "1.62.0")
     (source (origin
              (method url-fetch)
              (uri (string-append "mirror://gnome/sources/"
                    "gobject-introspection/" (version-major+minor version)
                    "/gobject-introspection-" version ".tar.xz"))
              (sha256
-              (base32 "0jx2kryjd7l0vl5gb3qp1qjfy3cjiizvcd1snsm7pzwrzz67aa2v"))
-             (modules '((guix build utils)))
-             (snippet
-              '(begin
-                 (substitute* "tools/g-ir-tool-template.in"
-                   (("#!/usr/bin/env @PYTHON@") "#!@PYTHON@"))
-                 #t))
+              (base32 "18lhglg9v6y83lhqzyifc1z0wrlawzrhzzxx0a3h1g7xaz97xvmi"))
              (patches (search-patches
                        "gobject-introspection-cc.patch"
                        "gobject-introspection-girepository.patch"
                        "gobject-introspection-absolute-shlib-path.patch"))))
-    (build-system gnu-build-system)
+    (build-system meson-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'do-not-use-/usr/bin/env
+           (lambda _
+             (substitute* "tools/g-ir-tool-template.in"
+               (("#!@PYTHON_CMD@")
+                (string-append "#!" (which "python3"))))
+             #t)))))
     (inputs
      `(("bison" ,bison)
        ("flex" ,flex)
        ("glib" ,glib)
-       ("python-2" ,python-2)))
+       ("python" ,python-wrapper)
+       ("zlib" ,zlib)))
     (native-inputs
      `(("glib" ,glib "bin")
        ("pkg-config" ,pkg-config)))
@@ -345,13 +455,6 @@ dynamic loading, and an object system.")
             (variable "GI_TYPELIB_PATH")
             (files '("lib/girepository-1.0")))))
     (search-paths native-search-paths)
-    (arguments
-     `(;; The build system has at least one race condition involving Gio-2.0.gir
-       ;; which causes intermittent failures, as of 1.56.0.
-       #:parallel-build? #f
-       ;; The patch 'gobject-introspection-absolute-shlib-path.patch' causes
-       ;; some tests to fail.
-       #:tests? #f))
     (home-page "https://wiki.gnome.org/GObjectIntrospection")
     (synopsis "Generate interface introspection data for GObject libraries")
     (description
@@ -416,19 +519,19 @@ The intltool collection can be used to do these things:
 (define itstool
   (package
     (name "itstool")
-    (version "2.0.2")
+    (version "2.0.6")
     (source (origin
              (method url-fetch)
              (uri (string-append "http://files.itstool.org/itstool/itstool-"
                                  version ".tar.bz2"))
              (sha256
               (base32
-               "0fh34wi52i0qikgvlmrcpf1vx6gc1xqdad4539l4d9hikfsrz45z"))))
+               "1acjgf8zlyk7qckdk19iqaca4jcmywd7vxjbcs1mm6kaf8icqcv2"))))
     (build-system gnu-build-system)
     (inputs
      `(("libxml2" ,libxml2)
-       ("python2-libxml2" ,python2-libxml2)
-       ("python-2" ,python-2)))
+       ("python-libxml2" ,python-libxml2)
+       ("python" ,python)))
     (arguments
      '(#:phases
        (modify-phases %standard-phases
@@ -464,7 +567,7 @@ translated.")
 (define dbus-glib
   (package
     (name "dbus-glib")
-    (version "0.108")
+    (version "0.110")
     (source (origin
              (method url-fetch)
              (uri
@@ -472,7 +575,7 @@ translated.")
                              version ".tar.gz"))
              (sha256
               (base32
-               "0b307hw9j41npzr6niw1bs6ryp87m5yafg492gqwvsaj4dz0qd4z"))))
+               "09g8swvc95bk1z6j8sw463p2v0dqmgm2zjfndf7i8sbcyq67dr3w"))))
     (build-system gnu-build-system)
     (propagated-inputs ; according to dbus-glib-1.pc
      `(("dbus" ,dbus)
@@ -492,7 +595,7 @@ by GDBus included in Glib.")
 (define libsigc++
   (package
     (name "libsigc++")
-    (version "2.10.2")
+    (version "2.10.3")
     (source (origin
              (method url-fetch)
              (uri (string-append "mirror://gnome/sources/libsigc++/"
@@ -500,11 +603,11 @@ by GDBus included in Glib.")
                                  name "-" version ".tar.xz"))
              (sha256
               (base32
-               "163s14d1rqp82gc1vsm3q0wzsbdicb9q6307kz0zk5lm6x9h5jmi"))))
+               "11j7j1jv4z58d9s7jvl42fnqa1dzl4idgil9r45cjv1w673dys0b"))))
     (build-system gnu-build-system)
     (native-inputs `(("pkg-config" ,pkg-config)
                      ("m4" ,m4)))
-    (home-page "http://libsigc.sourceforge.net/")
+    (home-page "https://libsigcplusplus.github.io/libsigcplusplus/")
     (synopsis "Type-safe callback system for standard C++")
     (description
      "Libsigc++ implements a type-safe callback system for standard C++.  It
@@ -519,7 +622,7 @@ has an ease of use unmatched by other C++ callback libraries.")
 (define glibmm
   (package
     (name "glibmm")
-    (version "2.56.0")
+    (version "2.62.0")
     (source (origin
              (method url-fetch)
              (uri (string-append "mirror://gnome/sources/glibmm/"
@@ -527,13 +630,10 @@ has an ease of use unmatched by other C++ callback libraries.")
                                  "/glibmm-" version ".tar.xz"))
              (sha256
               (base32
-               "1abrkqhca5p8n6ly3vp1232rny03s7lrd8f8iz2m2m141nxgqx3f"))))
+               "1ziwx6r7k7wbvg4qq1rgrv8zninapgrmhn1hs6926a3krh9ryr9n"))))
     (build-system gnu-build-system)
     (arguments
-     `(;; XXX: Some tests uses C++14 features.  Remove this when the default
-       ;; compiler is >= GCC6.
-       #:configure-flags '("CXXFLAGS=-std=gnu++14")
-       #:phases
+     `(#:phases
        (modify-phases %standard-phases
          (add-before 'build 'pre-build
            (lambda _
@@ -595,7 +695,7 @@ useful for C++.")
     (arguments
      `(#:tests? #f                      ;segfaults during tests
        #:configure-flags '("LIBS=-lcairo-gobject")))
-    (home-page "https://pypi.python.org/pypi/PyGObject")
+    (home-page "https://pypi.org/project/PyGObject/")
     (synopsis "Python bindings for GObject")
     (description
      "Python bindings for GLib, GObject, and GIO.")
@@ -604,7 +704,7 @@ useful for C++.")
 (define-public python-pygobject
   (package
     (name "python-pygobject")
-    (version "3.28.3")
+    (version "3.34.0")
     (source
      (origin
        (method url-fetch)
@@ -613,24 +713,20 @@ useful for C++.")
                            "/pygobject-" version ".tar.xz"))
        (sha256
         (base32
-         "1c6h3brzlyvzbpdsammnd957azmp6cbzqrd65r400vnh2l8f5lrx"))))
-    (build-system gnu-build-system)
-    (arguments
-     `(#:phases
-       (modify-phases %standard-phases
-         (add-after 'unpack 'delete-broken-tests
-           (lambda _
-             ;; FIXME: this test freezes and times out.
-             (delete-file "tests/test_mainloop.py")
-             ;; FIXME: this test fails with this kind of error:
-             ;; AssertionError: <Handlers.SIG_IGN: 1> != <built-in function default_int_handler
-             (delete-file "tests/test_ossig.py")
+         "06i7ynnbvgpz0gw09zsjbvhgcp5qz4yzdifw27qjwdazg2mckql7"))
+       (modules '((guix build utils)))
+       (snippet
+        '(begin
+           ;; We disable these tests in a snippet so that they are inherited
+           ;; by the Python 2 variant which is built differently.
+           (with-directory-excursion "tests"
+             ;; FIXME: These tests require Gdk and/or Gtk 4.
+             (for-each delete-file
+                       '("test_atoms.py" "test_overrides_gtk.py"))
              #t)))))
+    (build-system meson-build-system)
     (native-inputs
-     `(("which" ,which)
-       ;for tests: dbus-run-session and glib-compile-schemas
-       ("dbus" ,dbus)
-       ("glib-bin" ,glib "bin")
+     `(("glib-bin" ,glib "bin")
        ("pkg-config" ,pkg-config)
        ("python-pytest" ,python-pytest)))
     (inputs
@@ -653,22 +749,35 @@ useful for C++.")
 (define-public python2-pygobject
   (package (inherit (strip-python2-variant python-pygobject))
     (name "python2-pygobject")
+
+    ;; Note: We use python-build-system here, because Meson only supports
+    ;; Python 3, and needs PYTHONPATH etc set up correctly, which makes it
+    ;; difficult to use for Python 2 projects.
+    (build-system python-build-system)
+    (arguments
+     `(#:python ,python-2
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'delete-broken-tests
+           (lambda _
+             ;; FIXME: this test freezes and times out.
+             (delete-file "tests/test_mainloop.py")
+             ;; FIXME: this test fails with this kind of error:
+             ;; AssertionError: <Handlers.SIG_IGN: 1> != <built-in function default_int_handler
+             (delete-file "tests/test_ossig.py")
+             #t)))))
     (inputs
-     `(("python" ,python-2)
-       ("python-pycairo" ,python2-pycairo)
+     `(("python-pycairo" ,python2-pycairo)
        ("gobject-introspection" ,gobject-introspection)))
     (native-inputs
-     `(("which" ,which)
-       ;for tests: dbus-run-session and glib-compile-schemas
-       ("dbus" ,dbus)
-       ("glib-bin" ,glib "bin")
+     `(("glib-bin" ,glib "bin")
        ("pkg-config" ,pkg-config)
        ("python-pytest" ,python2-pytest)))))
 
 (define-public perl-glib
   (package
     (name "perl-glib")
-    (version "1.329")
+    (version "1.3292")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -676,7 +785,7 @@ useful for C++.")
                     version ".tar.gz"))
               (sha256
                (base32
-                "0d9ak0zknz81lv3cqkzr2mxdic6g5rrbb87skqc4jj48rz4f2k3v"))))
+                "1q5075d6v2g5sm675hyzrcpxsrh09z83crfci8b0wl3jwmnz0frg"))))
     (build-system perl-build-system)
     (native-inputs
      `(("perl-extutils-depends" ,perl-extutils-depends)
@@ -708,6 +817,7 @@ up the Gnome environment, and are used in many unrelated projects.")
          "1symyzbjmxvksn2ifdkk50lafjm2llf2sbmky062gq2pz3cg23cy"))
        (patches
         (list
+         (search-patch "telepathy-glib-channel-memory-leak.patch")
          ;; Don't use the same test name for multiple tests.
          ;; <https://bugs.freedesktop.org/show_bug.cgi?id=92245>
          (origin
@@ -727,7 +837,18 @@ up the Gnome environment, and are used in many unrelated projects.")
        ;;
        ;;   EOFError: EOF read where object expected
        ;;   make[2]: *** [Makefile:1906: _gen/register-dbus-glib-marshallers-body.h] Error 1
-       #:parallel-build? #f))
+       #:parallel-build? #f
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'disable-failing-tests
+           (lambda _
+             ;; None of the tests below are able to find the org.gtk.vfs.Daemon
+             ;; service file provided by gvfs.
+             (substitute* "tests/dbus/Makefile.in"
+               (("test-contacts\\$\\(EXEEXT\\)") "")
+               (("test-file-transfer-channel\\$\\(EXEEXT\\)") "")
+               (("test-stream-tube\\$\\(EXEEXT\\)") ""))
+             #t)))))
     (native-inputs
      `(("glib" ,glib "bin") ; uses glib-mkenums
        ("gobject-introspection" ,gobject-introspection)
@@ -761,6 +882,8 @@ This package provides the library for GLib applications.")
                 "mirror://sourceforge/dbus-cplusplus/dbus-c%2B%2B/"
                 version "/libdbus-c%2B%2B-" version ".tar.gz"))
               (file-name (string-append name "-" version ".tar.gz"))
+              (patches (search-patches "dbus-c++-gcc-compat.patch"
+                                       "dbus-c++-threading-mutex.patch"))
               (sha256
                (base32
                 "0qafmy2i6dzx4n1dqp6pygyy6gjljnb7hwjcj2z11c1wgclsq4dw"))))
@@ -782,7 +905,8 @@ This package provides the library for GLib applications.")
            (lambda _
              (substitute* "include/dbus-c++/eventloop-integration.h"
                (("#include <errno.h>")
-                "#include <errno.h>\n#include <unistd.h>")))))))
+                "#include <errno.h>\n#include <unistd.h>"))
+             #t)))))
     (synopsis "D-Bus API for C++")
     (description "This package provides D-Bus client API bindings for the C++
 programming language.  It also contains the utility
@@ -793,7 +917,7 @@ programming language.  It also contains the utility
 (define-public appstream-glib
   (package
     (name "appstream-glib")
-    (version "0.7.15")
+    (version "0.7.17")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://people.freedesktop.org/~hughsient/"
@@ -801,7 +925,7 @@ programming language.  It also contains the utility
                                   "appstream-glib-" version ".tar.xz"))
               (sha256
                (base32
-                "17ram4j3cvs78si0gi1labarr91pw68zn8kam41cqbvlwdyr89vy"))))
+                "0jg58m1p5xfrh8zkpqhhg00nqs727z5i1qy6sb0a3vyc98fyk9vw"))))
     (build-system meson-build-system)
     (native-inputs
      `(("gettext" ,gettext-minimal)
@@ -810,15 +934,14 @@ programming language.  It also contains the utility
     (propagated-inputs
      `(("gcab" ,gcab) ; for .pc file
        ("gdk-pixbuf" ,gdk-pixbuf) ; for .pc file
-       ("util-linux" ,util-linux))) ; for .pc file
+       ("libuuid" ,util-linux "lib"))) ; for .pc file
     (inputs
      `(("glib" ,glib)
        ("gperf" ,gperf)
        ("gtk+" ,gtk+)
        ("json-glib" ,json-glib)
        ("libarchive" ,libarchive)
-       ("libsoup" ,libsoup)
-       ("libyaml" ,libyaml)))
+       ("libsoup" ,libsoup)))
     (arguments
      `(#:configure-flags
        (list "-Ddep11=false"
@@ -896,7 +1019,7 @@ other API remains the same.")
 (define-public template-glib
   (package
     (name "template-glib")
-    (version "3.32.0")
+    (version "3.34.0")
     (source (origin
               (method url-fetch)
               (uri (string-append "mirror://gnome/sources/" name "/"
@@ -904,7 +1027,7 @@ other API remains the same.")
                                   name "-" version ".tar.xz"))
               (sha256
                (base32
-                "1g0zx0sxpw8kqp7p3sgl9kngaqrg9xl6cir24nrahks0vgsk98rr"))))
+                "1z9xkin5fyfh071ma9y045jcw83hgx33dfbjraw6cxk0qdmfysr1"))))
     (build-system meson-build-system)
     (arguments
      `(#:configure-flags '("-D" "enable_gtk_doc=true")))
@@ -929,3 +1052,83 @@ safe to use from any GObject-Introspectable language.
 Template-GLib allows you to access properties on GObjects as well as call
 simple methods via GObject-Introspection.")
     (license license:lgpl2.1+)))
+
+(define-public xdg-dbus-proxy
+  (package
+    (name "xdg-dbus-proxy")
+    (version "0.1.2")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append "https://github.com/flatpak/xdg-dbus-proxy"
+                                  "/releases/download/" version
+                                  "/xdg-dbus-proxy-" version ".tar.xz"))
+              (sha256
+               (base32
+                "03sj1h0c2l08xa8phw013fnxr4fgav7l2mkjhzf9xk3dykwxcj8p"))))
+    (build-system gnu-build-system)
+    (native-inputs
+     `(("pkg-config" ,pkg-config)
+
+       ;; For tests.
+       ("dbus" ,dbus)
+
+       ;; These are required to build the manual.
+       ("docbook-xml" ,docbook-xml-4.3)
+       ("docbook-xsl" ,docbook-xsl)
+       ("libxml2" ,libxml2)
+       ("xsltproc" ,libxslt)))
+    (inputs
+     `(("glib" ,glib)))
+    (home-page "https://github.com/flatpak/xdg-dbus-proxy")
+    (synopsis "D-Bus connection proxy")
+    (description
+     "xdg-dbus-proxy is a filtering proxy for D-Bus connections.  It can be
+used to create D-Bus sockets inside a Linux container that forwards requests
+to the host system, optionally with filters applied.")
+    (license license:lgpl2.1+)))
+
+(define-public dbus-test-runner
+  (package
+    (name "dbus-test-runner")
+    (version "19.04.0")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append
+                    "https://launchpad.net/dbus-test-runner/"
+                    (version-major+minor version) "/" version
+                    "/+download/dbus-test-runner-" version ".tar.gz"))
+              (sha256
+               (base32
+                "0xnbay58xn0hav208mdsg8dd176w57dcpw1q2k0g5fh9v7xk4nk4"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-before 'configure 'fix-test-paths
+           ;; add missing space
+           (lambda* (#:key outputs #:allow-other-keys)
+             (substitute* "Makefile.in"
+               (("#!/bin/bash") (string-append "#!" (which "bash"))))
+             (substitute* "tests/Makefile.in"
+               (("/bin/sh") (which "sh"))
+               (("#!/bin/bash") (string-append "#!" (which "bash")))
+               (("echo cat") (string-append "echo " (which "cat")))
+               (("/bin/true") (which "true")))
+             #t)))))
+    (inputs
+     `(("gtk+" ,gtk+)
+       ("glib" ,glib)
+       ("dbus-glib" ,dbus-glib)))
+    (native-inputs
+     `(("glib:bin" ,glib "bin")
+       ("intltool" ,intltool)
+       ("pkg-config" ,pkg-config)
+       ;; following used for tests
+       ("python" ,python)
+       ("python-dbusmock" ,python-dbusmock)
+       ("xvfb" ,xorg-server-for-tests)))
+    (home-page "https://launchpad.net/dbus-test-runner")
+    (synopsis "Run a executables under a new DBus session for testing")
+    (description "A small little utility to run a couple of executables under a
+new DBus session for testing.")
+    (license license:gpl3)))

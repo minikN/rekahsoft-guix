@@ -1,9 +1,9 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2014, 2015, 2018 Mark H Weaver <mhw@netris.org>
 ;;; Copyright © 2015, 2017 Leo Famulari <leo@famulari.name>
-;;; Copyright © 2016, 2017, 2018 Efraim Flashner <efraim@flashner.co.il>
-;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2016, 2017, 2018, 2019 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2019 Mathieu Othacehe <m.othacehe@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
@@ -24,67 +24,67 @@
 (define-module (gnu packages bash)
   #:use-module (guix licenses)
   #:use-module (gnu packages)
+  #:use-module (gnu packages base)
   #:use-module (gnu packages bootstrap)
   #:use-module (gnu packages ncurses)
   #:use-module (gnu packages readline)
   #:use-module (gnu packages bison)
   #:use-module (gnu packages linux)
+  #:use-module (gnu packages guile)
   #:use-module (guix packages)
   #:use-module (guix download)
+  #:use-module (guix git-download)
   #:use-module (guix utils)
   #:use-module (guix gexp)
   #:use-module (guix monads)
   #:use-module (guix store)
   #:use-module (guix build-system gnu)
+  #:use-module (guix build-system trivial)
   #:autoload   (guix gnupg) (gnupg-verify*)
-  #:autoload   (gcrypt hash) (port-sha256)
   #:autoload   (guix base32) (bytevector->nix-base32-string)
+
+  ;; See <https://bugs.gnu.org/41457> for why not #:autoload here.
+  #:use-module ((gcrypt hash) #:select (port-sha256))
+
   #:use-module (srfi srfi-1)
   #:use-module (srfi srfi-26)
   #:use-module (ice-9 format))
 
 (define (patch-url seqno)
   "Return the URL of Bash patch number SEQNO."
-  (format #f "mirror://gnu/bash/bash-4.4-patches/bash44-~3,'0d" seqno))
+  (format #f "mirror://gnu/bash/bash-5.0-patches/bash50-~3,'0d" seqno))
 
-(define (bash-patch seqno sha256)
-  "Return the origin of Bash patch SEQNO, with expected hash SHA256"
+(define (bash-patch seqno sha256-bv)
+  "Return the origin of Bash patch SEQNO, with expected hash SHA256-BV."
   (origin
     (method url-fetch)
     (uri (patch-url seqno))
-    (sha256 sha256)))
+    (sha256 sha256-bv)))
 
 (define-syntax-rule (patch-series (seqno hash) ...)
   (list (bash-patch seqno (base32 hash))
         ...))
 
-(define %patch-series-4.4
-  ;; This is the current patches series for 4.4, generated using
+(define %patch-series-5.0
+  ;; This is the current patches series for 5.0, generated using
   ;; 'download-patches' below.
   (patch-series
-   (1 "03vzy7qwjdd5qvl3ydg99naazas2qmyd0yhnrflgjbbm64axja1y")
-   (2 "0lrwq6vyqism3yqv9s7kzaf3dsl4q5w9r5svcqz279qp7qca083h")
-   (3 "1chqww2rj6g42b8s60q5zlzy0jzp684jkpsbrbfy1vzxja8mmpsi")
-   (4 "1cy8abf96hkrjhw921ndr0shlcnc52bg45rn6xri4v5clhq0l25d")
-   (5 "0a8515kyk4zsgmvlqvlganjfr7pq0j6kzpr4d6xx02kpbdr4n7i2")
-   (6 "1f24wgqngmj2mrj9yibwvc2zvlmn5xi53mnw777g3l40c4m2x3ka")
-   (7 "1bzdsnqaf05gdbqpsixhan8vygjxpcxlz1dd8d9f5jdznw3wq76y") ;CVE-2017-5932
-   (8 "1firw915mjm03hbbw9a70ch3cpgrgnvqjpllgdnn6csr8q04f546")
-   (9 "0g1l56kvw61rpw7dqa9fcl9llkl693h73g631hrhxlm030ddssqb")
-   (10 "01lfhrkdsdkdz8ypzapr614ras23x7ckjnr60aa5bzkaqprccrc4")
-   (11 "038p7mhnq9m65g505hi3827jkf9f35nd1cy00w8mwafpyxp44mnx")
-   (12 "0gh6lbb1rwpk44pvbamm6vzdfi50xnwkqd9v7s8cjwk3pz973hps")
-   (13 "1djkx0w9v62q78gz3jsvamj1jq53i6hbfrfhhsw86ihwpjnfy98v")
-   (14 "0z5ikcq9zyxw79d0z36r5p0mspnb5piavbv03jmlan1wnknmrxx7")
-   (15 "09n307fi1j257abhm295k6ksmnzw47ka2zhnr0i5lbdnpvn04xnk")
-   (16 "1cgi1y6mifm8hsgv4avj5ih76535js3qba1sqwbfvp7si76927sh")
-   (17 "0w6jpj2giakji1ir83rpkx1y7n7xqppah3j748m6dm38hywr0gvp")
-   (18 "1k58h4wxbsg7r4rwhrvzx5hfbapba2nxjysbhh6qp6ki5ys99i2v")
-   (19 "07n1i5610lbs672x1s8g82qn3qfj06s0ip3z80sri0g8vxp0s5r7")
-   (20 "0b2jk5n1af1vh590qfc52hv65mafb4vl1xv26s8j5a3byb5y4h0q")
-   (21 "1hblcd2xmqqlp0idnavw66570n7m0yv5rbbr873c2gkn982mk3xx")
-   (22 "0yfbjzr79vzjs2hyi5m8iy2b38fq7vikdfa4zqdvjsp36q4iycs5")
-   (23 "1dlism6qdx60nvzj0v7ndr7lfahl4a8zmzckp13hqgdx7xpj7v2g")))
+    (1 "12bjfdy6bg8nhyw27bdgxn7h4paylx8d927skfmi9pxd1wgrxzpj")
+    (2 "01w7yrzmz10mw06ys0546vhl7isv2v402ziyvfd7k67588spvs47")
+    (3 "0ny81ridp5n0j69hb8ixrc7dmxybby54jbsz5hikly8kgg1wvssf")
+    (4 "021gqqvgydixkrmqss64b6srfdlkvnx88lyfzpxfrn5d6bc7li0l")
+    (5 "0xl2kyzm84nlyklrqzkn73ixabhzfhn9x91lzcmis89cppclvxav")
+    (6 "0844749ixk1z60437nkznzms1f0nzh9an62kj7sny6r0zyk2k1fn")
+    (7 "16xg37gp1b8zlj5969w8mcrparwqlcbj9695vn3qhgb7wdz1xd0p")
+    (8 "1qyp19krjh8zxvb0jgwmyjz40djslwcf4xi7kc1ab0iaca44bipf")
+    (9 "00yrjjqd95s81b21qq3ba1y7h879q8jaajlkjggc6grhcwbs4g7d")
+    (10 "04ca5bjv456v538mkspzvn4xb2zdphh31r4fpvfm9p5my0jw7yyn")
+    (11 "1sklyixvsv8993kxzs0jigacpdchjrq7jv5xpdx7kbqyp4rf6k9c")
+    (12 "0cz21qg2gbr40lfgza7g02bqi2qknwqgxnq459pjj640d0cywhr9")
+    (13 "16h9nwz3yzwj7fnxvlidjymdc4yr30h818433gh9j1x3in6igmzm")
+    (14 "12gm5bvv2pd3m72z2ilj26pa08c61az253dsgfl24vpf2ijywvjx")
+    (15 "0pm0px758w4i23s55wajcv6lqfiym7zgxvq0pxf6vclkv8nxy5x5")
+    (16 "0vdha332km2iwx8g2ld15jy7d24cbplzgr1531dpzylr9ajxglgz")))
 
 (define (download-patches store count)
   "Download COUNT Bash patches into store.  Return a list of
@@ -95,7 +95,7 @@ number/base32-hash tuples, directly usable in the 'patch-series' form."
                    (sig    (download-to-store store
                                               (string-append (patch-url number)
                                                              ".sig"))))
-              (unless (gnupg-verify* sig patch)
+              (unless (eq? 'valid-signature (gnupg-verify* sig patch))
                 (error "failed to verify signature" patch))
 
               (list number
@@ -120,7 +120,7 @@ number/base32-hash tuples, directly usable in the 'patch-series' form."
                " -Wl,-rpath -Wl,"
                (assoc-ref %build-inputs "ncurses")
                "/lib")))
-         (version "4.4"))
+         (version "5.0"))
     (package
      (name "bash")
      (source (origin
@@ -129,11 +129,11 @@ number/base32-hash tuples, directly usable in the 'patch-series' form."
                     "mirror://gnu/bash/bash-" version ".tar.gz"))
               (sha256
                (base32
-                "1jyz6snd63xjn6skk7za6psgidsd53k05cr3lksqybi0q6936syq"))
+                "0kgvfwqdcd90waczf4gx39xnrxzijhjrzyzv7s8v4w31qqm0za5l"))
               (patch-flags '("-p0"))
-              (patches %patch-series-4.4)))
-     (version (string-append version "."
-                             (number->string (length %patch-series-4.4))))
+              (patches (cons (search-patch "bash-linux-pgrp-pipe.patch")
+                             %patch-series-5.0))))
+     (version (string-append version "." (number->string (length %patch-series-5.0))))
      (build-system gnu-build-system)
 
      (outputs '("out"
@@ -326,14 +326,15 @@ completion for many common commands.")
   (package
     (name "bash-tap")
     (version "1.0.2")
-    (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/illusori/bash-tap/"
-                                  "archive/" version ".tar.gz"))
-              (file-name (string-append name "-" version ".tar.gz"))
-              (sha256
-               (base32
-                "0qs1qi38bl3ns4mpagcawv618dsk2q1lgrbddgvs0wl3ia12cyz5"))))
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/illusori/bash-tap")
+             (commit version)))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "13zz9h6bhhnk3hiwhlpafrnf2isws249h3fz785dcgymk02arz9c"))))
     ;; There is no compilation process to use this package, however, the bash
     ;; scripts installed by this package start with "#!/bin/bash".  To fix
     ;; these lines, we use the patch-shebangs of the GNU build system.  The
@@ -356,11 +357,61 @@ completion for many common commands.")
                (install-file "bash-tap" bin)
                (install-file "bash-tap-bootstrap" bin)
                (install-file "bash-tap-mock" bin)))))))
-    (home-page "http://www.illusori.co.uk/projects/bash-tap/")
+    (home-page "https://www.illusori.co.uk/projects/bash-tap/")
     (synopsis "Bash port of a Test::More/Test::Builder-style TAP-compliant
 test library")
     (description "Bash TAP is a TAP-compliant Test::More-style testing library
 for Bash shell scripts and functions.  Along with the Test::More-style testing
 helpers it provides helper functions for mocking commands and in-process output
 capturing.")
+    (license expat)))
+
+(define-public bats
+  (package
+    (name "bats")
+    (version "1.2.0")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/bats-core/bats-core")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0f59zh4d4pa1a7ybs5zl6h0csbqqv11lbnq0jl1dgwm1s6p49bsq"))))
+    (inputs
+     `(("bash" ,bash)
+       ("coreutils" ,coreutils)
+       ("guile" ,guile-3.0) ;for wrap-script
+       ("grep" ,grep)))
+    (arguments
+     `(#:modules ((guix build utils))
+       #:builder
+       (begin
+         (use-modules (guix build utils))
+         (copy-recursively (assoc-ref %build-inputs "source") ".")
+         (setenv "PATH"
+                 (string-append (assoc-ref %build-inputs "bash") "/bin"
+                                ":" (assoc-ref %build-inputs "coreutils") "/bin"
+                                ":" (assoc-ref %build-inputs "grep") "/bin"
+                                ":" (assoc-ref %build-inputs "guile") "/bin"
+                                ":" (getenv "PATH")))
+         (for-each (lambda (file) (patch-shebang file)) (find-files "."))
+         (substitute* "bin/bats"
+           (("export BATS_ROOT" line)
+            (string-append "BATS_ROOT=\"${BATS_ROOT:-" %output "/libexec/bats-core}\"\n"
+                           line)))
+         ;; Install phase
+         (invoke "./install.sh" %output)
+         (wrap-script (string-append %output "/bin/bats")
+                      (list "PATH" 'prefix (string-split (getenv "PATH")
+                                                         #\:))))))
+    (build-system trivial-build-system)
+    (home-page "https://github.com/bats-core/bats-core/")
+    (synopsis "Bash Automated Testing System")
+    (description
+     "Bats is a @acronym{TAP, Test Anything Protocol}-compliant testing
+framework for Bash.  It provides a simple way to verify that the UNIX programs
+you write behave as expected.  Bats is most useful when testing software written
+in Bash, but you can use it to test any UNIX program.")
     (license expat)))

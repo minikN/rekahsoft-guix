@@ -4,11 +4,13 @@
 ;;; Copyright © 2015 Tomáš Čech <sleep_walker@suse.cz>
 ;;; Copyright © 2015 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2016, 2017, 2019 Leo Famulari <leo@famulari.name>
-;;; Copyright © 2017 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2017, 2019, 2020 Marius Bakke <mbakke@fastmail.com>
 ;;; Copyright © 2017 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2017, 2018 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018 Roel Janssen <roel@gnu.org>
 ;;; Copyright © 2019 Ricardo Wurmus <rekado@elephly.net>
+;;; Copyright © 2020 Jakub Kądziołka <kuba@kadziolka.net>
+;;; Copyright © 2020 Dale Mellor <guix-devel-0brg6b@rdmp.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -31,70 +33,83 @@
   #:use-module (guix download)
   #:use-module (guix git-download)
   #:use-module (guix utils)
+  #:use-module (guix build-system cmake)
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system go)
   #:use-module (gnu packages)
   #:use-module (gnu packages compression)
   #:use-module (gnu packages golang)
-  #:use-module (gnu packages groff)
-  #:use-module (gnu packages gsasl)
   #:use-module (gnu packages guile)
+  #:use-module (gnu packages kerberos)
   #:use-module (gnu packages libidn)
   #:use-module (gnu packages openldap)
   #:use-module (gnu packages perl)
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages python)
-  #:use-module (gnu packages ssh)
   #:use-module (gnu packages tls)
-  #:use-module (gnu packages web))
+  #:use-module (gnu packages web)
+  #:use-module (srfi srfi-1))
 
 (define-public curl
   (package
    (name "curl")
-   (replacement curl-7.65.0)
-   (version "7.63.0")
+   (version "7.69.1")
+   (replacement curl-7.71.0)
    (source (origin
             (method url-fetch)
             (uri (string-append "https://curl.haxx.se/download/curl-"
                                 version ".tar.xz"))
             (sha256
              (base32
-              "1i38v49233jirzlfqd8fy6jyf80assa953hk7w6qmysbg562604n"))))
+              "0kwxh76iq9fblk7iyv4f75bmcmasarp2bcm1mm07wyvzd7kdbiq3"))
+            (patches (search-patches "curl-use-ssl-cert-env.patch"))))
    (build-system gnu-build-system)
    (outputs '("out"
               "doc"))                             ;1.2 MiB of man3 pages
    (inputs `(("gnutls" ,gnutls)
-             ("gss" ,gss)
              ("libidn" ,libidn)
-             ;; TODO XXX <https://bugs.gnu.org/34927>
-             ;; Curl doesn't actually use or refer to libssh2 because the build
-             ;; is not configured with '--with-libssh2'.  Remove this input when
-             ;; a mass rebuild is appropriate (e.g. core-updates).
-             ("libssh2" ,libssh2-1.8.0)
              ("openldap" ,openldap)
+             ("mit-krb5" ,mit-krb5)
              ("nghttp2" ,nghttp2 "lib")
              ("zlib" ,zlib)))
    (native-inputs
      `(("perl" ,perl)
-       ;; to enable the --manual option and make test 1026 pass
-       ("groff" ,groff)
        ("pkg-config" ,pkg-config)
-       ("python" ,python-2)))
+       ("python" ,python-wrapper)))
    (native-search-paths
-    ;; Note: This search path is respected by the `curl` command-line tool only.
-    ;; Ideally we would bake this into libcurl itself so other users can benefit,
-    ;; but it's not supported upstream due to thread safety concerns.
+    ;; These variables are introduced by curl-use-ssl-cert-env.patch.
     (list (search-path-specification
+           (variable "SSL_CERT_DIR")
+           (separator #f)                        ;single entry
+           (files '("etc/ssl/certs")))
+          (search-path-specification
+           (variable "SSL_CERT_FILE")
+           (file-type 'regular)
+           (separator #f)                        ;single entry
+           (files '("etc/ssl/certs/ca-certificates.crt")))
+          ;; Note: This search path is respected by the `curl` command-line
+          ;; tool only.  Patching libcurl to read it too would bring no
+          ;; advantages and require maintaining a more complex patch.
+          (search-path-specification
            (variable "CURL_CA_BUNDLE")
            (file-type 'regular)
            (separator #f)                         ;single entry
            (files '("etc/ssl/certs/ca-certificates.crt")))))
    (arguments
-    `(#:configure-flags '("--with-gnutls" "--with-gssapi"
-                          "--disable-static")
-      ;; Add a phase to patch '/bin/sh' occurances in tests/runtests.pl
+    `(#:disallowed-references ("doc")
+      #:configure-flags (list "--with-gnutls"
+                              (string-append "--with-gssapi="
+                                             (assoc-ref %build-inputs "mit-krb5"))
+                              "--disable-static")
       #:phases
       (modify-phases %standard-phases
+        (add-after 'unpack 'do-not-record-configure-flags
+          (lambda _
+            ;; Do not save the configure options to avoid unnecessary references.
+            (substitute* "curl-config.in"
+              (("@CONFIGURE_OPTIONS@")
+               "\"not available\""))
+            #t))
         (add-after
          'install 'move-man3-pages
          (lambda* (#:key outputs #:allow-other-keys)
@@ -147,18 +162,39 @@ tunneling, and so on.")
                                   "See COPYING in the distribution."))
    (home-page "https://curl.haxx.se/")))
 
-(define-public curl-7.65.0
+;; This package exists mainly to bootstrap CMake.  It must not depend on
+;; anything that uses cmake-build-system.
+(define-public curl-minimal
+  (hidden-package
+   (package/inherit
+    curl
+    (name "curl-minimal")
+    (inputs (alist-delete "openldap" (package-inputs curl))))))
+
+;; Replacement package to fix CVE-2020-8169 and CVE-2020-8177.
+(define curl-7.71.0
   (package
     (inherit curl)
-    (version "7.65.0")
-    (source
-      (origin
-        (method url-fetch)
-        (uri (string-append "https://curl.haxx.se/download/curl-"
-                            version ".tar.xz"))
-        (sha256
-         (base32
-          "1kb6p510m0n0y1c8fjxbcs6dyaqgm8i54pjvj29zc14lj9ix4rkp"))))))
+    (version "7.71.0")
+    (source (origin
+              (inherit (package-source curl))
+              (uri (string-append "https://curl.haxx.se/download/curl-"
+                                  version ".tar.xz"))
+              (sha256
+               (base32
+                "0wlppmx9iry8slh4pqcxj7lwc6fqwnlhh9ri2pcym2rx76a8gwfd"))))
+    (arguments
+     (substitute-keyword-arguments (package-arguments curl)
+       ((#:phases phases)
+        `(modify-phases ,phases
+           (replace 'check
+             (lambda _
+               ;; Test 1510 is now disabled upstream, and the test runner
+               ;; complains that it can not disable a non-existing test.
+               ;; Thus, override the phase to not delete the test.
+               (substitute* "tests/runtests.pl"
+                 (("/bin/sh") (which "sh")))
+               (invoke "make" "-C" "tests" "test")))))))))
 
 (define-public kurly
   (package
@@ -250,3 +286,34 @@ not offer a replacement for libcurl.")
 Guile to do client-side URL transfers, like requesting documents from HTTP or
 FTP servers.  It is based on the curl library.")
    (license license:gpl3+)))
+
+(define-public curlpp
+  (package
+    (name "curlpp")
+    (version "0.8.1")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/jpbarrette/curlpp")
+             (commit (string-append "v" version))))
+       (sha256
+        (base32 "1b0ylnnrhdax4kwjq64r1fk0i24n5ss6zfzf4hxwgslny01xiwrk"))
+       (file-name (git-file-name name version))))
+    (build-system cmake-build-system)
+    ;; There are no build tests to be had.
+    (arguments
+     '(#:tests? #f))
+    ;; The installed version needs the header files from the C library.
+    (propagated-inputs
+     `(("curl" ,curl)))
+    (synopsis "C++ wrapper around libcURL")
+    (description
+     "This package provides a free and easy-to-use client-side C++ URL
+transfer library, supporting FTP, FTPS, HTTP, HTTPS, GOPHER, TELNET, DICT,
+FILE and LDAP; in particular it supports HTTPS certificates, HTTP POST, HTTP
+PUT, FTP uploading, kerberos, HTTP form based upload, proxies, cookies,
+user+password authentication, file transfer resume, http proxy tunneling and
+more!")
+    (home-page "http://www.curlpp.org")
+    (license license:expat)))

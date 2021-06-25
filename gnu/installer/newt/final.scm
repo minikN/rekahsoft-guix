@@ -1,6 +1,6 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2018 Mathieu Othacehe <m.othacehe@gmail.com>
-;;; Copyright © 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2018, 2020 Mathieu Othacehe <m.othacehe@gmail.com>
+;;; Copyright © 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -25,8 +25,10 @@
   #:use-module (gnu installer newt page)
   #:use-module (gnu installer newt utils)
   #:use-module (guix i18n)
+  #:use-module (guix colors)
   #:use-module (srfi srfi-34)
   #:use-module (srfi srfi-35)
+  #:use-module (ice-9 match)
   #:use-module (newt)
   #:export (run-final-page))
 
@@ -36,7 +38,7 @@
       (string-drop file (string-length prefix))
       file))
 
-(define (run-config-display-page)
+(define* (run-config-display-page #:key locale)
   (let ((width (%configuration-file-width))
         (height (nearest-exact-integer
                  (/ (screen-rows) 2))))
@@ -50,6 +52,8 @@ This will take a few minutes.")
                          (strip-prefix (%installer-configuration-file)))
      #:title (G_ "Configuration file")
      #:file (%installer-configuration-file)
+     #:edit-button? #t
+     #:editor-locale locale
      #:info-textbox-width width
      #:file-textbox-width width
      #:file-textbox-height height
@@ -60,28 +64,51 @@ This will take a few minutes.")
          (&installer-step-abort)))))))
 
 (define (run-install-success-page)
-  (message-window
-   (G_ "Installation complete")
-   (G_ "Reboot")
-   (G_ "Congratulations!  Installation is now complete.  \
+  (match (current-clients)
+    (()
+     (message-window
+      (G_ "Installation complete")
+      (G_ "Reboot")
+      (G_ "Congratulations!  Installation is now complete.  \
 You may remove the device containing the installation image and \
-press the button to reboot."))
+press the button to reboot.")))
+    (_
+     ;; When there are clients connected, send them a message and keep going.
+     (send-to-clients '(installation-complete))))
 
   ;; Return success so that the installer happily reboots.
   'success)
 
 (define (run-install-failed-page)
-  (choice-window
-   (G_ "Installation failed")
-   (G_ "Restart installer")
-   (G_ "Retry system install")
-   (G_ "The final system installation step failed.  You can retry the \
-last step, or restart the installer.")))
+  (match (current-clients)
+    (()
+     (match (choice-window
+             (G_ "Installation failed")
+             (G_ "Resume")
+             (G_ "Restart the installer")
+             (G_ "The final system installation step failed.  You can resume from \
+a specific step, or restart the installer."))
+       (1 (raise
+           (condition
+            (&installer-step-abort))))
+       (2
+        ;; Keep going, the installer will be restarted later on.
+        #t)))
+    (_
+     (send-to-clients '(installation-failure))
+     #t)))
 
 (define* (run-install-shell locale
                             #:key (users '()))
   (clear-screen)
   (newt-suspend)
+  ;; XXX: Force loading 'bold' font files before mouting the
+  ;; cow-store. Otherwise, if the file is loaded by kmscon after the cow-store
+  ;; in mounted, it will be necessary to kill kmscon to umount to cow-store.
+  (display
+   (colorize-string
+    (format #f (G_ "Installing Guix System ...~%"))
+    (color BOLD)))
   (let ((install-ok? (install-system locale #:users users)))
     (newt-resume)
     install-ok?))
@@ -95,7 +122,7 @@ last step, or restart the installer.")))
           (with-mounted-partitions
            user-partitions
            (configuration->file configuration)
-           (run-config-display-page)
+           (run-config-display-page #:locale locale)
            (run-install-shell locale #:users users))))
     (if install-ok?
         (run-install-success-page)

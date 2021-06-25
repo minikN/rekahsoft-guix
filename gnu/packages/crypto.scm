@@ -3,16 +3,20 @@
 ;;; Copyright © 2015, 2017, 2018, 2019 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2016, 2017, 2018, 2019 Leo Famulari <leo@famulari.name>
 ;;; Copyright © 2016 Lukas Gradl <lgradl@openmailbox>
-;;; Copyright © 2016, 2017, 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
-;;; Copyright © 2016, 2017 ng0 <ng0@n0.is>
+;;; Copyright © 2016, 2017, 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2016, 2017 Nikita <nikita@n0.is>
 ;;; Copyright © 2016, 2017, 2019 Eric Bavier <bavier@member.fsf.org>
 ;;; Copyright © 2017 Pierre Langlois <pierre.langlois@gmx.com>
-;;; Copyright © 2018 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2018, 2020 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2018 Arun Isaac <arunisaac@systemreboot.net>
 ;;; Copyright © 2018 Nicolas Goaziou <mail@nicolasgoaziou.fr>
-;;; Copyright © 2018 Nicolò Balzarotti <nicolo@nixo.xyz>
+;;; Copyright © 2018, 2020 Nicolò Balzarotti <nicolo@nixo.xyz>
 ;;; Copyright © 2018 Tim Gesthuizen <tim.gesthuizen@yahoo.de>
 ;;; Copyright © 2019 Pierre Neidhardt <mail@ambrevar.xyz>
+;;; Copyright © 2019 Tanguy Le Carrour <tanguy@bioneland.org>
+;;; Copyright © 2020 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2020 Jakub Kądziołka <kuba@kadziolka.net>
+;;; Copyright © 2020 Brice Waegeneire <brice@waegenei.re>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -38,14 +42,17 @@
   #:use-module (gnu packages boost)
   #:use-module (gnu packages check)
   #:use-module (gnu packages compression)
+  #:use-module (gnu packages crates-io)
   #:use-module (gnu packages cryptsetup)
   #:use-module (gnu packages gettext)
   #:use-module (gnu packages gnupg)
+  #:use-module (gnu packages golang)
   #:use-module (gnu packages image)
   #:use-module (gnu packages kerberos)
   #:use-module (gnu packages libbsd)
   #:use-module (gnu packages libffi)
   #:use-module (gnu packages linux)
+  #:use-module (gnu packages lsof)
   #:use-module (gnu packages nettle)
   #:use-module (gnu packages password-utils)
   #:use-module (gnu packages perl)
@@ -65,10 +72,12 @@
   #:use-module (guix packages)
   #:use-module (guix download)
   #:use-module (guix git-download)
+  #:use-module (guix build-system cargo)
   #:use-module (guix build-system cmake)
   #:use-module (guix build-system gnu)
+  #:use-module (guix build-system go)
   #:use-module (guix build-system perl)
-  #:use-module (guix build utils)
+  #:use-module (guix utils)
   #:use-module (srfi srfi-1)
   #:use-module (srfi srfi-26))
 
@@ -131,7 +140,7 @@ communication, encryption, decryption, signatures, etc.")
 (define-public signify
   (package
     (name "signify")
-    (version "26")
+    (version "29")
     (home-page "https://github.com/aperezdc/signify")
     (source (origin
               (method url-fetch)
@@ -139,13 +148,12 @@ communication, encryption, decryption, signatures, etc.")
                                   "/download/v" version "/signify-" version ".tar.xz"))
               (sha256
                (base32
-                "16sl1yq5bbsads5q4a0fbrf31b0x8r1hi4wagl90nbrhrca98baw"))))
+                "1bzcax5kb4lr0rmpmrdpq5q0iq6b2dxzpl56li8aanbkck1c7hd9"))))
     (build-system gnu-build-system)
     ;; TODO Build with libwaive (described in README.md), to implement something
     ;; like OpenBSD's pledge().
     (arguments
-     `(#:tests? #f ; no test suite
-       #:make-flags
+     `(#:make-flags
        (list "CC=gcc"
              (string-append "PREFIX=" (assoc-ref %outputs "out")))
        #:phases
@@ -166,6 +174,58 @@ OpenBSD tool of the same name.")
                                           "file://base64.c"
                                           "See base64.c in the distribution for
                                            the license from IBM.")))))
+
+(define-public rust-minisign
+  (package
+    (name "rust-minisign")
+    (version "0.5.20")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (crate-uri "minisign" version))
+        (file-name
+         (string-append name "-" version ".tar.gz"))
+        (sha256
+         (base32
+          "0xmcvh2snravghaar8igc6b9r3s1snnmf9qam9l3zyhm4987767y"))))
+    (build-system cargo-build-system)
+    (arguments
+     `(#:cargo-inputs
+       (("rust-getrandom" ,rust-getrandom-0.1)
+        ("rust-rpassword" ,rust-rpassword-4)
+        ("rust-scrypt" ,rust-scrypt-0.3))))
+    (home-page "https://github.com/jedisct1/rust-minisign")
+    (synopsis "Crate to sign files and verify signatures")
+    (description
+     "This package provides a crate to sign files and verify signatures.")
+    (license license:expat)))
+
+(define-public go-minisign
+  (package
+    (name "go-minisign")
+    (version "0.1.0")
+    (source
+      (origin
+        (method git-fetch)
+        (uri (git-reference
+               (url "https://github.com/jedisct1/go-minisign")
+               (commit version)))
+        (file-name (git-file-name name version))
+        (sha256
+         (base32
+          "0wc0rk5m60yz52f0cncmbgq67yvb1rcx91gvzjg6jpc4mpw2db27"))
+        (modules '((guix build utils)))
+        (snippet
+         '(begin (delete-file-recursively "vendor") #t))))
+    (build-system go-build-system)
+    (arguments
+     '(#:import-path "github.com/jedisct1/go-minisign"))
+    (propagated-inputs
+     `(("go-golang-org-x-crypto" ,go-golang-org-x-crypto)))
+    (home-page "https://github.com/jedisct1/go-minisign")
+    (synopsis "Minisign verification library for Golang")
+    (description "A Golang library to verify Minisign signatures.")
+    (license license:expat)))
 
 (define-public encfs
   (package
@@ -210,6 +270,15 @@ OpenBSD tool of the same name.")
              (copy-recursively (assoc-ref inputs "googletest-source")
                                "vendor/github.com/google/googletest")
              #t))
+         (add-before 'configure 'patch-CMakeLists.txt
+           (lambda _
+             ;; Prevent CMake from adding libc on the system include path.
+             ;; Otherwise it will interfere with the libc used by GCC and
+             ;; ultimately cause #include_next errors.
+             (substitute* "CMakeLists.txt"
+               (("include_directories \\(SYSTEM \\$\\{Intl_INCLUDE_DIRS\\}\\)")
+                ""))
+             #t))
          (add-before 'check 'make-unittests
            (lambda _
              (invoke "make" "unittests"))))))
@@ -228,7 +297,7 @@ the wrong hands.")
 (define-public keyutils
   (package
     (name "keyutils")
-    (version "1.6")
+    (version "1.6.1")
     (source
      (origin
        (method url-fetch)
@@ -236,8 +305,7 @@ the wrong hands.")
         (string-append "https://people.redhat.com/dhowells/keyutils/keyutils-"
                        version ".tar.bz2"))
        (sha256
-        (base32
-         "05bi5ja6f3h3kdi7p9dihlqlfrsmi1wh1r2bdgxc0180xh6g5bnk"))
+        (base32 "1kk4pmyflgplkgxn2bzpc069ph9c9jdd9ikcsyd5pnaimqi5gcf8"))
        (modules '((guix build utils)))
        ;; Create relative symbolic links instead of absolute ones to /lib/*.
        (snippet '(begin
@@ -329,14 +397,15 @@ no man page, refer to the home page for usage details.")
 (define-public tomb
   (package
     (name "tomb")
-    (version "2.6")
+    (version "2.7")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://files.dyne.org/tomb/"
                                   "Tomb-" version ".tar.gz"))
               (sha256
                (base32
-                "1sr3jcn96mciyn8xd0amd1jzamxxzpybakf8an7laf26gjim1dh2"))))
+                "0x3al02796vx1cvy6y6h685c367qx70dwv471g0hmks2gr10f0cn"))
+              (patches (search-patches "tomb-fix-errors-on-open.patch"))))
     (build-system gnu-build-system)
     (native-inputs `(("sudo" ,sudo)))   ;presence needed for 'check' phase
     (inputs
@@ -345,6 +414,7 @@ no man page, refer to the home page for usage details.")
        ("cryptsetup" ,cryptsetup)
        ("e2fsprogs" ,e2fsprogs)         ;for mkfs.ext4
        ("gettext" ,gettext-minimal)     ;used at runtime
+       ("lsof" ,lsof)
        ("mlocate" ,mlocate)
        ("pinentry" ,pinentry)
        ("qrencode" ,qrencode)
@@ -352,6 +422,10 @@ no man page, refer to the home page for usage details.")
        ("util-linux" ,util-linux)))
     (arguments
      `(#:make-flags (list (string-append "PREFIX=" (assoc-ref %outputs "out")))
+       ;; The "sudo" input is needed only to satisfy dependency checks in the
+       ;; 'check' phase.  The "sudo" used at runtime should come from the
+       ;; system's setuid-programs, so ensure no reference is kept.
+       #:disallowed-references (,sudo)
        ;; TODO: Build and install gtk and qt trays
        #:phases
        (modify-phases %standard-phases
@@ -370,9 +444,9 @@ no man page, refer to the home page for usage details.")
                     ,@(map (lambda (program)
                              (or (and=> (which program) dirname)
                                  (error "program not found:" program)))
-                           '("seq" "mkfs.ext4" "pinentry" "sudo"
-                             "gpg" "cryptsetup" "gettext"
-                             "qrencode" "steghide" "findmnt")))))
+                           '("seq" "mkfs.ext4" "pinentry"
+                             "gpg" "cryptsetup" "gettext" "lsof"
+                             "qrencode" "steghide" "findmnt" "getent")))))
                #t)))
          (delete 'check)
          (add-after 'wrap 'check
@@ -439,7 +513,7 @@ attacks than alternative functions such as @code{PBKDF2} or @code{bcrypt}.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/technion/libscrypt.git")
+             (url "https://github.com/technion/libscrypt")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
@@ -518,19 +592,18 @@ generator.")
 (define-public perl-crypt-random-source
   (package
     (name "perl-crypt-random-source")
-    (version "0.12")
+    (version "0.14")
     (source
      (origin
        (method url-fetch)
        (uri (string-append "mirror://cpan/authors/id/E/ET/ETHER/"
                            "Crypt-Random-Source-" version ".tar.gz"))
        (sha256
-        (base32
-         "00mw5m52sbz9nqp3f6axyrgcrihqxn7k8gv0vi1kvm1j1nc9g29h"))))
+        (base32 "1rpdds3sy5l1fhngnkrsgwsmwd54wpicx3i9ds69blcskwkcwkpc"))))
     (build-system perl-build-system)
     (native-inputs
      `(("perl-module-build-tiny" ,perl-module-build-tiny)
-       ("perl-test-exception" ,perl-test-exception)))
+       ("perl-test-fatal" ,perl-test-fatal)))
     (propagated-inputs
      `(("perl-capture-tiny" ,perl-capture-tiny)
        ("perl-module-find" ,perl-module-find)
@@ -587,7 +660,7 @@ data on your platform, so the seed itself will be as random as possible.
 (define-public crypto++
   (package
     (name "crypto++")
-    (version "8.0.0")
+    (version "8.2.0")
     (source (origin
               (method url-fetch/zipbomb)
               (uri (string-append "https://cryptopp.com/cryptopp"
@@ -595,7 +668,7 @@ data on your platform, so the seed itself will be as random as possible.
                                   ".zip"))
               (sha256
                (base32
-                "0b5qrsm4jhy4nzxgrm13nixhvbswr242plx1jw6r4sw492rqkzdv"))))
+                "0n40hlz5jkvlcp9vxrj0fsrcfp7dm0zmmv6h52dx3f8i5qjf5w03"))))
     (build-system gnu-build-system)
     (arguments
      `(#:make-flags
@@ -613,10 +686,26 @@ data on your platform, so the seed itself will be as random as possible.
                ((" -march=native") ""))
              #t))
          (delete 'configure)
-         (add-after 'build 'build-shared
-           (lambda _
-             ;; By default, only the static library is built.
-             (invoke "make" "shared")))
+         (replace 'build
+           ;; By default, only the static library is built.
+           (lambda* (#:key (make-flags '()) #:allow-other-keys)
+             (apply invoke "make" "shared"
+                    "-j" (number->string (parallel-job-count))
+                    make-flags)))
+         (add-after 'install 'install-shared-library-links
+           ;; By default, only .so and .so.x.y.z are installed.
+           ;; Create all the ‘intermediates’ expected by dependent packages.
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (lib (string-append out "/lib"))
+                    (prefix "libcryptopp.so.")
+                    (target (string-append prefix ,version)))
+               (with-directory-excursion lib
+                 (symlink target
+                          (string-append prefix ,(version-major+minor version)))
+                 (symlink target
+                          (string-append prefix ,(version-major version)))
+                 #t))))
          (add-after 'install 'install-pkg-config
            (lambda* (#:key outputs #:allow-other-keys)
              (let* ((out (assoc-ref outputs "out"))
@@ -633,7 +722,8 @@ data on your platform, so the seed itself will be as random as possible.
                      "Description: Class library of cryptographic schemes"
                      "Version: " ,version "\n"
                      "Libs: -L${libdir} -lcryptopp\n"
-                     "Cflags: -I${includedir}\n"))))))))))
+                     "Cflags: -I${includedir}\n"))
+                   #t))))))))
     (native-inputs
      `(("unzip" ,unzip)))
     (home-page "https://cryptopp.com/")
@@ -683,19 +773,28 @@ BLAKE.")
 (define-public rhash
   (package
     (name "rhash")
-    (version "1.3.6")
+    (version "1.3.9")
     (source
      (origin
        (method url-fetch)
-       (uri (string-append "https://github.com/rhash/RHash/archive/v"
-                           version ".tar.gz"))
-       (file-name (string-append name "-" version ".tar.gz"))
+       (uri (string-append "mirror://sourceforge/rhash/rhash/" version
+                           "/rhash-" version "-src.tar.gz"))
+       (file-name (string-append "rhash-" version ".tar.gz"))
        (sha256
         (base32
-         "14ngzfgmd1lfp7m78sn49x8ymf2s37nrr67c6p5vas85nrrgjkcn"))))
+         "1xn9fqa6rlnhsbgami45g82dlw9i1skg2sri3ydiinwak5ph1ca2"))))
     (build-system gnu-build-system)
     (arguments
-     `(#:make-flags
+     `(#:configure-flags
+       (list (string-append "--prefix=" (assoc-ref %outputs "out"))
+             ,@(let ((target (%current-target-system)))
+                 (if target
+                     `((string-append "--target=" ,target)
+                       (string-append "--cc="
+                                      (assoc-ref %build-inputs "cross-gcc")
+                                      "/bin/" ,target "-gcc"))
+                     '())))
+       #:make-flags
        ;; The binaries in /bin need some help finding librhash.so.0.
        (list (string-append "LDFLAGS=-Wl,-rpath=" %output "/lib"))
        #:test-target "test"             ; ‘make check’ just checks the sources
@@ -704,14 +803,18 @@ BLAKE.")
          (replace 'configure
            ;; ./configure is not GNU autotools' and doesn't gracefully handle
            ;; unrecognized options, so we must call it manually.
-           (lambda* (#:key outputs #:allow-other-keys)
-             (invoke "./configure"
-                     (string-append "--prefix=" (assoc-ref outputs "out")))))
+           (lambda* (#:key configure-flags #:allow-other-keys)
+             (apply invoke "./configure" configure-flags)))
+         (add-before 'check 'patch-/bin/sh
+           (lambda _
+             (substitute* "Makefile"
+               (("/bin/sh") (which "sh")))
+             #t))
          (add-after 'install 'install-library-extras
            (lambda* (#:key make-flags #:allow-other-keys)
              (apply invoke
                     "make" "-C" "librhash"
-                    "install-headers" "install-so-link"
+                    "install-lib-headers" "install-so-link"
                     make-flags))))))
     (home-page "https://sourceforge.net/projects/rhash/")
     (synopsis "Utility for computing hash sums")
@@ -724,14 +827,14 @@ SHA256, SHA512, SHA3, AICH, ED2K, Tiger, DC++ TTH, BitTorrent BTIH, GOST R
 (define-public botan
   (package
     (name "botan")
-    (version "2.7.0")
+    (version "2.12.1")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://botan.randombit.net/releases/"
-                                  "Botan-" version ".tgz"))
+                                  "Botan-" version ".tar.xz"))
               (sha256
                (base32
-                "142aqabwc266jxn8wrp0f1ffrmcvdxwvyh8frb38hx9iaqazjbg4"))))
+                "1ada3ga7b0z4m0vjmxlvfi4nsic2l8kjcy85jwss3z2i58a5y0vy"))))
     (build-system gnu-build-system)
     (arguments
      '(#:phases
@@ -740,12 +843,17 @@ SHA256, SHA512, SHA3, AICH, ED2K, Tiger, DC++ TTH, BitTorrent BTIH, GOST R
            (lambda* (#:key inputs outputs #:allow-other-keys)
              (let* ((out (assoc-ref %outputs "out"))
                     (lib (string-append out "/lib")))
+               ;; Upstream tests and benchmarks with -O3.
+               (setenv "CXXFLAGS" "-O3")
                (invoke "python" "./configure.py"
                        (string-append "--prefix=" out)
                        ;; Otherwise, the `botan` executable cannot find
                        ;; libbotan.
                        (string-append "--ldflags=-Wl,-rpath=" lib)
+
+                       "--with-os-feature=getentropy"
                        "--with-rst2man"
+
                        ;; Recommended by upstream
                        "--with-zlib" "--with-bzip2" "--with-sqlite3"))))
          (replace 'check
@@ -799,7 +907,7 @@ security.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                       (url "https://github.com/vstakhov/asignify.git")
+                       (url "https://github.com/vstakhov/asignify")
                        (commit commit)))
                 (file-name (git-file-name name version))
                 (sha256
@@ -816,7 +924,7 @@ security.")
          ("automake" ,automake)
          ("libtool" ,libtool)))
       (inputs
-       `(("openssl" ,openssl-next)))
+       `(("openssl" ,openssl)))
       (home-page "https://github.com/vstakhov/asignify")
       (synopsis "Cryptographic authentication and encryption tool and library")
       (description "Asignify offers public cryptographic signatures and
@@ -831,15 +939,16 @@ cannot sign messages in OpenBSD format yet.")
 (define-public enchive
   (package
     (name "enchive")
-    (version "3.4")
+    (version "3.5")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/skeeto/" name "/archive/"
-                                  version ".tar.gz"))
-              (sha256
-               (base32
-                "17hrxpp4cpn10bk48sfvfjc8hghky34agsnypam1v9f36kbalqfk"))
-              (file-name (string-append name "-" version ".tar.gz"))))
+                (method git-fetch)
+                (uri (git-reference
+                      (url "https://github.com/skeeto/enchive")
+                      (commit version)))
+                (sha256
+                 (base32
+                  "0fdrfc5l42lj2bvmv9dmkmhmm7qiszwk7cmdvnqad3fs7652g0qa"))
+                (file-name (git-file-name name version))))
     (build-system gnu-build-system)
     (arguments
      '(#:tests? #f                      ; no check target         '
@@ -862,10 +971,10 @@ trivial to build for local use.  Portability is emphasized over performance.")
     (license license:unlicense)))
 
 (define-public libsecp256k1
-  (let ((commit "e34ceb333b1c0e6f4115ecbb80c632ac1042fa49"))
+  (let ((commit "d644dda5c9dbdecee52d1aa259235510fdc2d4ee"))
     (package
       (name "libsecp256k1")
-      (version (git-version "20181126" "1" commit))
+      (version (git-version "20191213" "1" commit))
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
@@ -873,7 +982,7 @@ trivial to build for local use.  Portability is emphasized over performance.")
                       (commit commit)))
                 (sha256
                  (base32
-                  "0as78s179hcr3ysk3fw98k5wzabgnwri7vkkc17wg31lyz6ids6c"))
+                  "0zmx32746khsm2cx0p3pdy3j2vkwmafvf7axiixijhgcg0xjv93i"))
                 (file-name (git-file-name name version))))
       (build-system gnu-build-system)
       (native-inputs
@@ -937,6 +1046,7 @@ utility/testing functions.")
               (uri (git-reference
                      (url "https://github.com/vstakhov/hpenc")
                      (commit version)))
+              (file-name (git-file-name name version))
               (sha256
                (base32
                 "1fb5yi3d2k8kd4zm7liiqagpz610y168xrr1cvn7cbq314jm2my1"))))
@@ -974,3 +1084,104 @@ pre-shared keys out of band.  It is designed to handle large amounts of data
 quickly by using all your CPU cores and hardware acceleration.")
     (home-page "https://github.com/vstakhov/hpenc")
     (license license:bsd-3)))
+
+(define-public minisign
+  (package
+    (name "minisign")
+    (version "0.9")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+        (string-append "https://github.com/jedisct1/minisign/releases/download/"
+                       version "/minisign-" version ".tar.gz"))
+       (sha256
+        (base32 "1h9cfvvm6lqq33b2wdar1x3w4k7zyrscavllyb0l5dmcdabq60r2"))))
+    (build-system cmake-build-system)
+    (arguments
+     ; No test suite
+     `(#:tests? #f))
+    (native-inputs
+     `(("pkg-config" ,pkg-config)))
+    (inputs
+     `(("libsodium" ,libsodium)))
+    (home-page "https://jedisct1.github.io/minisign")
+    (synopsis "Tool to sign files and verify signatures")
+    (description
+     "Minisign is a dead simple tool to sign files and verify signatures.  It is
+portable, lightweight, and uses the highly secure Ed25519 public-key signature
+system.  Signature written by minisign can be verified using OpenBSD's
+signify tool: public key files and signature files are compatible.  However,
+minisign uses a slightly different format to store secret keys.  Minisign
+signatures include trusted comments in addition to untrusted comments.
+Trusted comments are signed, thus verified, before being displayed.")
+    (license license:isc)))
+
+(define-public libolm
+  (package
+    (name "libolm")
+    (version "3.1.5")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://git.matrix.org/git/olm")
+                    (commit version)))
+              (sha256
+               (base32
+                "030g0jmmvhx2dh32k708sz6cdd5q1wz48i4gigh6dclqk10w28lm"))
+              (file-name (git-file-name name version))))
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (replace 'check
+           (lambda _
+             (invoke "ctest" "build/tests"))))))
+    (build-system cmake-build-system)
+    (synopsis "Implementation of the olm and megolm cryptographic ratchets")
+    (description "The libolm library implements the Double Ratchet
+cryptographic ratchet.  It is written in C and C++11, and exposed as a C
+API.")
+    (home-page "https://matrix.org/docs/projects/other/olm/")
+    (license license:asl2.0)))
+
+(define-public hash-extender
+  (let ((commit "cb8aaee49f93e9c0d2f03eb3cafb429c9eed723d")
+        (revision "2"))
+    (package
+      (name "hash-extender")
+      (version (git-version "0.0" revision commit))
+      (source (origin
+                (method git-fetch)
+                (uri (git-reference
+                      (url "https://github.com/iagox86/hash_extender")
+                      (commit commit)))
+                (sha256
+                 (base32
+                  "1fj118566hr1wv03az2w0iqknazsqqkak0mvlcvwpgr6midjqi9b"))
+                (file-name (git-file-name name version))))
+      (build-system gnu-build-system)
+      (arguments
+       `(#:phases
+         (modify-phases %standard-phases
+           (delete 'configure)
+           (replace 'check
+             (lambda _
+               (invoke "./hash_extender_test")))
+           (replace 'install
+             (lambda* (#:key outputs #:allow-other-keys)
+               (let* ((outdir (assoc-ref outputs "out"))
+                      (bindir (string-append outdir "/bin"))
+                      (docdir (string-append outdir
+                                             "/share/doc/hash-extender-"
+                                             ,version)))
+                 (install-file "hash_extender" bindir)
+                 (install-file "README.md" docdir)
+                 #t))))))
+      (inputs
+       `(("openssl" ,openssl)))
+      (synopsis "Tool for hash length extension attacks")
+      (description "@command{hash_extender} is a utility for performing hash
+length extension attacks supporting MD4, MD5, RIPEMD-160, SHA-0, SHA-1,
+SHA-256, SHA-512, and WHIRLPOOL hashes.")
+      (home-page "https://github.com/iagox86/hash_extender")
+      (license license:bsd-3))))

@@ -5,7 +5,9 @@
 ;;; Copyright © 2017 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2017 Sou Bunnbu <iyzsong@gmail.com>
 ;;; Copyright © 2017 Marius Bakke <mbakke@fastmail.com>
-;;; Copyright © 2017 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2017, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2020 L  p R n  d n <guix@lprndn.info>
+;;; Copyright © 2020 Fredrik Salomonsson <plattfot@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -26,8 +28,11 @@
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (guix packages)
   #:use-module (guix download)
+  #:use-module (guix git-download)
   #:use-module (guix build-system cmake)
+  #:use-module (guix build-system qt)
   #:use-module (guix build-system gnu)
+  #:use-module (guix build-system trivial)
   #:use-module (guix packages)
   #:use-module (guix utils)
   #:use-module (gnu packages)
@@ -62,7 +67,7 @@
               (sha256
                (base32
                 "0nilrhwlyvkngjgxfc08n73c16azgmw80pvx0a78xqww9y3hv4xh"))))
-    (build-system cmake-build-system)
+    (build-system qt-build-system)
     (native-inputs
      `(("extra-cmake-modules" ,extra-cmake-modules)
        ("pkg-config" ,pkg-config)
@@ -102,27 +107,16 @@
                        (assoc-ref %build-inputs "shadow")
                        "/etc/login.defs")
         (string-append "-DQT_IMPORTS_DIR="
-                       (assoc-ref %outputs "out") "/qml")
+                       (assoc-ref %outputs "out") "/lib/qt5/qml")
         (string-append "-DCMAKE_INSTALL_SYSCONFDIR="
                        (assoc-ref %outputs "out") "/etc"))
-       #:modules ((guix build cmake-build-system)
-                  (guix build qt-utils)
-                  (guix build utils))
-       #:imported-modules (,@%cmake-build-system-modules
-                           (guix build qt-utils))
        #:phases
        (modify-phases %standard-phases
          (add-after 'unpack 'embed-loginctl-reference
            (lambda _
              (substitute* "CMakeLists.txt"
                (("/usr/bin/loginctl") (which "loginctl")))
-             #t))
-         (add-after 'install 'wrap-programs
-           (lambda* (#:key outputs #:allow-other-keys)
-             (let ((out (assoc-ref outputs "out")))
-               (wrap-qt-program out "sddm")
-               (wrap-qt-program out "sddm-greeter")
-               #t))))))
+               #t)))))
     (synopsis "QML based X11 and Wayland display manager")
     (description "SDDM is a display manager for X11 and Wayland aiming to be
 fast, simple and beautiful.  SDDM is themeable and puts no restrictions on the
@@ -132,19 +126,49 @@ create smooth, animated user interfaces.")
     ;; QML files are MIT licensed and images are CC BY 3.0.
     (license (list license:gpl2+ license:expat license:cc-by3.0))))
 
+(define-public guix-simplyblack-sddm-theme
+  (package
+    (name "guix-simplyblack-sddm-theme")
+    (version "0.1")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/plattfot/guix-simplyblack-sddm")
+                    (commit version)))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32 "1fwny6b0xpjs8ad2b16pyxd27gf0sr0nillmhc2h5k0q7dva21vi"))))
+    (build-system trivial-build-system)
+    (arguments
+     `(#:modules ((guix build utils))
+       #:builder
+       (begin
+         (use-modules (guix build utils))
+         (let* ((out (assoc-ref %outputs "out"))
+                (sddm-themes (string-append out "/share/sddm/themes")))
+           (mkdir-p sddm-themes)
+           (copy-recursively (assoc-ref %build-inputs "source")
+                             (string-append sddm-themes "/guix-simplyblack-sddm"))))))
+    (home-page "https://github.com/plattfot/guix-simplyblack-sddm")
+    (synopsis "Guix based theme for SDDM")
+    (description
+     "This package provides a simple theme for SDDM, black background with
+Guix's logo.  Based on Arch linux's archlinux-simplyblack theme.")
+    ;; Theme under cc-by-sa3.0, guix logo under license:cc-by-sa4.0
+    (license (list license:cc-by-sa3.0 license:cc-by-sa4.0))))
+
 (define-public lightdm
   (package
     (name "lightdm")
-    (version "1.24.0")
+    (version "1.30.0")
     (source (origin
               (method url-fetch)
-              (uri (string-append "https://launchpad.net/lightdm/"
-                                  (version-major+minor version) "/"
-                                  version "/+download/lightdm-"
-                                  version ".tar.xz"))
+              (uri (string-append
+                    "https://github.com/CanonicalLtd/lightdm/releases/download/"
+                    version "/lightdm-" version ".tar.xz"))
               (sha256
                (base32
-                "18j33bm54i8k7ncxcs69zqi4105s62n58jrydqn3ikrb71s9nl6d"))))
+                "158zb2d0v1309a8v19hh32y4yj3v6yg4yg6m0l7v59d3a2b7f651"))))
     (build-system gnu-build-system)
     (arguments
      '(#:parallel-tests? #f ; fails when run in parallel
@@ -162,12 +186,6 @@ create smooth, animated user interfaces.")
                (("/usr/sbin/nologin") (which "nologin")))
              (substitute* "src/seat.c"
                (("/bin/sh") (which "sh")))
-             #t))
-         (add-after 'unpack 'disable-broken-tests
-           (lambda _
-             (substitute* "tests/Makefile.in"
-               (("test-sessions-gobject ") "")
-               ((" test-sessions-python ") " "))
              #t))
          (add-before 'check 'pre-check
            ;; Run test-suite under a dbus session.
@@ -191,6 +209,7 @@ create smooth, animated user interfaces.")
        ("pkg-config" ,pkg-config)
        ("itstool" ,itstool)
        ("intltool" ,intltool)
+       ("vala" ,vala)                   ;for Vala bindings
        ;; For tests
        ("dbus" ,dbus)
        ("python" ,python-2)
@@ -209,7 +228,7 @@ display manager which supports different greeters.")
 (define-public lightdm-gtk-greeter
   (package
     (name "lightdm-gtk-greeter")
-    (version "2.0.2")
+    (version "2.0.7")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -218,14 +237,46 @@ display manager which supports different greeters.")
                     "/+download/lightdm-gtk-greeter-" version ".tar.gz"))
               (sha256
                (base32
-                "1436sdm83xqhxyr1rzqxhsl8if2xmidlvb341xcv6dv83lyxkrlf"))))
+                "1g7wc3d3vqfa7mrdhx1w9ywydgjbffla6rbrxq9k3sc62br97qms"))))
     (build-system gnu-build-system)
+    (arguments
+     `(#:configure-flags
+       (list (string-append "--enable-at-spi-command="
+                            (assoc-ref %build-inputs "at-spi2-core")
+                            "/libexec/at-spi-bus-launcher"))
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'install 'fix-.desktop-file
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out")))
+               (substitute* (string-append
+                             out "/share/xgreeters/lightdm-gtk-greeter.desktop")
+                 (("Exec=lightdm-gtk-greeter")
+                  (string-append "Exec=" out "/sbin/lightdm-gtk-greeter")))
+               #t)))
+         (add-after 'fix-.desktop-file 'wrap-program
+           ;; Mimic glib-or-gtk build system
+           ;; which doesn't wrap files in /sbin
+           (lambda* (#:key outputs inputs #:allow-other-keys)
+             (let ((gtk (assoc-ref inputs "gtk+")))
+               (wrap-program (string-append (assoc-ref outputs "out")
+                                            "/sbin/lightdm-gtk-greeter")
+                 `("XDG_DATA_DIRS" ":" prefix
+                   ,(cons "/run/current-system/profile/share"
+                          (map (lambda (pkg)
+                                 (string-append (assoc-ref inputs pkg) "/share"))
+                               '("gtk+" "shared-mime-info" "glib"))))
+                 `("GTK_PATH" ":" prefix (,gtk))
+                 `("GIO_EXTRA_MODULES" ":" prefix (,gtk))))
+             #t)))))
     (native-inputs
      `(("exo" ,exo)
        ("intltool" ,intltool)
        ("pkg-config" ,pkg-config)))
     (inputs
      `(("lightdm" ,lightdm)
+       ("shared-mime-info" ,shared-mime-info)
+       ("at-spi2-core" ,at-spi2-core)
        ("gtk+" ,gtk+)))
     (synopsis "GTK+ greeter for LightDM")
     (home-page "https://launchpad.net/lightdm-gtk-greeter")
@@ -254,7 +305,7 @@ GTK+, lets you select a desktop session and log in to it.")
     (build-system cmake-build-system)
     (inputs `(("linux-pam" ,linux-pam)
 	      ("libpng" ,libpng)
-	      ("libjpeg" ,libjpeg)
+	      ("libjpeg" ,libjpeg-turbo)
 	      ("freeglut" ,freeglut)
 	      ("libxrandr" ,libxrandr)
 	      ("libxrender" ,libxrender)

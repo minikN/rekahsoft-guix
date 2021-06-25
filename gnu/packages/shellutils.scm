@@ -3,9 +3,10 @@
 ;;; Copyright © 2016, 2017 Alex Griffin <a@ajgrf.com>
 ;;; Copyright © 2016 Christopher Baines <mail@cbaines.net>
 ;;; Copyright © 2017 Stefan Reichör <stefan@xsteve.at>
-;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018 Benjamin Slade <slade@jnanam.net>
 ;;; Copyright © 2019 Collin J. Doering <collin@rekahsoft.ca>
+;;; Copyright © 2020 Michael Rohleder <mike@rohleder.de>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -23,24 +24,267 @@
 ;;; along with GNU Guix.  If not, see <http://www.gnu.org/licenses/>.
 
 (define-module (gnu packages shellutils)
-  #:use-module (gnu packages base)
-  #:use-module (gnu packages golang)
-  #:use-module (gnu packages python)
   #:use-module ((guix licenses) #:prefix license:)
+  #:use-module (guix utils)
   #:use-module (guix packages)
   #:use-module (guix download)
   #:use-module (guix git-download)
-  #:use-module (gnu packages autotools)
-  #:use-module (gnu packages ncurses)
-  #:use-module (gnu packages readline)
-  #:use-module (gnu packages pkg-config)
-  #:use-module (gnu packages ruby)
-  #:use-module (gnu packages tmux)
-  #:use-module (gnu packages shells)
-  #:use-module (guix utils)
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system go)
-  #:use-module (guix build-system python))
+  #:use-module (guix build-system python)
+  #:use-module (gnu packages autotools)
+  #:use-module (gnu packages base)
+  #:use-module (gnu packages golang)
+  #:use-module (gnu packages ncurses)
+  #:use-module (gnu packages pkg-config)
+  #:use-module (gnu packages python)
+  #:use-module (gnu packages readline)
+  #:use-module (gnu packages ruby)
+  #:use-module (gnu packages shells)
+  #:use-module (gnu packages tmux))
+
+(define-public zsh-autosuggestions
+  (package
+    (name "zsh-autosuggestions")
+    (version "0.6.4")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/zsh-users/zsh-autosuggestions")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0h52p2waggzfshvy1wvhj4hf06fmzd44bv6j18k3l9rcx6aixzn6"))))
+    (build-system gnu-build-system)
+    (native-inputs
+     `(("ruby" ,ruby)
+       ("ruby-byebug" ,ruby-byebug)
+       ("ruby-pry" ,ruby-pry)
+       ("ruby-rspec" ,ruby-rspec)
+       ("ruby-rspec-wait" ,ruby-rspec-wait)
+       ("tmux" ,tmux)
+       ("zsh" ,zsh)))
+    (arguments
+     '(#:phases
+       (modify-phases %standard-phases
+         (delete 'configure)
+         (replace 'check ; Tests use ruby's bundler; instead execute rspec directly.
+           (lambda _
+             (setenv "TMUX_TMPDIR" (getenv "TMPDIR"))
+             (setenv "SHELL" (which "zsh"))
+             (invoke "rspec")))
+         (replace 'install
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (zsh-plugins
+                      (string-append out "/share/zsh/plugins/zsh-autosuggestions")))
+               (invoke "make" "all")
+               (install-file "zsh-autosuggestions.zsh" zsh-plugins)
+               #t))))))
+    (home-page "https://github.com/zsh-users/zsh-autosuggestions")
+    (synopsis "Fish-like autosuggestions for zsh")
+    (description
+     "Fish-like fast/unobtrusive autosuggestions for zsh.  It suggests commands
+as you type.")
+    (license license:expat)))
+
+(define-public sh-z
+  (package
+    (name "sh-z")
+    (version "1.11")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/rupa/z")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "13zbgkj6y0qhvn5jpkrqbd4jjxjr789k228iwma5hjfh1nx7ghyb"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:tests? #f ; No tests provided
+       #:phases
+       (modify-phases %standard-phases
+         (delete 'configure)
+         (delete 'build)
+         (replace 'install
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (man (string-append out "/share/man/man1"))
+                    (bin (string-append out "/bin")))
+               (install-file "z.sh" bin)
+               (chmod (string-append bin "/z.sh") #o755)
+               (install-file "z.1" man)
+               #t))))))
+    (synopsis "Jump about directories")
+    (description
+     "Tracks your most used directories, based on ``frecency''.  After a short
+learning phase, z will take you to the most ``frecent'' directory that matches
+all of the regexes given on the command line in order.")
+    (home-page "https://github.com/rupa/z")
+    (license license:expat)))
+
+(define-public fzf
+  (package
+    (name "fzf")
+    (version "0.18.0")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/junegunn/fzf.git")
+                    (commit version)))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0pwpr4fpw56yzzkcabzzgbgwraaxmp7xzzmap7w1xsrkbj7dl2xl"))))
+    (build-system go-build-system)
+    (native-inputs
+     `(("github.com/mattn/go-isatty" ,go-github-com-mattn-go-isatty)
+       ("github.com/mattn/go-runewidth" ,go-github-com-mattn-go-runewidth)
+       ("github.com/mattn/go-shellwords" ,go-github-com-mattn-go-shellwords)
+       ("go-golang-org-x-crypto" ,go-golang-org-x-crypto)
+       ("go-golang-org-x-sys" ,go-golang-org-x-sys)))
+    (propagated-inputs
+     `(("tmux" ,tmux)))
+    (arguments
+     '(#:import-path "github.com/junegunn/fzf"
+       #:install-source? #f
+       #:phases
+       (modify-phases %standard-phases
+         (replace 'build
+           (lambda _
+             (with-directory-excursion "src/github.com/junegunn/fzf"
+               (invoke "make"))))
+         (replace 'install
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out")))
+               (mkdir-p (string-append out "/share"))
+               (with-directory-excursion "src/github.com/junegunn/fzf"
+                 (invoke "make" "install")
+                 (copy-recursively "bin" (string-append out "/bin"))
+                 (copy-recursively "man" (string-append out "/share/man"))
+                 (copy-recursively "shell" (string-append out "/share/fzf")))))))))
+    (synopsis "Command line fuzzy finder")
+    (description
+     "@command{fzf} is a general purpose command line fuzzy finder.  It's an
+interactive uniz filter for command-line that can be used with any lists;
+files, command history, processes, hostnames, bookmarks, git commits, etc..")
+    (home-page "https://github.com/junegunn/fzf")
+    (license license:expat)))
+
+(define-public sh-z
+  (package
+    (name "sh-z")
+    (version "1.11")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/rupa/z.git")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "13zbgkj6y0qhvn5jpkrqbd4jjxjr789k228iwma5hjfh1nx7ghyb"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:tests? #f ; No tests provided
+       #:phases
+       (modify-phases %standard-phases
+         (delete 'configure)
+         (delete 'build)
+         (replace 'install
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (man (string-append out "/share/man/man1"))
+                    (bin (string-append out "/bin")))
+               (install-file "z.sh" bin)
+               (chmod (string-append bin "/z.sh") #o755)
+               (install-file "z.1" man)))))))
+    (synopsis "Jump about directories")
+    (description
+     "Tracks your most used directories, based on ``frecency''.  After a short
+learning phase, z will take you to the most ``frecent'' directory that matches
+ALL of the regexes given on the command line in order.")
+    (home-page "https://github.com/rupa/z")
+    (license license:expat)))
+
+(define-public spaceship-prompt
+  (package
+    (name "spaceship-prompt")
+    (version "3.11.1")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/denysdovhan/spaceship-prompt.git")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "171gmqnwbyan1wslbh4aky1gdqfbw3gfsfscxfnpgk0j114a6jfj"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (delete 'configure)
+         (delete 'build)
+         (delete 'check)
+         (replace 'install
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (func-path (string-append out "/share/zsh/site-functions"))
+                    (install-path (string-append out "/lib/spaceship-prompt")))
+               (for-each mkdir-p `(,func-path ,install-path))
+               (for-each (lambda (dir)
+                           (copy-recursively dir (string-append install-path "/" dir)))
+                         '("lib" "modules" "sections"))
+               (copy-file "spaceship.zsh" (string-append install-path "/spaceship.zsh"))
+               (symlink (string-append install-path "/spaceship.zsh")
+                        (string-append func-path "/prompt_spaceship_setup"))))))))
+    (synopsis "Zsh prompt for Astronauts")
+    (description
+     "Spaceship is a minimalistic, powerful and extremely customizable
+Zsh prompt.  It combines everything you may need for convenient work,
+without unecessary complications, like a real spaceship.")
+    (home-page "https://github.com/denysdovhan/spaceship-prompt")
+    (license license:expat)))
+
+(define-public sh-z
+  (package
+    (name "sh-z")
+    (version "1.11")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/rupa/z.git")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "13zbgkj6y0qhvn5jpkrqbd4jjxjr789k228iwma5hjfh1nx7ghyb"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:tests? #f ; No tests provided
+       #:phases
+       (modify-phases %standard-phases
+         (delete 'configure)
+         (delete 'build)
+         (replace 'install
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (man (string-append out "/share/man/man1"))
+                    (bin (string-append out "/bin")))
+               (install-file "z.sh" bin)
+               (chmod (string-append bin "/z.sh") #o755)
+               (install-file "z.1" man)))))))
+    (synopsis "Jump about directories")
+    (description
+     "Tracks your most used directories, based on ``frecency''.  After a short
+learning phase, z will take you to the most ``frecent'' directory that matches
+ALL of the regexes given on the command line in order.")
+    (home-page "https://github.com/rupa/z")
+    (license license:expat)))
 
 (define-public zsh-autosuggestions
   (package
@@ -154,7 +398,7 @@ are already there.")
     (source
      (origin (method git-fetch)
              (uri (git-reference
-                   (url "https://github.com/direnv/direnv.git")
+                   (url "https://github.com/direnv/direnv")
                    (commit (string-append "v" version))))
              (file-name (git-file-name name version))
              (sha256
@@ -208,7 +452,7 @@ environment variables of the current shell.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/jhawthorn/fzy.git")
+             (url "https://github.com/jhawthorn/fzy")
              (commit version)))
        (file-name (git-file-name name version))
        (sha256
@@ -238,15 +482,16 @@ below the current cursor position, scrolling the screen if necessary.")
 (define-public hstr
   (package
     (name "hstr")
-    (version "2.0")
+    (version "2.2")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/dvorka/" name "/archive/"
-                                  version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/dvorka/hstr")
+                     (commit version)))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "0yk2008bl48hv0v3c90ngq4y45h3nxif2ik6s3l7kag1zs5yv4wd"))
-              (file-name (string-append name "-" version ".tar.gz"))))
+                "07fkilqlkpygvf9kvxyvl58g3lfq0bwwdp3wczy4hk8qlbhmgihn"))))
     (build-system gnu-build-system)
     (arguments
      `(#:phases
@@ -276,3 +521,26 @@ commands that are obsolete or contain a piece of sensitive information) or
 bookmark your favourite commands.")
     (home-page "http://me.mindforger.com/projects/hh.html")
     (license license:asl2.0)))
+
+(define-public shell-functools
+  (package
+    (name "shell-functools")
+    (version "0.3.0")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/sharkdp/shell-functools")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0d6zzg7cxfrzwzh1wmpj7q85kz33sak6ac59ncsm6dlbin12h0hi"))))
+    (build-system python-build-system)
+    (home-page "https://github.com/sharkdp/shell-functools/")
+    (synopsis "Functional programming tools for the shell")
+    (description "This package provides higher order functions like map,
+filter, foldl, sort_by and take_while as simple command-line tools. Following
+the UNIX philosophy, these commands are designed to be composed via pipes. A
+large collection of functions such as basename, replace, contains or is_dir
+are provided as arguments to these commands.")
+    (license license:expat)))

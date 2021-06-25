@@ -1,5 +1,5 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -27,6 +27,7 @@
   #:use-module (gnu packages bootstrap)
   #:use-module (gnu packages guile)
   #:use-module (srfi srfi-1)
+  #:use-module (srfi srfi-34)
   #:use-module (srfi srfi-64)
   #:use-module (ice-9 match))
 
@@ -59,6 +60,20 @@
                                  inferior)))
            (close-inferior inferior)
            (list a (inferior-object? b))))))
+
+(test-equal "&inferior-exception"
+  '(a b c d)
+  (let ((inferior (open-inferior %top-builddir
+                                 #:command "scripts/guix")))
+    (guard (c ((inferior-exception? c)
+               (close-inferior inferior)
+               (and (eq? inferior (inferior-exception-inferior c))
+                    (match (inferior-exception-stack c)
+                      (((_ (files lines columns)) ..1)
+                       (member "guix/repl.scm" files)))
+                    (inferior-exception-arguments c))))
+      (inferior-eval '(throw 'a 'b 'c 'd) inferior)
+      'badness)))
 
 (test-equal "inferior-packages"
   (take (sort (fold-packages (lambda (package lst)
@@ -169,7 +184,7 @@
     result))
 
 (test-equal "inferior-package-search-paths"
-  (package-native-search-paths guile-2.2)
+  (package-native-search-paths guile-3.0)
   (let* ((inferior (open-inferior %top-builddir
                                   #:command "scripts/guix"))
          (guile    (first (lookup-inferior-packages inferior "guile")))
@@ -185,6 +200,18 @@
                               '(lambda (store)
                                  (add-text-to-store store "foo"
                                                     "Hello, world!")))))
+
+(test-assert "inferior-eval-with-store, &store-protocol-error"
+  (let* ((inferior (open-inferior %top-builddir
+                                  #:command "scripts/guix")))
+    (guard (c ((store-protocol-error? c)
+               (string-contains (store-protocol-error-message c)
+                                "invalid character")))
+      (inferior-eval-with-store inferior %store
+                                '(lambda (store)
+                                   (add-text-to-store store "we|rd/?!@"
+                                                      "uh uh")))
+      #f)))
 
 (test-equal "inferior-package-derivation"
   (map derivation-file-name

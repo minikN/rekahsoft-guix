@@ -2,8 +2,8 @@
 ;;; Copyright © 2012, 2013, 2015 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2014 Mark H Weaver <mhw@netris.org>
 ;;; Copyright © 2015, 2018 Andreas Enge <andreas@enge.fr>
-;;; Copyright © 2016 Nicolas Goaziou <mail@nicolasgoaziou.fr>
-;;; Copyright © 2016 Jan Nieuwenhuizen <janneke@gnu.org>
+;;; Copyright © 2016, 2020 Nicolas Goaziou <mail@nicolasgoaziou.fr>
+;;; Copyright © 2016, 2020 Jan (janneke) Nieuwenhuizen <janneke@gnu.org>
 ;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018 Eric Bavier <bavier@member.fsf.org>
 ;;; Copyright © 2018, 2019 Efraim Flashner <efraim@flashner.co.il>
@@ -29,6 +29,7 @@
   #:use-module (gnu packages autotools)
   #:use-module (gnu packages m4)
   #:use-module (gnu packages gcc)
+  #:use-module (gnu packages texinfo)
   #:use-module (guix packages)
   #:use-module (guix download)
   #:use-module (guix utils)
@@ -37,7 +38,7 @@
 (define-public gmp
   (package
    (name "gmp")
-   (version "6.1.2")
+   (version "6.2.0")
    (source (origin
             (method url-fetch)
             (uri
@@ -45,23 +46,43 @@
                             version ".tar.xz"))
             (sha256
              (base32
-              "04hrwahdxyqdik559604r7wrj9ffklwvipgfxgj4ys4skbl6bdc7"))
+              "09hmg8k63mbfrx1x3yy6y1yzbbq85kw5avbibhcgrg9z3ganr3i5"))
             (patches (search-patches "gmp-faulty-test.patch"))))
    (build-system gnu-build-system)
    (native-inputs `(("m4" ,m4)))
    (outputs '("out" "debug"))
-   (arguments `(#:parallel-tests? #f ; mpz/reuse fails otherwise
-                #:configure-flags
-                '(;; Build a "fat binary", with routines for several
-                  ;; sub-architectures.
-                  "--enable-fat"
-                  "--enable-cxx"
-                  ,@(cond ((target-mingw?)
-                           ;; Static and shared cannot be built in one go:
-                           ;; they produce different headers.  We need shared.
-                           `("--disable-static"
-                             "--enable-shared"))
-                          (else '())))))
+   (arguments
+    `(#:parallel-tests? #f ; mpz/reuse fails otherwise
+      #:configure-flags
+      '(;; Build a "fat binary", with routines for several
+        ;; sub-architectures.
+        "--enable-fat"
+        "--enable-cxx"
+        ,@(cond ((target-mingw?)
+                 ;; Static and shared cannot be built in one go:
+                 ;; they produce different headers.  We need shared.
+                 `("--disable-static"
+                   "--enable-shared"))
+                (else '())))
+      ;; Remove after core-updates merge.
+      ;; Workaround for gcc-7 transition breakage, -system and cross-build,
+      ;; Note: See <http://bugs.gnu.org/22186> for why not 'CPATH'.
+      ;; Note: See <http://bugs.gnu.org/30756> for why not 'C_INCLUDE_PATH' & co.
+      ,@(if (target-mingw?)
+            `(#:phases
+              (modify-phases %standard-phases
+                (add-before 'configure 'setenv
+                  (lambda _
+                    (let ((gcc (assoc-ref %build-inputs "cross-gcc"))
+                          (libc (assoc-ref %build-inputs "cross-libc")))
+                      (setenv "CROSS_CPLUS_INCLUDE_PATH"
+                              (string-append gcc "/include/c++"
+                                             ":" gcc "/include"
+                                             ":" libc "/include"))
+                      (format #t "environment variable `CROSS_CPLUS_INCLUDE_PATH' set to `~a'\n"
+                              (getenv "CROSS_CPLUS_INCLUDE_PATH"))
+                      #t)))))
+            '())))
    (synopsis "Multiple-precision arithmetic library")
    (description
     "The @acronym{GMP, the GNU Multiple Precision Arithmetic} library performs
@@ -92,13 +113,13 @@ It is aimed at use in, for example, cryptography and computational algebra.")
 (define-public mpfr
   (package
    (name "mpfr")
-   (version "4.0.1")
+   (version "4.0.2")
    (source (origin
             (method url-fetch)
             (uri (string-append "mirror://gnu/mpfr/mpfr-" version
                                 ".tar.xz"))
             (sha256 (base32
-                     "0vp1lrc08gcmwdaqck6bpzllkrykvp06vz5gnqpyw0v3h9h4m1v7"))))
+                     "12m3amcavhpqygc499s3fzqlb8f2j2rr7fkqsm10xbjfc04fffqx"))))
    (build-system gnu-build-system)
    (outputs '("out" "debug"))
    (propagated-inputs `(("gmp" ,gmp)))            ; <mpfr.h> refers to <gmp.h>
@@ -131,22 +152,32 @@ correct rounding.")
 for performing arithmetic on complex numbers.  It supports arbitrarily high
 precision and correctly rounds the results.")
    (license lgpl3+)
-   (home-page "http://multiprecision.org/mpc/")))
+   (home-page "http://www.multiprecision.org/mpc/")))
 
 (define-public mpfi
   (package
     (name "mpfi")
-    (version "1.5.3")
+    (version "1.5.4")
     (source
      (origin
        (method url-fetch)
        (uri (string-append "https://gforge.inria.fr/frs/download.php"
-                           "/latestfile/181/" name "-" version ".tar.bz2"))
+                           "/latestfile/181/mpfi-" version ".tgz"))
        (sha256
-        (base32 "0bqr8yibl7jbrp0bw7xk1lm7nis7rv26jsz6y8ycvih8n9bx90r3"))))
+        (base32 "0mismr1ll3wp788dq2n22s5irm0dziy75byyfdwz22kjbmckhf9v"))))
     (build-system gnu-build-system)
-    (propagated-inputs `(("gmp" ,gmp)   ; <mpfi.h> refers to both
-                         ("mpfr" ,mpfr)))
+    (arguments
+     `(#:tests? #f                      ;tests are broken in this release
+       #:configure-flags '("--enable-static=no")))
+    (native-inputs
+     `(("automake" ,automake)
+       ("autoreconf" ,autoconf)
+       ("libtool" ,libtool)
+       ("texinfo" ,texinfo)))
+    (propagated-inputs
+     `(("gmp" ,gmp)                     ; <mpfi.h> refers to both
+       ("mpfr" ,mpfr)))
+    (home-page "https://gforge.inria.fr/projects/mpfi/")
     (synopsis "C library for arbitrary-precision interval arithmetic")
     (description
      "@acronym{MPFI, Multiple Precision Floating-point Interval} is a portable C
@@ -158,8 +189,7 @@ Floating-Point Reliably} libraries.
 The purpose of arbitrary-precision interval arithmetic is to get results that
 are both guaranteed, thanks to interval computation, and accurate, thanks to
 multiple-precision arithmetic.")
-    (license lgpl2.1+)
-    (home-page "https://perso.ens-lyon.fr/nathalie.revol/software.html")))
+    (license lgpl2.1+)))
 
 (define-public irram
   (package
@@ -293,7 +323,7 @@ multiplies.")
 (define-public libtommath
   (package
     (name "libtommath")
-    (version "1.1.0")
+    (version "1.2.0")
     (outputs '("out" "static"))
     (source
       (origin
@@ -302,8 +332,7 @@ multiplies.")
                             "download/v" version "/ltm-" version ".tar.xz"))
         (sha256
          (base32
-          "1bbyagqzfdbg37k1n08nsqzdf44z8zsnjjinqbsyj7rxg246qilh"))
-        (patches (search-patches "libtommath-fix-linkage.patch"))))
+          "1c8q1qy88cjhdjlk3g24mra94h34c1ldvkjz0n2988c0yvn5xixp"))))
     (build-system gnu-build-system)
     (arguments
      '(#:phases
@@ -311,10 +340,6 @@ multiplies.")
          (delete 'configure) ; no configure
          (add-after 'unpack 'prepare-build
            (lambda _
-             ;; Don't pull in coreutils.
-             (substitute* "makefile_include.mk"
-               (("arch") "uname -m"))
-
              ;; We want the shared library by default so force it to be the
              ;; default makefile target.
              (delete-file "makefile")
@@ -326,14 +351,15 @@ multiplies.")
                                          "/lib/libtommath.a"))
              #t))
          (replace 'check
-           (lambda* (#:key make-flags #:allow-other-keys)
-             (apply invoke "make" "test_standalone" make-flags)
+           (lambda* (#:key test-target make-flags #:allow-other-keys)
+             (apply invoke "make" test-target make-flags)
              (invoke "sh" "test")))
          (add-after 'install 'install-static-library
            (lambda* (#:key outputs #:allow-other-keys)
              (invoke "make" "-f" "makefile.unix" "install"
                      (string-append "PREFIX=" (assoc-ref outputs "static"))
                      (string-append "CC=" (which "gcc"))))))
+       #:test-target "test"
        #:make-flags (list (string-append "PREFIX=" (assoc-ref %outputs "out"))
                           "CC=gcc")))
     (native-inputs
@@ -346,9 +372,34 @@ simple to work with that provides fairly efficient routines that build out of
 the box without configuration.")
     (license unlicense)))
 
-(define-public libtommath-1.0
+(define-public libtommath-1.1
   (package
     (inherit libtommath)
+    (version "1.1.0")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (string-append "https://github.com/libtom/libtommath/releases/"
+                            "download/v" version "/ltm-" version ".tar.xz"))
+        (sha256
+         (base32
+          "1bbyagqzfdbg37k1n08nsqzdf44z8zsnjjinqbsyj7rxg246qilh"))
+        (patches (search-patches "libtommath-fix-linkage.patch"))))
+    (arguments
+      (substitute-keyword-arguments (package-arguments libtommath)
+        ((#:phases phases)
+         `(modify-phases ,phases
+            (add-after 'unpack 'patch-coreutils-call
+              (lambda _
+                ;; Don't pull in coreutils.
+                (substitute* "makefile_include.mk"
+                  (("arch") "uname -m"))
+                #t))))
+        ((#:test-target _) "test_standalone")))))
+
+(define-public libtommath-1.0
+  (package
+    (inherit libtommath-1.1)
     (version "1.0.1")
     (outputs '("out"))
     (source
@@ -360,7 +411,7 @@ the box without configuration.")
          (base32
           "0sbccdwbkfc680id2fi0x067j23biqcjqilwkk7y9339knrjy0s7"))))
     (arguments
-      (substitute-keyword-arguments (package-arguments libtommath)
+      (substitute-keyword-arguments (package-arguments libtommath-1.1)
         ((#:phases phases)
          `(modify-phases ,phases
             (delete 'install-static-library)))))))

@@ -1,5 +1,5 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2013 Mark H Weaver <mhw@netris.org>
 ;;; Copyright © 2014 Eric Bavier <bavier@member.fsf.org>
 ;;; Copyright © 2016, 2017 Alex Kost <alezost@gmail.com>
@@ -24,18 +24,19 @@
   #:use-module (guix packages)
   #:use-module (guix ui)
   #:use-module (guix utils)
+  #:use-module (guix diagnostics)
   #:use-module (guix discovery)
   #:use-module (guix memoization)
   #:use-module ((guix build utils)
                 #:select ((package-name->name+version
                            . hyphen-separated-name->name+version)
                           mkdir-p))
-  #:autoload   (guix profiles) (packages->manifest)
+  #:use-module (guix profiles)
   #:use-module (guix describe)
   #:use-module (guix deprecation)
   #:use-module (ice-9 vlist)
   #:use-module (ice-9 match)
-  #:autoload   (ice-9 binary-ports) (put-bytevector)
+  #:use-module (ice-9 binary-ports)
   #:autoload   (system base compile) (compile)
   #:use-module (srfi srfi-1)
   #:use-module (srfi srfi-11)
@@ -46,10 +47,8 @@
   #:export (search-patch
             search-patches
             search-auxiliary-file
-            search-bootstrap-binary
             %patch-path
             %auxiliary-files-path
-            %bootstrap-binaries-path
             %package-module-path
             %default-package-module-path
 
@@ -75,17 +74,12 @@
 ;;;
 ;;; Code:
 
-;; By default, we store patches, auxiliary files and bootstrap binaries
+;; By default, we store patches and auxiliary files
 ;; alongside Guile modules.  This is so that these extra files can be
 ;; found without requiring a special setup, such as a specific
 ;; installation directory and an extra environment variable.  One
 ;; advantage of this setup is that everything just works in an
 ;; auto-compilation setting.
-
-(define %bootstrap-binaries-path
-  (make-parameter
-   (map (cut string-append <> "/gnu/packages/bootstrap")
-        %load-path)))
 
 (define %auxiliary-files-path
   (make-parameter
@@ -99,26 +93,13 @@
 (define (search-patch file-name)
   "Search the patch FILE-NAME.  Raise an error if not found."
   (or (search-path (%patch-path) file-name)
-      (raise (condition
-              (&message (message (format #f (G_ "~a: patch not found")
-                                         file-name)))))))
+      (raise (formatted-message (G_ "~a: patch not found")
+                                file-name))))
 
 (define-syntax-rule (search-patches file-name ...)
   "Return the list of absolute file names corresponding to each
 FILE-NAME found in %PATCH-PATH."
   (list (search-patch file-name) ...))
-
-(define (search-bootstrap-binary file-name system)
-  "Search the bootstrap binary FILE-NAME for SYSTEM.  Raise an error if not
-found."
-  (or (search-path (%bootstrap-binaries-path)
-                   (string-append system "/" file-name))
-      (raise (condition
-              (&message
-               (message
-                (format #f (G_ "could not find bootstrap binary '~a' \
-for system '~a'")
-                        file-name system)))))))
 
 (define %distro-root-directory
   ;; Absolute file name of the module hierarchy.  Since (gnu packages …) might
@@ -247,9 +228,7 @@ package module."
                              #:outputs (package-outputs package)
                              #:location (package-location package)
                              #:supported?
-                             (->bool
-                              (member (%current-system)
-                                      (package-supported-systems package)))
+                             (->bool (supported-package? package))
                              #:deprecated?
                              (->bool
                               (package-superseded package))))
@@ -390,6 +369,9 @@ VERSION."
                          (string=? (package-version p) highest))
                        matches))))))
 
+;; Prevent Guile 3 from inlining this procedure so we can mock it in tests.
+(set! find-best-packages-by-name find-best-packages-by-name)
+
 (define (generate-package-cache directory)
   "Generate under DIRECTORY a cache of all the available packages.
 
@@ -399,41 +381,59 @@ reducing the memory footprint."
   (define cache-file
     (string-append directory %package-cache-file))
 
-  (define (expand-cache module symbol variable result+seen)
-    (match (false-if-exception (variable-ref variable))
-      ((? package? package)
-       (match result+seen
-         ((result . seen)
-          (if (or (vhash-assq package seen)
-                  (hidden-package? package))
-              (cons result seen)
-              (cons (cons `#(,(package-name package)
-                             ,(package-version package)
-                             ,(module-name module)
-                             ,symbol
-                             ,(package-outputs package)
-                             ,(->bool
-                               (member (%current-system)
-                                       (package-supported-systems package)))
-                             ,(->bool (package-superseded package))
-                             ,@(let ((loc (package-location package)))
-                                 (if loc
-                                     `(,(location-file loc)
-                                       ,(location-line loc)
-                                       ,(location-column loc))
-                                     '(#f #f #f))))
-                          result)
-                    (vhash-consq package #t seen))))))
-      (_
-       result+seen)))
+  (define expand-cache
+    (match-lambda*
+      (((module symbol variable) (result . seen))
+       (let ((package (variable-ref variable)))
+         (if (or (vhash-assq package seen)
+                 (hidden-package? package))
+             (cons result seen)
+             (cons (cons `#(,(package-name package)
+                            ,(package-version package)
+                            ,(module-name module)
+                            ,symbol
+                            ,(package-outputs package)
+                            ,(->bool (supported-package? package))
+                            ,(->bool (package-superseded package))
+                            ,@(let ((loc (package-location package)))
+                                (if loc
+                                    `(,(location-file loc)
+                                      ,(location-line loc)
+                                      ,(location-column loc))
+                                    '(#f #f #f))))
+                         result)
+                   (vhash-consq package #t seen)))))))
 
-  (define exp
-    (first
-     (fold-module-public-variables* expand-cache
-                                    (cons '() vlist-null)
+  (define entry-key
+    (match-lambda
+      ((module symbol variable)
+       (let ((value (variable-ref variable)))
+         (string-append (package-name value) (package-version value)
+                        (object->string module)
+                        (symbol->string symbol))))))
+
+  (define (entry<? a b)
+    (string<? (entry-key a) (entry-key b)))
+
+  (define variables
+    ;; First sort variables so that 'expand-cache' later dismisses
+    ;; already-seen package objects in a deterministic fashion.
+    (sort
+     (fold-module-public-variables* (lambda (module symbol variable lst)
+                                      (let ((value (false-if-exception
+                                                    (variable-ref variable))))
+                                        (if (package? value)
+                                            (cons (list module symbol variable)
+                                                  lst)
+                                            lst)))
+                                    '()
                                     (all-modules (%package-module-path)
                                                  #:warn
-                                                 warn-about-load-error))))
+                                                 warn-about-load-error))
+     entry<?))
+
+  (define exp
+    (first (fold expand-cache (cons '() vlist-null) variables)))
 
   (mkdir-p (dirname cache-file))
   (call-with-output-file cache-file

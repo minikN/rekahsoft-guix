@@ -26,6 +26,8 @@ AM_GNU_GETTEXT_VERSION([0.18.1])
 GUIX_SYSTEM_TYPE
 GUIX_ASSERT_SUPPORTED_SYSTEM
 
+AM_CONDITIONAL([CROSS_COMPILING], [test "x$cross_compiling" = "xyes"])
+
 AC_ARG_WITH(store-dir,
   AC_HELP_STRING([--with-store-dir=PATH],
     [file name of the store (defaults to /gnu/store)]),
@@ -93,10 +95,14 @@ m4_pattern_forbid([^GUIX_])
 
 dnl Search for 'guile' and 'guild'.  This macro defines
 dnl 'GUILE_EFFECTIVE_VERSION'.
-GUILE_PKG([2.2])
+GUILE_PKG([3.0 2.2])
 GUILE_PROGS
 if test "x$GUILD" = "x"; then
-   AC_MSG_ERROR(['guild' binary not found; please check your guile-2.x installation.])
+   AC_MSG_ERROR(['guild' binary not found; please check your Guile installation.])
+fi
+
+if test "x$GUILE_EFFECTIVE_VERSION" = "x2.2"; then
+  PKG_CHECK_MODULES([GUILE], [guile-2.2 >= 2.2.3])
 fi
 
 dnl Installation directories for .scm and .go files.
@@ -130,9 +136,9 @@ if test "x$guix_cv_have_recent_guile_sqlite3" != "xyes"; then
   AC_MSG_ERROR([A recent Guile-SQLite3 could not be found; please install it.])
 fi
 
-GUILE_MODULE_AVAILABLE([have_guile_gcrypt], [(gcrypt hash)])
-if test "x$have_guile_gcrypt" != "xyes"; then
-  AC_MSG_ERROR([Guile-Gcrypt could not be found; please install it.])
+GUIX_CHECK_GUILE_GCRYPT
+if test "x$guix_cv_have_recent_guile_gcrypt" != "xyes"; then
+  AC_MSG_ERROR([A recent Guile-Gcrypt could not be found; please install it.])
 fi
 
 dnl Guile-newt is used by the graphical installer.
@@ -280,10 +286,6 @@ dnl Documentation translation.
 AM_MISSING_PROG([PO4A_TRANSLATE], [po4a-translate])
 AM_MISSING_PROG([PO4A_UPDATEPO], [po4a-updatepo])
 
-dnl Emacs (optional), for 'etc/indent-package.el'.
-AC_PATH_PROG([EMACS], [emacs], [/usr/bin/emacs])
-AC_SUBST([EMACS])
-
 case "$storedir" in
   /gnu/store)
     ;;
@@ -299,9 +301,9 @@ AC_CONFIG_FILES([Makefile
                  etc/guix-daemon.cil
                  guix/config.scm])
 
+AC_CONFIG_FILES([etc/committer.scm], [chmod +x etc/committer.scm])
 AC_CONFIG_FILES([test-env:build-aux/test-env.in], [chmod +x test-env])
 AC_CONFIG_FILES([pre-inst-env:build-aux/pre-inst-env.in],
   [chmod +x pre-inst-env])
-AC_CONFIG_FILES([etc/indent-code.el], [chmod +x etc/indent-code.el])
 
 AC_OUTPUT

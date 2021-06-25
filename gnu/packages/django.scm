@@ -1,7 +1,7 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2016 Hartmut Goebel <h.goebel@crazy-compilers.com>
-;;; Copyright © 2016 Efraim Flashner <efraim@flashner.co.il>
-;;; Copyright © 2017 ng0 <ng0@n0.is>
+;;; Copyright © 2016, 2019, 2020 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2017 Nikita <nikita@n0.is>
 ;;; Copyright © 2017, 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2017 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2018 Vijayalakshmi Vedantham <vijimay12@gmail.com>
@@ -32,22 +32,26 @@
   #:use-module (gnu packages base)
   #:use-module (gnu packages databases)
   #:use-module (gnu packages check)
+  #:use-module (gnu packages geo)
   #:use-module (gnu packages python)
+  #:use-module (gnu packages python-compression)
+  #:use-module (gnu packages python-crypto)
   #:use-module (gnu packages python-web)
   #:use-module (gnu packages python-xyz)
   #:use-module (gnu packages sphinx)
-  #:use-module (gnu packages time))
+  #:use-module (gnu packages time)
+  #:use-module (gnu packages xml))
 
 (define-public python-django
   (package
     (name "python-django")
-    (version "1.11.21")
+    (version "1.11.29")
     (source (origin
               (method url-fetch)
               (uri (pypi-uri "Django" version))
               (sha256
                (base32
-                "0adhcw8sx2mgwk9y2j760y96pqbip1ni3sf2v2ls5zxc9x93wwms"))))
+                "171jsi54fbnxzi2n3l4hkdmmwfnfrwacs180rw59l0bqcvxsw022"))))
     (build-system python-build-system)
     (arguments
      '(#:modules ((srfi srfi-1)
@@ -81,9 +85,6 @@
     ;; TODO: Install extras/django_bash_completion.
     (native-inputs
      `(("tzdata" ,tzdata-for-tests)
-       ;; bcrypt and argon2-cffi are extra requirements not yet in guix
-       ;;("python-argon2-cffi" ,python-argon2-cffi) ; >= 16.1.0
-       ;;("python-bcrypt" ,python-bcrypt) ; not py-bcrypt!
        ;; Remaining packages are test requirements taken from
        ;; tests/requirements/py3.txt
        ("python-docutils" ,python-docutils)
@@ -97,8 +98,10 @@
        ("python-sqlparse" ,python-sqlparse)
        ("python-tblib" ,python-tblib)))
     (propagated-inputs
-     `(("python-pytz" ,python-pytz)))
-    (home-page "http://www.djangoproject.com/")
+     `(("python-argon2-cffi" ,python-argon2-cffi)
+       ("python-bcrypt" ,python-bcrypt)
+       ("python-pytz" ,python-pytz)))
+    (home-page "https://www.djangoproject.com/")
     (synopsis "High-level Python Web framework")
     (description
      "Django is a high-level Python Web framework that encourages rapid
@@ -131,7 +134,7 @@ to the @dfn{don't repeat yourself} (DRY) principle.")
        (method git-fetch)
        ;; Fetch from the git repository, so that the tests can be run.
        (uri (git-reference
-             (url "https://github.com/django-extensions/django-extensions.git")
+             (url "https://github.com/django-extensions/django-extensions")
              (commit version)))
        (file-name (string-append name "-" version))
        (sha256
@@ -190,6 +193,31 @@ with arguments to the field constructor.")
 (define-public python2-django-simple-math-captcha
   (package-with-python2 python-django-simple-math-captcha))
 
+(define-public python-django-classy-tags
+  (package
+    (name "python-django-classy-tags")
+    (version "1.0.0")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (pypi-uri "django-classy-tags" version))
+        (sha256
+         (base32
+          "1cayqddvxd5prhybqi77lif2z4j7mmfmxgc61pq9i82q5gy2asmd"))))
+    (build-system python-build-system)
+    (arguments '(#:tests? #f)) ; Test script not distributed with release.
+    (propagated-inputs
+     `(("python-django" ,python-django)
+       ("python-six" ,python-six)))
+    (home-page "https://github.com/divio/django-classy-tags")
+    (synopsis "Class based template tags for Django")
+    (description
+     "@code{django-classy-tags} is an approach at making writing template tags
+in Django easier, shorter and more fun.  It provides an extensible argument
+parser which reduces most of the boiler plate code you usually have to write
+when coding custom template tags.")
+    (license license:bsd-3)))
+
 (define-public python-django-taggit
   (package
     (name "python-django-taggit")
@@ -222,6 +250,30 @@ with arguments to the field constructor.")
      "Django-taggit is a reusable Django application for simple tagging.")
     (license license:bsd-3)))
 
+(define-public python-easy-thumbnails
+  (package
+    (name "python-easy-thumbnails")
+    (version "2.7")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "easy-thumbnails" version))
+       (sha256
+        (base32
+         "14gzp5cv24z0qhxb7f7k7v9jgzpaj4n8yhjq83ynpx8183fs1rz4"))))
+    (build-system python-build-system)
+    (propagated-inputs
+     `(("python-django" ,python-django)
+       ("python-pillow" ,python-pillow)))
+    (home-page "https://github.com/SmileyChris/easy-thumbnails")
+    (synopsis "Easy thumbnails for Django")
+    (description
+     "Easy thumbnails is a Django plugin to dynamically create thumbnails
+based on source images.  Multiple thumbnails can be created from a single
+source image, using different options to control parameters like the image
+size and quality.")
+    (license license:bsd-3)))
+
 (define-public python-pytest-django
   (package
     (name "python-pytest-django")
@@ -247,7 +299,7 @@ with arguments to the field constructor.")
        ("python-setuptools-scm" ,python-setuptools-scm)))
     (propagated-inputs
      `(("python-pytest" ,python-pytest)))
-    (home-page "http://pytest-django.readthedocs.org/")
+    (home-page "https://pytest-django.readthedocs.org/")
     (synopsis "Django plugin for py.test")
     (description "Pytest-django is a plugin for py.test that provides a set of
 useful tools for testing Django applications and projects.")
@@ -255,6 +307,54 @@ useful tools for testing Django applications and projects.")
 
 (define-public python2-pytest-django
   (package-with-python2 python-pytest-django))
+
+(define-public python-django-haystack
+  (package
+    (name "python-django-haystack")
+    (version "2.8.1")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (pypi-uri "django-haystack" version))
+        (sha256
+         (base32
+          "1302fqsrx8w474xk5cmnmg3hjqfprlxnjg9qlg86arsr4v4vqm4b"))))
+    (build-system python-build-system)
+    (arguments
+     '(#:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'loosen-verion-restrictions
+           (lambda _
+             (substitute* "setup.py"
+               (("geopy.*") "geopy',\n"))
+             #t))
+         (add-before 'check 'set-gdal-lib-path
+           (lambda* (#:key inputs #:allow-other-keys)
+             (setenv "GDAL_LIBRARY_PATH"
+                     (string-append (assoc-ref inputs "gdal")
+                                    "/lib"))
+             #t)))
+       #:tests? #f)) ; OSError: libgdal.so.27: cannot open shared object file
+    (propagated-inputs
+     `(("python-django" ,python-django)))
+    (native-inputs
+     `(("gdal" ,gdal)
+       ("python-coverage" ,python-coverage)
+       ("python-dateutil" ,python-dateutil)
+       ("python-geopy" ,python-geopy)
+       ("python-mock" ,python-mock)
+       ("python-nose" ,python-nose)
+       ("python-requests" ,python-requests)
+       ("python-setuptools-scm" ,python-setuptools-scm)
+       ("python-pysolr" ,python-pysolr)
+       ("python-whoosh" ,python-whoosh)))
+    (home-page "http://haystacksearch.org/")
+    (synopsis "Pluggable search for Django")
+    (description "Haystack provides modular search for Django.  It features a
+unified, familiar API that allows you to plug in different search backends
+(such as Solr, Elasticsearch, Whoosh, Xapian, etc.) without having to modify
+your code.")
+    (license license:bsd-3)))
 
 (define-public python-django-filter
   (package
@@ -293,36 +393,23 @@ them do this.")
 (define-public python-django-allauth
   (package
     (name "python-django-allauth")
-    (version "0.39.1")
+    (version "0.40.0")
     (source
      (origin
        (method url-fetch)
        (uri (pypi-uri "django-allauth" version))
        (sha256
         (base32
-         "17l0acpr3cihdndzccjhgv58f9z170v2qwx7w0b8w6235x646i24"))))
+         "12f5gjidcpb7a0d1f601k0c5dcdmb6fg9sfn7xn5j8zfsg29y63a"))))
     (build-system python-build-system)
     (arguments
      '(#:phases
        (modify-phases %standard-phases
-         ;; TODO: Tagging the tests requiring the web could be done upstream.
-         (add-before 'check 'skip-test-requiring-network-access
-           (lambda _
-             (substitute* "allauth/socialaccount/providers/openid/tests.py"
-               (("import override_settings") "import tag, override_settings")
-               (("def test_login")
-                "@tag('requires-web')
-    def test_login"))))
          (replace 'check
            (lambda _
-             ;; TODO: investigate why this test fails
-             (delete-file "allauth/socialaccount/providers/cern/tests.py")
              (setenv "DJANGO_SETTINGS_MODULE" "test_settings")
-             (invoke "django-admin"
-                     "test"
-                     "allauth"
-                     "--verbosity=2"
-                     "--exclude-tag=requires-web"))))))
+             (invoke "django-admin" "test" "allauth.tests"
+                     "--pythonpath=."))))))
     (propagated-inputs
      `(("python-openid" ,python-openid)
        ("python-requests" ,python-requests)
@@ -348,14 +435,14 @@ account authentication.")
     (version "1.10.1")
     (source
      (origin
-       (method url-fetch)
-       (uri (string-append
-             "https://github.com/jazzband/django-debug-toolbar/archive/"
-             version ".tar.gz"))
-       (file-name (string-append name "-" version ".tar.gz"))
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/jazzband/django-debug-toolbar")
+             (commit version)))
+       (file-name (git-file-name name version))
        (sha256
         (base32
-         "1rww056hyzks8spbgf4h7kf6ybxlc5p08a2b6gn1nqrrzs4yx9sy"))))
+         "0zr6yjsms97wlvvd17rdbrx01irkg887dn9x70c1hzfjmfvp9afk"))))
     (build-system python-build-system)
     (propagated-inputs
      `(("python-sqlparse" ,python-sqlparse)
@@ -456,14 +543,14 @@ merging, minifying and compiling CSS and Javascript files.")
     (version "2.4.1")
     (source
      (origin
-       (method url-fetch)
-       (uri (string-append
-             "https://github.com/niwinz/django-jinja/archive/"
-             version ".tar.gz"))
-       (file-name (string-append name "-" version ".tar.gz"))
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/niwinz/django-jinja")
+             (commit version)))
+       (file-name (git-file-name name version))
        (sha256
         (base32
-         "0bzrb4m6wx9ph5cpvz7wpvg5k6ksvj0dnxlg0nhhqskhvp46brs1"))))
+         "1fcrxlznlq1xvl26y3j1r22vvy6m08r5l97xi2wj50rdmxhfvhis"))))
     (build-system python-build-system)
     (propagated-inputs
      `(("python-django" ,python-django)
@@ -546,6 +633,25 @@ conn_max_age argument to easily enable Django’s connection pool.")
 
 (define-public python2-dj-database-url
   (package-with-python2 python-dj-database-url))
+
+(define-public python-django-picklefield
+  (package
+    (name "python-django-picklefield")
+    (version "2.1.1")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (pypi-uri "django-picklefield" version))
+        (sha256
+         (base32
+          "0imncys5s3vsy2q79nn7k5d670da1xgmcr9gmhn06fry6ibf39b7"))))
+    (build-system python-build-system)
+    (propagated-inputs `(("python-django" ,python-django)))
+    (native-inputs `(("python-tox" ,python-tox)))
+    (home-page "https://github.com/gintas/django-picklefield")
+    (synopsis "Pickled object field for Django")
+    (description "Pickled object field for Django")
+    (license license:expat)))
 
 (define-public python-django-bulk-update
   (package
@@ -695,6 +801,9 @@ project.")
              (or
               (not tests?)
               (begin
+                (setenv "PYTHONPATH"
+                        (string-append (getcwd) ":"
+                                       (getenv "PYTHONPATH")))
                 (setenv "DJANGO_SETTINGS_MODULE" "tests.settings")
                 (invoke "django-admin" "test" "tests"))))))))
     (propagated-inputs
@@ -766,7 +875,7 @@ support, and optional data-URI image and font embedding.")
              (invoke "redis-server" "--daemonize" "yes")
              (invoke "django-admin.py" "test" "django_rq"
                      "--settings=django_rq.tests.settings"
-                     "--pythonpath="))))))
+                     "--pythonpath=."))))))
     (native-inputs
      `(("python-mock" ,python-mock)
        ("redis" ,redis)))
@@ -783,6 +892,41 @@ settings.py and easily use them in your project.")
 
 (define-public python2-django-rq
   (package-with-python2 python-django-rq))
+
+(define-public python-django-q
+  (package
+    (name "python-django-q")
+    (version "1.3.2")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (pypi-uri "django-q" version))
+        (sha256
+         (base32
+          "0ac3rjxv37bn97a62ly8b7qvbv765z6paiinzpwxx83nal2icc42"))))
+    (build-system python-build-system)
+    (arguments
+     '(#:phases
+       (modify-phases %standard-phases
+         (replace 'check
+           (lambda _
+             (setenv "DJANGO_SETTINGS_MODULE" "django_q.tests.settings")
+             (invoke "django-admin" "test" "django_q.tests"
+                     "--pythonpath=."))))))
+    (propagated-inputs
+     `(("python-arrow" ,python-arrow)
+       ("python-blessed" ,python-blessed)
+       ("python-django" ,python-django)
+       ("python-django-picklefield" ,python-django-picklefield)))
+    (native-inputs
+     `(("python-django-redis" ,python-django-redis)
+       ("python-pytest-django" ,python-pytest-django)))
+    (home-page "https://django-q.readthedocs.io/")
+    (synopsis "Multiprocessing distributed task queue for Django")
+    (description
+     "Django Q is a native Django task queue, scheduler and worker application
+using Python multiprocessing.")
+    (license license:expat)))
 
 (define-public python-django-sortedm2m
   (package
@@ -926,7 +1070,7 @@ static files.")
        ("python2-pytest-catchlog" ,python2-pytest-catchlog)
        ("python2-pytest-cov" ,python2-pytest-cov)
        ("python2-factory-boy" ,python2-factory-boy)))
-    (home-page "http://pootle.translatehouse.org/")
+    (home-page "https://pootle.translatehouse.org/")
     (synopsis "Community localization server")
     (description
       "Pootle is an online translation and localization tool.  It works to
@@ -937,24 +1081,45 @@ higher quality while welcoming newcomers.")
 (define-public python-django-tagging
   (package
     (name "python-django-tagging")
-    (version "0.4.6")
+    (version "0.5.0")
     (source
      (origin
        (method url-fetch)
        (uri (pypi-uri "django-tagging" version))
        (sha256
         (base32
-         "0s7b4v45j783yaxs7rni10k24san0ya77nqz4s7zdf3jhfpk42r1"))))
+         "13afxx30chssclxzd9gqnvwm9qyrdpnlbs6iswdfa18phfj8zmi8"))))
     (build-system python-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (replace 'check
+           (lambda _
+             (setenv "DJANGO_SETTINGS_MODULE" "tagging.tests.settings")
+             (invoke "django-admin" "test" "--pythonpath=."))))))
+    (inputs
+     `(("python-django" ,python-django)))
     (home-page "https://github.com/Fantomas42/django-tagging")
     (synopsis "Generic tagging application for Django")
     (description "This package provides a generic tagging application for
 Django projects, which allows association of a number of tags with any
 @code{Model} instance and makes retrieval of tags simple.")
+    (properties `((python2-variant . ,(delay python2-django-tagging))))
     (license license:bsd-3)))
 
 (define-public python2-django-tagging
-  (package-with-python2 python-django-tagging))
+  (let ((base (package-with-python2
+                (strip-python2-variant python-django-tagging))))
+    (package
+      (inherit base)
+      (version "0.4.6")
+      (source
+        (origin
+          (method url-fetch)
+          (uri (pypi-uri "django-tagging" version))
+          (sha256
+           (base32
+            "0s7b4v45j783yaxs7rni10k24san0ya77nqz4s7zdf3jhfpk42r1")))))))
 
 (define-public python-djangorestframework
   (package
@@ -979,6 +1144,35 @@ Django projects, which allows association of a number of tags with any
      "The Django REST framework is for building Web APIs with Django.  It
 provides features like a web browseable API and authentication policies.")
     (license license:bsd-2)))
+
+(define-public python-django-sekizai
+  (package
+    (name "python-django-sekizai")
+    (version "1.1.0")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (pypi-uri "django-sekizai" version))
+        (sha256
+         (base32
+          "1nc4sv109valdn6azmgm2j01k7khxy2wnji84z63x7fxsikfdxp2"))))
+    (build-system python-build-system)
+    (arguments '(#:tests? #f)) ; Tests not included with release.
+    (propagated-inputs
+     `(("python-django" ,python-django)
+       ("python-django-classy-tags" ,python-django-classy-tags)
+       ("python-six" ,python-six)))
+    (home-page "https://github.com/divio/django-sekizai")
+    (synopsis "Template blocks for Django projects")
+    (description "Sekizai means blocks in Japanese, and thats what this app
+provides.  A fresh look at blocks.  With @code{django-sekizai} you can define
+placeholders where your blocks get rendered and at different places in your
+templates append to those blocks.  This is especially useful for css and
+javascript.  Your subtemplates can now define css and javscript files to be
+included, and the css will be nicely put at the top and the javascript to the
+bottom, just like you should.  Also sekizai will ignore any duplicate content in
+a single block.")
+    (license license:bsd-3)))
 
 (define-public python-django-crispy-forms
   (package
@@ -1005,17 +1199,61 @@ provides features like a web browseable API and authentication policies.")
 forms using your favorite CSS framework, without writing template code.")
     (license license:expat)))
 
+(define-public python-django-compressor
+  (package
+    (name "python-django-compressor")
+    (version "2.4")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (pypi-uri "django_compressor" version))
+        (sha256
+         (base32
+          "0kx7bclfa0sxlsz6ka70zr9ra00lks0hmv1kc99wbanx6xhirvfj"))))
+    (build-system python-build-system)
+    (arguments
+     '(#:phases
+       (modify-phases %standard-phases
+         (replace 'check
+           (lambda* (#:key tests? #:allow-other-keys)
+             (if tests?
+               (begin
+                 (setenv "DJANGO_SETTINGS_MODULE" "compressor.test_settings")
+                 (invoke "django-admin" "test"
+                         "--pythonpath=."))
+               #t))))
+       ;; Tests fail with beautifulsoup 4.9+
+       ;; https://github.com/django-compressor/django-compressor/issues/998
+       #:tests? #f))
+    (propagated-inputs
+     `(("python-django-appconf" ,python-django-appconf)
+       ("python-rcssmin" ,python-rcssmin)
+       ("python-rjsmin" ,python-rjsmin)))
+    (native-inputs
+     `(("python-beautifulsoup4" ,python-beautifulsoup4)
+       ("python-brotli" ,python-brotli)
+       ("python-csscompressor" ,python-csscompressor)
+       ("python-django-sekizai" ,python-django-sekizai)
+       ("python-mock" ,python-mock)))
+    (home-page "https://django-compressor.readthedocs.io/en/latest/")
+    (synopsis
+     "Compress linked and inline JavaScript or CSS into single cached files")
+    (description
+     "Django Compressor combines and compresses linked and inline Javascript or
+CSS in a Django templates into cacheable static files by using the compress
+template tag.")
+    (license license:expat)))
+
 (define-public python-django-override-storage
   (package
     (name "python-django-override-storage")
-    (version "0.1.4")
+    (version "0.1.6")
     (source
      (origin
        (method url-fetch)
        (uri (pypi-uri "django-override-storage" version))
        (sha256
-        (base32
-         "0sqz1mh0yn8b1bzz2gr2azfiynljigm5gkzavp5n17zd3j2jg57x"))))
+        (base32 "022arq94lxnlyykn8wvfnkykhi2dldnsn93pa2i41na551i0wpiv"))))
     (build-system python-build-system)
     (propagated-inputs
      `(("python-django" ,python-django)))

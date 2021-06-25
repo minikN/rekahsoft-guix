@@ -1,6 +1,7 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2019 Danny Milosavljevic <dannym@scratchpost.org>
 ;;; Copyright © 2019 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -36,26 +37,25 @@
 (define-public gnu-efi
   (package
     (name "gnu-efi")
-    (version "3.0.9")
+    (version "3.0.12")
     (source
      (origin
        (method url-fetch)
        (uri (string-append "mirror://sourceforge/gnu-efi/"
-                           name "-" version ".tar.bz2"))
+                           "gnu-efi-" version ".tar.bz2"))
        (sha256
-        (base32
-         "1w3p4aqlc5j93q44la7dc8cr3hky20zvsd0h0k2lyzhwmrzfl5b7"))))
+        (base32 "0sbn6am3k5lqafycggh1g964fcwjwnh0i9hhwrk4ncrwzphz55h1"))))
     (build-system gnu-build-system)
     (arguments
-     `(#:tests? #f ; None exist.
+     `(#:tests? #f                      ; none exist
        #:make-flags
        (list (string-append "PREFIX=" (assoc-ref %outputs "out")))
        #:phases
        (modify-phases %standard-phases
          (delete 'configure))))
     (synopsis "EFI toolchain")
-    (description "This package provides an EFI (Extensible Firmware
-Interface) toolchain for building programs that can run in the
+    (description "This package provides an @acronym{EFI, Extensible Firmware
+Interface} toolchain for building programs that can run in the
 environment presented by Intel's EFI.")
     (home-page "https://directory.fsf.org/wiki/GNU_EFI")
     ;; Distribution is allowed only when accepting all those licenses.
@@ -64,7 +64,7 @@ environment presented by Intel's EFI.")
 (define-public sbsigntools
   (package
     (name "sbsigntools")
-    (version "0.9.2")
+    (version "0.9.4")
     (source
      (origin
        (method git-fetch)
@@ -75,8 +75,7 @@ environment presented by Intel's EFI.")
          (recursive? #t)))
        (file-name (git-file-name name version))
        (sha256
-        (base32
-         "116649ixr6gvw9fqiljfflxsv4293hgm73bmba5ilxrzn4kpbzvb"))))
+        (base32 "1y76wy65y6k10mjl2dm5hb5ms475alr4s080xzj8y833x01xvf3m"))))
     (build-system gnu-build-system)
     (arguments
      `(#:phases
@@ -113,6 +112,7 @@ environment presented by Intel's EFI.")
        ("util-linux" ,util-linux))) ; getopt
     (inputs
      `(("gnu-efi" ,gnu-efi)
+       ("libuuid" ,util-linux "lib")
        ("openssl" ,openssl)))
     (synopsis "EFI signing tools")
     (description "This package provides tools for signing EFI binaries.")
@@ -187,7 +187,7 @@ and EFI variable management.")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/mfleming/efilinux.git")
+                    (url "https://github.com/mfleming/efilinux")
                     (commit (string-append "efilinux-" version))))
               (file-name (git-file-name name version))
               (sha256

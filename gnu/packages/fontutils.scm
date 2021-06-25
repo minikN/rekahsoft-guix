@@ -5,10 +5,13 @@
 ;;; Copyright © 2016, 2017 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2017 Rene Saavedra <rennes@openmailbox.org>
 ;;; Copyright © 2017 Leo Famulari <leo@famulari.name>
-;;; Copyright © 2017 ng0 <ng0@n0.is>
+;;; Copyright © 2017 Nikita <nikita@n0.is>
 ;;; Copyright © 2017, 2018 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018 Ricardo Wurmus <rekado@elephly.net>
-;;; Copyright © 2018 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2019, 2020 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2020 Roel Janssen <roel@gnu.org>
+;;; Copyright © 2020 Nicolas Goaziou <mail@nicolasgoaziou.fr>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -34,6 +37,7 @@
   #:use-module (gnu packages perl)
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages autotools)
+  #:use-module (gnu packages fonts)
   #:use-module (gnu packages gettext)
   #:use-module (gnu packages python)
   #:use-module (gnu packages python-xyz)
@@ -43,8 +47,12 @@
   #:use-module (gnu packages glib)
   #:use-module (gnu packages gperf)
   #:use-module (gnu packages xorg)
+  #:use-module (gnu packages fribidi)
   #:use-module (gnu packages gtk)
   #:use-module (gnu packages xml)
+  #:use-module (gnu packages sqlite)
+  #:use-module (gnu packages gnome)
+  #:use-module (gnu packages freedesktop)
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (guix packages)
   #:use-module (guix download)
@@ -52,18 +60,21 @@
   #:use-module (guix git-download)
   #:use-module (guix build-system cmake)
   #:use-module (guix build-system gnu)
-  #:use-module (guix build-system python))
+  #:use-module (guix build-system python)
+  #:use-module (guix build-system meson)
+  #:use-module (guix utils)
+  #:use-module (srfi srfi-1))
 
 (define-public freetype
   (package
    (name "freetype")
-   (version "2.9.1")
+   (version "2.10.1")
    (source (origin
             (method url-fetch)
             (uri (string-append "mirror://savannah/freetype/freetype-"
-                                version ".tar.bz2"))
+                                version ".tar.xz"))
             (sha256 (base32
-                     "0kg8w6qyiizlyzh4a8lpzslipcbv96hcg3rqqpnxba8ffbm8g3fv"))))
+                     "0vx2dg1jh5kq34dd6ifpjywkpapp8a7p1bvyq9yq5zi1i94gmnqn"))))
    (build-system gnu-build-system)
    (arguments
     ;; The use of "freetype-config" is deprecated, but other packages still
@@ -115,7 +126,7 @@ anti-aliased glyph bitmap generation with 256 gray levels.")
 finely hand-hinting the last 1%.  It is ideal for web fonts and supports many
 scripts.")
     (license (list license:gpl2+ license:freetype)) ;choose one or the other
-    (home-page "http://www.freetype.org/ttfautohint/")))
+    (home-page "https://www.freetype.org/ttfautohint/")))
 
 (define-public woff-tools
   (package
@@ -166,7 +177,7 @@ Converts WOFF fonts to OpenType fonts
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/wget/ttf2eot.git")
+             (url "https://github.com/wget/ttf2eot")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
@@ -249,61 +260,59 @@ work with most software requiring Type 1 fonts.")
     (license license:bsd-3)))
 
 (define-public woff2
-  (let ((commit "4e698b8c6c5e070d53c340db9ddf160e21070ede")
-        (revision "1"))
-    (package
-      (name "woff2")
-      (version (string-append "20160306-" revision "."
-                              (string-take commit 7)))
-      (source (origin
-                (method git-fetch)
-                (uri (git-reference
-                      (url "https://github.com/google/woff2.git")
-                      (commit commit)))
-                (file-name (string-append name "-" version ".tar.xz"))
-                (sha256
-                 (base32
-                  "0wka0yhf0cjmd4rv2jckxpyv6lb5ckj4nj0k1ajq5hrjy7f30lcp"))
-                (patches (list (search-patch "woff2-libbrotli.patch")))))
-      (build-system gnu-build-system)
-      (native-inputs
-       `(("pkg-config" ,pkg-config)))
-      (inputs
-       `(("brotli" ,brotli)))
-      (arguments
-       `(#:tests? #f                    ;no tests
-         #:phases (modify-phases %standard-phases
-                    (delete 'configure)
-                    (replace 'install
-                      (lambda* (#:key outputs #:allow-other-keys)
-                        (let* ((out (assoc-ref outputs "out"))
-                               (bin (string-append out "/bin")))
-                          (install-file "woff2_compress" bin)
-                          (install-file "woff2_decompress" bin)
-                          #t))))))
-      (synopsis "Compress TrueType fonts to WOFF2")
-      (description
-       "This package provides utilities for compressing/decompressing TrueType
+  (package
+    (name "woff2")
+    (version "1.0.2")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/google/woff2")
+                    (commit (string-append "v" version))))
+              (file-name (string-append name "-" version ".git"))
+              (sha256
+               (base32
+                "13l4g536h0pr84ww4wxs2za439s0xp1va55g6l478rfbb1spp44y"))))
+    (build-system cmake-build-system)
+    (native-inputs
+     `(("pkg-config" ,pkg-config)))
+    (inputs
+     `(("google-brotli" ,google-brotli)))
+    (arguments
+     ;; package has no tests
+     `(#:tests? #f
+       ;; we can’t have both, shared libraries and binaries, so turn off the
+       ;; former
+       #:configure-flags (list "-DBUILD_SHARED_LIBS=OFF")))
+    (synopsis "Compress TrueType fonts to WOFF2")
+    (description
+     "This package provides utilities for compressing/decompressing TrueType
 fonts to/from the WOFF2 format.")
-      (license license:asl2.0)
-      (home-page "https://github.com/google/woff2"))))
+    (license license:asl2.0)
+    (home-page "https://github.com/google/woff2")))
 
 (define-public fontconfig
   (package
    (name "fontconfig")
+
+   ;; This replacement is not security-related, but works around the fact
+   ;; that gs-fonts are not recognized by newer versions of Pango, causing
+   ;; many applications to fail to find fonts otherwise.
+   (replacement fontconfig/font-dejavu)
+
    (version "2.13.1")
    (source (origin
             (method url-fetch)
             (uri (string-append
                    "https://www.freedesktop.org/software/fontconfig/release/fontconfig-"
                    version ".tar.bz2"))
+            (patches (search-patches "fontconfig-hurd-path-max.patch"))
             (sha256 (base32
                      "0hb700a68kk0ip51wdlnjjc682kvlrmb6q920mzajykdk0mdsmgn"))))
    (build-system gnu-build-system)
    ;; In Requires or Requires.private of fontconfig.pc.
    (propagated-inputs `(("expat" ,expat)
                         ("freetype" ,freetype)
-                        ("libuuid" ,util-linux)))
+                        ("libuuid" ,util-linux "lib")))
    (inputs `(("gs-fonts" ,gs-fonts)))
    (native-inputs
     `(("gperf" ,gperf)
@@ -346,6 +355,13 @@ high quality, anti-aliased and subpixel rendered text on a display.")
                        "See COPYING in the distribution."))
    (home-page "https://www.freedesktop.org/wiki/Software/fontconfig")))
 
+(define fontconfig/font-dejavu
+  (package
+    (inherit fontconfig)
+    (inputs
+     ;; XXX: Reuse the name to avoid having to override the configure flags.
+     `(("gs-fonts" ,font-dejavu)))))
+
 (define-public t1lib
   (package
    (name "t1lib")
@@ -384,7 +400,7 @@ describe character bitmaps.  It contains the bitmap data as well as some
 metric information.  But t1lib is in itself entirely independent of the
 X11-system or any other graphical user interface.")
    (license license:gpl2)
-   (home-page "http://www.t1lib.org/")))
+   (home-page "https://www.t1lib.org/")))
 
 (define-public teckit
   (package
@@ -398,6 +414,8 @@ X11-system or any other graphical user interface.")
        (sha256
         (base32 "0gbxyip4wdibirdg2pvzayzyy927vxyd6dfyfiflx8zg88qzn8v8"))))
     (build-system gnu-build-system)
+    (arguments
+     '(#:configure-flags '("--disable-static")))
     (inputs
      `(("zlib" ,zlib)
        ("expat" ,expat)))
@@ -428,7 +446,7 @@ applications should be.")
 (define-public graphite2
   (package
    (name "graphite2")
-   (version "1.3.12")
+   (version "1.3.13")
    (source
      (origin
        (method url-fetch)
@@ -436,11 +454,22 @@ applications should be.")
                            "download/" version "/" name "-" version ".tgz"))
        (sha256
         (base32
-         "1l1940d8fz67jm6a0x8cjb5p2dv48cvz3wcskwa83hamd70k15fd"))))
+         "01jzhwnj1c3d68dmw15jdxly0hwkmd8ja4kw755rbkykn1ly2qyx"))))
    (build-system cmake-build-system)
+   (arguments
+    `(#:phases (modify-phases %standard-phases
+                 (add-after 'unpack 'adjust-test-PYTHONPATH
+                   (lambda _
+                     ;; Tell the build system not to override PYTHONPATH
+                     ;; while running the Python tests.
+                     (substitute* "Graphite.cmake"
+                       (("ENVIRONMENT PYTHONPATH=")
+                        (string-append "ENVIRONMENT PYTHONPATH="
+                                       (getenv "PYTHONPATH") ":")))
+                     #t)))))
    (native-inputs
-    `(("python" ,python-2) ; because of "import imap" in tests
-      ("python-fonttools" ,python2-fonttools)))
+    `(("python" ,python)
+      ("python-fonttools" ,python-fonttools)))
    (inputs
     `(("freetype" ,freetype)))
    (synopsis "Reimplementation of the SIL Graphite text processing engine")
@@ -455,7 +484,7 @@ and returns a sequence of positioned glyphids from the font.")
 (define-public potrace
   (package
     (name "potrace")
-    (version "1.15")
+    (version "1.16")
     (source
      (origin
       (method url-fetch)
@@ -463,8 +492,7 @@ and returns a sequence of positioned glyphids from the font.")
                           "/potrace-" version ".tar.gz"))
       (sha256
        (base32
-        "17ajildjp14shsy339xarh1lw1p0k60la08ahl638a73mh23kcx9"))
-      (patches (search-patches "potrace-tests.patch"))))
+        "1k3sxgjqq0jnpk9xxys05q32sl5hbf1lbk1gmfxcrmpdgnhli0my"))))
     (build-system gnu-build-system)
     (native-inputs `(("ghostscript" ,ghostscript))) ;for tests
     (inputs `(("zlib" ,zlib)))
@@ -509,16 +537,18 @@ using the above tables.")
 (define-public libspiro
   (package
     (name "libspiro")
-    (version "0.5.20150702")
+    (version "20190731")
     (source
      (origin
       (method url-fetch)
       (uri (string-append "https://github.com/fontforge/libspiro/releases"
-                          "/download/" version "/libspiro-dist-" version ".tar.gz"))
+                          "/download/" version "/libspiro-" version ".tar.gz"))
       (sha256
        (base32
-        "153ckwj6h3wwlsgcppzqj8cymv1927hi8ar8fzpchq5q89cj2kai"))))
+        "0m63x97b7aciviijprvy85gm03p2jsgslxn323zl9zn7qz6d3ir4"))))
     (build-system gnu-build-system)
+    (arguments
+     '(#:configure-flags '("--disable-static")))
     (synopsis "Clothoid to bezier conversion library")
     (description
      "Raph Levien's Spiro package as a library.  A mechanism for drawing
@@ -529,7 +559,7 @@ smooth contours with constant curvature at the spline joins.")
 (define-public libuninameslist
   (package
     (name "libuninameslist")
-    (version "20190305")
+    (version "20200313")
     (home-page "https://github.com/fontforge/libuninameslist")
     (source
      (origin
@@ -538,7 +568,7 @@ smooth contours with constant curvature at the spline joins.")
                            "/libuninameslist-dist-" version ".tar.gz"))
        (sha256
         (base32
-         "1rwd2bgcyvign9agyjsr3v2fr9j1cg2wi6g0z2wwg1az32scknwq"))))
+         "10ri80c64xb4rhbif3sr87y5vhi3m702zb0m02imvj1jib9rq0m8"))))
     (build-system gnu-build-system)
     (synopsis "Unicode names and annotation list")
     (description
@@ -555,27 +585,26 @@ definitions.")
 (define-public fontforge
   (package
    (name "fontforge")
-   (version "20190317")
+   (version "20200314")
    (source (origin
             (method url-fetch)
             (uri (string-append
                   "https://github.com/fontforge/fontforge/releases/download/"
-                  version "/fontforge-" version ".tar.gz"))
-            (sha256 (base32
-                     "1ddqbpc32cgbccdnv0lfw0qhj59hcqzb7616ph5lkvm91pnas4dp"))))
-   (build-system gnu-build-system)
+                  version "/fontforge-" version ".tar.xz"))
+            (sha256
+             (base32 "0qf88wd6riycq56d24brybyc93ns74s0nyyavm43zp2kfcihn6fd"))))
+   (build-system cmake-build-system)
    (native-inputs
     `(("pkg-config" ,pkg-config)))
    (inputs `(("cairo"           ,cairo)
              ("fontconfig"      ,fontconfig) ;dlopen'd
              ("freetype"        ,freetype)
              ("gettext"         ,gettext-minimal)
-             ("glib"            ,glib) ;needed for pango detection
              ("libICE"          ,libice)
              ("libSM"           ,libsm)
              ("libX11"          ,libx11)
              ("libXi"           ,libxi)
-             ("libjpeg"         ,libjpeg)
+             ("libjpeg"         ,libjpeg-turbo)
              ("libltdl"         ,libltdl)
              ("libpng"          ,libpng)
              ("libspiro"        ,libspiro)
@@ -586,14 +615,23 @@ definitions.")
              ("libxml2"         ,libxml2)
              ("pango"           ,pango)
              ("potrace"         ,potrace)
-             ;; FIXME: We use Python 2 here because there is a bug in Python
-             ;; 3.7 that is triggered when Py_Main is called after Py_Init, as
-             ;; is done by fontforge.  This will be fixed in Python 3.7.1.
-             ("python"          ,python-2)
+             ("python"          ,python)
              ("zlib"            ,zlib)))
    (arguments
-    '(#:phases
+    '(#:configure-flags '(;; TODO: Provide GTK+ for the Wayland-friendly GDK
+                          ;; backend, instead of the legacy X11 backend.
+                          ;; Currently it introduces a circular dependency.
+                          "-DENABLE_X11=ON")
+      #:phases
       (modify-phases %standard-phases
+        (add-after 'unpack 'do-not-override-RPATH
+          (lambda _
+            ;; Do not attempt to set a default RPATH, as our ld-wrapper
+            ;; already does the right thing.
+            (substitute* "CMakeLists.txt"
+              (("^set_default_rpath\\(\\)")
+               ""))
+            #t))
         (add-after 'install 'set-library-path
           (lambda* (#:key inputs outputs #:allow-other-keys)
             (let ((out (assoc-ref outputs "out"))
@@ -617,6 +655,31 @@ opentype fonts.  You can save fonts in many different outline formats, and
 generate bitmaps.")
    (license license:gpl3+)
    (home-page "https://fontforge.github.io")))
+
+;; This is the last version that supports Python 2, which is needed for
+;; GNU FreeFont.  Remove once no longer required.
+(define-public fontforge-20190801
+  (package
+    (inherit fontforge)
+    (version "20190801")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append
+                    "https://github.com/fontforge/fontforge/releases/download/"
+                    version "/fontforge-" version ".tar.gz"))
+              (sha256
+               (base32 "0lh8yx01asbzxm6car5cfi64njh5p4lxc7iv8dldr5rwg357a86r"))))
+    (build-system gnu-build-system)
+    (arguments
+     (substitute-keyword-arguments (package-arguments fontforge)
+       ((#:configure-flags _)
+        ''())
+       ((#:phases phases)
+        `(modify-phases ,phases
+           (delete 'do-not-override-RPATH)))))
+    (inputs
+     `(("python" ,python-2)
+       ,@(alist-delete "python" (package-inputs fontforge))))))
 
 (define-public python2-ufolib
   (package
@@ -665,7 +728,7 @@ files.  UFO is a file format that stores fonts source files.")
     (propagated-inputs
      `(("python2-fonttools" ,python2-fonttools)
        ("python2-ufolib" ,python2-ufolib)))
-    (home-page "https://pypi.python.org/pypi/defcon")
+    (home-page "https://pypi.org/project/defcon/")
     (synopsis "Flexible objects for representing @acronym{UFO, unified font object} data")
     (description
      "Defcon is a set of @acronym{UFO, unified font object} based objects
@@ -683,14 +746,14 @@ implements UFO3 as described by the UFO font format.")
     (version "20170925")
     (source
      (origin
-       (method url-fetch)
-       (uri (string-append "https://github.com/googlei18n/nototools/"
-                           "archive/v2017-09-25-tooling-for-phase3-"
-                           "update.tar.gz"))
-       (file-name (string-append name "-" version ".tar.gz"))
+       (method git-fetch)
+       (uri (git-reference
+              (url "https://github.com/googlei18n/nototools")
+              (commit "v2017-09-25-tooling-for-phase3-update")))
+       (file-name (git-file-name name version))
        (sha256
         (base32
-         "1pvacw18cm9l4sb66pqyjc7hc74xhhfxc7kd5ald8lixf4wzg0s8"))))
+         "03nzvcvwmrhfrcjhg218q2f3hfrm3vlivp4rk19sc397kh3hisiz"))))
     (build-system python-build-system)
     (arguments
      `(#:python ,python-2))
@@ -717,3 +780,143 @@ maintain the Noto Fonts project.")
                    (license:non-copyleft
                     "file://sample_texts/attributions.txt"
                     "See sample_texts/attributions.txt in the distribution.")))))
+
+(define-public fontmanager
+  (package
+   (name "fontmanager")
+   (version "0.7.7")
+   (source
+    (origin
+      (method git-fetch)
+      (uri (git-reference
+            (url "https://github.com/FontManager/font-manager")
+            (commit version)))
+      (file-name (git-file-name name version))
+      (sha256
+       (base32
+        "1bzqvspplp1zj0n0869jqbc60wgbjhf0vdrn5bj8dfawxynh8s5f"))))
+   (build-system meson-build-system)
+   (arguments
+    `(#:glib-or-gtk? #t
+      #:build-type "release"
+      #:configure-flags
+      (list (string-append "-Dc_link_args=-Wl,-rpath="
+                           (assoc-ref %outputs "out")
+                           "/lib/font-manager"))))
+   (native-inputs
+    `(("pkg-config" ,pkg-config)
+      ("vala" ,vala)
+      ("yelp-tools" ,yelp-tools)
+      ("gettext" ,gettext-minimal)
+      ("glib" ,glib "bin")
+      ("gobject-introspection" ,gobject-introspection)
+      ("desktop-file-utils" ,desktop-file-utils)))
+   (inputs
+    `(("json-glib" ,json-glib)
+      ("sqlite" ,sqlite)
+      ("fonconfig" ,fontconfig)
+      ("freetype" ,freetype)
+      ("gtk+" ,gtk+)))
+   (home-page "https://fontmanager.github.io/")
+   (synopsis "Simple font management for GTK+ desktop environments")
+   (description "Font Manager is intended to provide a way for users to
+easily manage desktop fonts, without having to resort to command-line
+tools or editing configuration files by hand.
+While designed primarily with the GNOME Desktop Environment in mind, it should
+work well with other GTK+ desktop environments.")
+   (license license:gpl3+)))
+
+(define-public fntsample
+  (package
+    (name "fntsample")
+    (version "5.3")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/eugmes/fntsample")
+                     (commit (string-append "release/" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "02rx3gp7k472304vhjwb129nw10a29s4nvgs7i2m6bpjhlk2xgs5"))))
+    (build-system cmake-build-system)
+    (arguments
+     `(#:tests? #f ; There are no tests.
+       #:configure-flags
+       (list (string-append
+              "-DUNICODE_BLOCKS=" (assoc-ref %build-inputs "unicode-blocks")))
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'install 'set-library-path
+           (lambda* (#:key inputs outputs #:allow-other-keys)
+             (let* ((out      (assoc-ref outputs "out"))
+                    (pdf-api2 (assoc-ref inputs "perl-pdf-api2"))
+                    (intl     (assoc-ref inputs "perl-libintl-perl"))
+                    (perllib  (string-append pdf-api2
+                                             "/lib/perl5/site_perl/"
+                                             ,(package-version perl)
+                                             ":" intl
+                                             "/lib/perl5/site_perl/"
+                                             ,(package-version perl))))
+               (wrap-program (string-append out "/bin/pdfoutline")
+                 `("PERL5LIB" ":" prefix (,perllib)))
+               #t))))))
+    (native-inputs
+     `(("pkg-config" ,pkg-config)
+       ("gettext" ,gettext-minimal)))
+    (inputs
+     `(("cairo" ,cairo)
+       ("fontconfig" ,fontconfig)
+       ("freetype" ,freetype)
+       ("glib" ,glib)
+       ("pango" ,pango)
+       ("perl-pdf-api2" ,perl-pdf-api2)
+       ("perl-libintl-perl" ,perl-libintl-perl)
+       ("unicode-blocks"
+        ,(origin
+           (method url-fetch)
+           (uri "https://unicode.org/Public/UNIDATA/Blocks.txt")
+           (file-name "unicode-blocks.txt")
+           (sha256
+            (base32
+             "1xs8fnhh48gs41wg004r7m4r2azh9khmyjjlnvyzy9c6zrd212x2"))))))
+    (home-page "https://github.com/eugmes/fntsample")
+    (synopsis "PDF and PostScript font samples generator")
+    (description "This package provides a tool that can be used to make font
+samples that show coverage of the font and are similar in appearance to
+Unicode Charts.  It was developed for use with DejaVu Fonts project.")
+    (license license:gpl3+)))
+
+(define-public libraqm
+  (package
+    (name "libraqm")
+    (version "0.7.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "https://github.com/HOST-Oman/libraqm/"
+                           "releases/download/v" version "/"
+                           "raqm-" version ".tar.gz"))
+       (sha256
+        (base32 "0hgry3fj2y3qaq2fnmdgd93ixkk3ns5jds4vglkiv2jfvpn7b1g2"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:configure-flags (list "--disable-static")))
+    (native-inputs
+     `(("gtk-doc" ,gtk-doc)
+       ("pkg-config" ,pkg-config)
+       ("python" ,python-wrapper)))
+    (inputs
+     `(("freetype" ,freetype)
+       ("fribidi" ,fribidi)
+       ("harfbuzz" ,harfbuzz)))
+    (home-page "https://github.com/HOST-Oman/libraqm")
+    (synopsis "Library for complex text layout")
+    (description
+     "Raqm is a small library that encapsulates the logic for complex text
+layout and provides a convenient API.
+
+It currently provides bidirectional text support (using FriBiDi),
+shaping (using HarfBuzz), and proper script itemization.  As a result, Raqm
+can support most writing systems covered by Unicode.")
+    (license license:expat)))

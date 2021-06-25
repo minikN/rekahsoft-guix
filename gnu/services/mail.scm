@@ -2,7 +2,7 @@
 ;;; Copyright © 2015 Andy Wingo <wingo@igalia.com>
 ;;; Copyright © 2017, 2018 Clément Lassieur <clement@lassieur.org>
 ;;; Copyright © 2017 Carlo Zancanaro <carlo@zancanaro.id.au>
-;;; Copyright © 2017 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2017, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2019 Kristofer Buffington <kristoferbuffington@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
@@ -137,7 +137,7 @@
 (define (free-form-fields? val)
   (match val
     (() #t)
-    ((((? symbol?) . (? string)) . val) (free-form-fields? val))
+    ((((? symbol?) . (? string?)) . val) (free-form-fields? val))
     (_ #f)))
 (define (serialize-free-form-fields field-name val)
   (for-each (match-lambda ((k . v) (serialize-field k v))) val))
@@ -145,7 +145,7 @@
 (define (free-form-args? val)
   (match val
     (() #t)
-    ((((? symbol?) . (? string)) . val) (free-form-args? val))
+    ((((? symbol?) . (? string?)) . val) (free-form-args? val))
     (_ #f)))
 (define (serialize-free-form-args field-name val)
   (serialize-field field-name
@@ -1544,9 +1544,10 @@ greyed out, instead of only later giving \"not selectable\" popup error.
            (start #~(make-forkexec-constructor
                      (list (string-append #$dovecot "/sbin/dovecot")
                            "-F")))
-           (stop #~(make-forkexec-constructor
-                    (list (string-append #$dovecot "/sbin/dovecot")
-                          "stop")))))))
+           (stop #~(lambda _
+                     (invoke #$(file-append dovecot "/sbin/dovecot")
+                             "stop")
+                     #f))))))
 
 (define %dovecot-pam-services
   (list (unix-pam-service "dovecot")))
@@ -1621,8 +1622,12 @@ by @code{dovecot-configuration}.  @var{config} may also be created by
 (define %default-opensmtpd-config-file
   (plain-file "smtpd.conf" "
 listen on lo
-accept from any for local deliver to mbox
-accept from local for any relay
+
+action inbound mbox
+match for local action inbound
+
+action outbound relay
+match from local for any action outbound
 "))
 
 (define opensmtpd-shepherd-service
@@ -1666,7 +1671,9 @@ accept from local for any relay
            ;; Create mbox and spool directories.
            (mkdir-p "/var/mail")
            (mkdir-p "/var/spool/smtpd")
-           (chmod "/var/spool/smtpd" #o711))))))
+           (chmod "/var/spool/smtpd" #o711)
+           (mkdir-p "/var/spool/mail")
+           (chmod "/var/spool/mail" #o711))))))
 
 (define %opensmtpd-pam-services
   (list (unix-pam-service "smtpd")))

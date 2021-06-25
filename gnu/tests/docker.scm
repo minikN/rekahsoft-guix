@@ -1,6 +1,6 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2019 Danny Milosavljevic <dannym@scratchpost.org>
-;;; Copyright © 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -157,7 +157,7 @@ inside %DOCKER-OS."
           (version "0")
           (source #f)
           (build-system trivial-build-system)
-          (arguments `(#:guile ,guile-2.2
+          (arguments `(#:guile ,guile-3.0
                        #:builder
                        (let ((out (assoc-ref %outputs "out")))
                          (mkdir out)
@@ -171,7 +171,7 @@ standard output device and then enters a new line.")
           (home-page #f)
           (license license:public-domain)))
        (profile (profile-derivation (packages->manifest
-                                     (list guile-2.2 guile-json
+                                     (list guile-3.0 guile-json-3
                                            guest-script-package))
                                     #:hooks '()
                                     #:locales? #f))
@@ -206,7 +206,7 @@ inside %DOCKER-OS."
      ;; load' must be able to store the whole image into memory, hence the
      ;; huge memory requirements.  We should avoid the volatile-root setup
      ;; instead.
-     (memory-size 3000)
+     (memory-size 3500)
      (port-forwardings '())))
 
   (define test
@@ -254,7 +254,7 @@ inside %DOCKER-OS."
                 (define (wait-for-container-file container file)
                   ;; Wait for FILE to show up in CONTAINER.
                   (docker-cli "exec" container
-                              #$(file-append guile-2.2 "/bin/guile")
+                              #$(file-append guile-3.0 "/bin/guile")
                               "-c"
                               (object->string
                                `(let loop ((n 15))

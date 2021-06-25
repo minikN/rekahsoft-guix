@@ -6,9 +6,10 @@
 ;;; Copyright © 2014 Mark H Weaver <mhw@netris.org>
 ;;; Copyright © 2015 Paul van der Walt <paul@denknerd.org>
 ;;; Copyright © 2015, 2016, 2017, 2019 Efraim Flashner <efraim@flashner.co.il>
-;;; Copyright © 2017, 2018 Marius Bakke <mbakke@fastmail.com>
-;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2017, 2018, 2019, 2020 Marius Bakke <marius@gnu.org>
+;;; Copyright © 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018 Leo Famulari <leo@famulari.name>
+;;; Copyright © 2020 Vincent Legoll <vincent.legoll@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -27,6 +28,7 @@
 
 (define-module (gnu packages xiph)
   #:use-module (gnu packages)
+  #:use-module (gnu packages autotools)
   #:use-module (gnu packages bison)
   #:use-module (gnu packages compression)
   #:use-module (gnu packages curl)
@@ -41,6 +43,7 @@
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (guix packages)
   #:use-module (guix download)
+  #:use-module (guix git-download)
   #:use-module (guix build-system gnu)
   #:export (libogg
             libvorbis
@@ -58,18 +61,20 @@
 (define libogg
   (package
    (name "libogg")
-   (version "1.3.3")
+   (version "1.3.4")
    (source (origin
             (method url-fetch)
             (uri (string-append "https://downloads.xiph.org/releases/ogg/libogg-"
                                 version ".tar.xz"))
             (sha256
              (base32
-              "022wjlzn8fx7mfby4pcgyjwx8zir7jr7cizichh3jgaki8bwcgsg"))))
+              "1zlk33vxvxr0l9lhkbhkdwvylw96d2n0fnd3d8dl031hph9bqqy1"))))
    (build-system gnu-build-system)
+   (arguments
+    '(#:configure-flags '("--disable-static")))
    (synopsis "Library for manipulating the ogg multimedia format")
    (description
-    "The libogg library allows to manipulate the ogg multimedia container
+    "The libogg library manipulates the ogg multimedia container
 format, which encapsulates raw compressed data and allows the interleaving of
 audio and video data.  In addition to encapsulation and interleaving of
 multiple data streams, ogg provides packet framing, error detection, and
@@ -91,7 +96,8 @@ periodic timestamps for seeking.")
               "05dlzjkdpv46zb837wysxqyn8l636x3dw8v8ymlrwz2fg1dbn05g"))))
    (build-system gnu-build-system)
    (propagated-inputs `(("libogg" ,libogg)))
-   (arguments `(#:configure-flags '("LDFLAGS=-lm")
+   (arguments `(#:configure-flags '("LDFLAGS=-lm"
+                                    "--disable-static")
                 #:parallel-tests? #f))
    (synopsis "Library implementing the vorbis audio format")
    (description
@@ -117,6 +123,8 @@ polyphonic) audio and music at fixed and variable bitrates from 16 to
                "0q8wark9ribij57dciym5vdikg2464p8q2mgqvfb78ksjh4s8vgk"))
              (patches (search-patches "libtheora-config-guess.patch"))))
     (build-system gnu-build-system)
+    (arguments
+     '(#:configure-flags '("--disable-static")))
     (inputs `(("libvorbis" ,libvorbis)))
     ;; The .pc files refer to libogg.
     (propagated-inputs `(("libogg" ,libogg)))
@@ -141,6 +149,8 @@ compressed video format.")
        (base32
         "150047wnllz4r94whb9r73l5qf0z5z3rlhy98bawfbblmkq8mbpa"))))
     (build-system gnu-build-system)
+    (arguments
+     '(#:configure-flags '("--disable-static")))
     (native-inputs
      `(("pkg-config" ,pkg-config)))
     (inputs
@@ -170,7 +180,8 @@ stereo encoding, and voice activity detection.")
                 "0wa7sqpk3x61zz99m7lwkgr6yv62ml6lfgs5xja65vlvdzy44838"))))
     (build-system gnu-build-system)
     (arguments
-     `(#:configure-flags '(,@(if (string=? "aarch64-linux"
+     `(#:configure-flags '("--disable-static"
+                           ,@(if (string=? "aarch64-linux"
                                            (%current-system))
                                '("--enable-neon=no") ; neon defaults to armv7-a
                                '()))))
@@ -185,15 +196,17 @@ work from the @code{speex} codec.")
 (define ao
   (package
     (name "ao")
-    (version "1.2.0")
-    (source
-     (origin
-      (method url-fetch)
-      (uri (string-append "https://downloads.xiph.org/releases/ao/libao-"
-                          version ".tar.gz"))
-      (sha256
-       (base32
-        "1bwwv1g9lchaq6qmhvj1pp3hnyqr64ydd4j38x94pmprs4d27b83"))))
+    ;; We need a few commits on top of 1.2.2 to fix CVE-2017-11548.
+    (version "1.2.2-5-g20dc8ed")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://gitlab.xiph.org/xiph/libao")
+                    (commit version)))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "1d1b3g2a7jd43c32242yq6nfysqsmp7rjslhvbrmpgk119l5fnbj"))))
     (build-system gnu-build-system)
     ;; FIXME: Add further backends, see the summary printed after configure.
     ;; XXX: Should back-ends be pushed to different outputs?  For instance,
@@ -203,7 +216,10 @@ work from the @code{speex} codec.")
      `(("alsa-lib" ,alsa-lib)
        ("pulseaudio" ,pulseaudio)))
     (native-inputs
-     `(("pkg-config" ,pkg-config)))
+     `(("pkg-config" ,pkg-config)
+       ("autoconf" ,autoconf)
+       ("automake" ,automake)
+       ("libtool" ,libtool)))
     (synopsis "Cross platform audio library")
     (description
      "Libao is a cross-platform audio library that allows programs to
@@ -230,6 +246,7 @@ It currently supports:
 @end enumerate
 ")
     (license license:gpl2+)
+    (properties '((cpe-name . "libao")))
     (home-page "https://www.xiph.org/ao/")))
 
 (define flac
@@ -269,10 +286,10 @@ meaning that audio is compressed in FLAC without any loss in quality.")
               "0s3vr2nxfxlf1k75iqpp4l78yf4gil3f0v778kvlngbchvaq23n4"))))
    (build-system gnu-build-system)
    (native-inputs `(("doxygen" ,doxygen)
+                    ("bison" ,bison)
                     ("pkg-config" ,pkg-config)))
    ;; FIXME: Add optional input liboggz
-   (inputs `(("bison" ,bison)
-             ("libogg" ,libogg)
+   (inputs `(("libogg" ,libogg)
              ("libpng" ,libpng)
              ("python" ,python-wrapper)
              ("zlib" ,zlib)))
@@ -342,6 +359,8 @@ ogginfo, to obtain information (tags, bitrate, length, etc.) about
                (base32
                 "17gz8kxs4i7icsc1gj713gadiapyklynlwqlf0ai98dj4lg8xdb5"))))
     (build-system gnu-build-system)
+    (arguments
+     '(#:configure-flags '("--disable-static")))
     (synopsis "Versatile audio codec")
     (description
      "Opus is a totally open, royalty-free, highly versatile audio codec.  Opus
@@ -391,7 +410,7 @@ decoding .opus files.")
 (define opusfile
   (package
     (name "opusfile")
-    (version "0.11")
+    (version "0.12")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -399,8 +418,10 @@ decoding .opus files.")
                     ".tar.gz"))
               (sha256
                (base32
-                "1gq3aszzl5glgbajw5p1f5a1kdyf23w5vjdmwwrk246syin9pkkl"))))
+                "02smwc5ah8nb3a67mnkjzqmrzk43j356hgj2a97s9midq40qd38i"))))
     (build-system gnu-build-system)
+    (arguments
+     '(#:configure-flags '("--disable-static")))
     ;; Required by opusfile.pc and opusurl.pc.
     (propagated-inputs
      `(("libogg" ,libogg)
@@ -473,7 +494,7 @@ things in between.")
 (define-public libshout
   (package
     (name "libshout")
-    (version "2.4.2")
+    (version "2.4.3")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -481,7 +502,7 @@ things in between.")
                     "libshout-" version ".tar.gz"))
               (sha256
                (base32
-                "0qgwarqp2p6jy3zadds6dzj8z1jfb2mbwc3lsdlidf527h0a86ym"))))
+                "1zhdshas539cs8fsz8022ljxnnncr5lafhfd1dqr1gs125fzb2hd"))))
     (build-system gnu-build-system)
     (native-inputs
      `(("pkg-config" ,pkg-config)))

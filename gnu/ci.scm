@@ -1,7 +1,7 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2017 Jan Nieuwenhuizen <janneke@gnu.org>
-;;; Copyright © 2018 Clément Lassieur <clement@lassieur.org>
+;;; Copyright © 2018, 2019 Clément Lassieur <clement@lassieur.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -28,6 +28,7 @@
   #:use-module (guix derivations)
   #:use-module (guix build-system)
   #:use-module (guix monads)
+  #:use-module (guix gexp)
   #:use-module (guix ui)
   #:use-module ((guix licenses)
                 #:select (gpl3+ license? license-name))
@@ -37,6 +38,7 @@
                 #:select (lookup-compressor self-contained-tarball))
   #:use-module (gnu bootloader)
   #:use-module (gnu bootloader u-boot)
+  #:use-module (gnu image)
   #:use-module (gnu packages)
   #:use-module (gnu packages gcc)
   #:use-module (gnu packages base)
@@ -48,13 +50,17 @@
   #:use-module (gnu packages make-bootstrap)
   #:use-module (gnu packages package-management)
   #:use-module (gnu system)
+  #:use-module (gnu system image)
   #:use-module (gnu system vm)
   #:use-module (gnu system install)
+  #:use-module (gnu system images hurd)
   #:use-module (gnu tests)
   #:use-module (srfi srfi-1)
   #:use-module (srfi srfi-26)
   #:use-module (ice-9 match)
-  #:export (hydra-jobs))
+  #:export (%cross-targets
+            channel-source->package
+            hydra-jobs))
 
 ;;; Commentary:
 ;;;
@@ -120,31 +126,81 @@ SYSTEM."
         %guile-bootstrap-tarball
         %bootstrap-tarballs))
 
-(define %packages-to-cross-build
-  %core-packages)
+(define (packages-to-cross-build target)
+  "Return the list of packages to cross-build for TARGET."
+  ;; Don't cross-build the bootstrap tarballs for MinGW.
+  (if (string-contains target "mingw")
+      (drop-right %core-packages 6)
+      %core-packages))
 
 (define %cross-targets
   '("mips64el-linux-gnu"
-    "mips64el-linux-gnuabi64"
     "arm-linux-gnueabihf"
     "aarch64-linux-gnu"
     "powerpc-linux-gnu"
+    "riscv64-linux-gnu"
     "i586-pc-gnu"                                 ;aka. GNU/Hurd
     "i686-w64-mingw32"
     "x86_64-w64-mingw32"))
 
-(define %guixsd-supported-systems
-  '("x86_64-linux" "i686-linux" "armhf-linux"))
+(define (cross-jobs store system)
+  "Return a list of cross-compilation jobs for SYSTEM."
+  (define (from-32-to-64? target)
+    ;; Return true if SYSTEM is 32-bit and TARGET is 64-bit.  This hack
+    ;; prevents known-to-fail cross-builds from i686-linux or armhf-linux to
+    ;; mips64el-linux-gnuabi64.
+    (and (or (string-prefix? "i686-" system)
+             (string-prefix? "i586-" system)
+             (string-prefix? "armhf-" system))
+         (string-contains target "64")))    ;x86_64, mips64el, aarch64, etc.
 
-(define %u-boot-systems
-  '("armhf-linux"))
+  (define (same? target)
+    ;; Return true if SYSTEM and TARGET are the same thing.  This is so we
+    ;; don't try to cross-compile to 'mips64el-linux-gnu' from
+    ;; 'mips64el-linux'.
+    (or (string-contains target system)
+        (and (string-prefix? "armhf" system)    ;armhf-linux
+             (string-prefix? "arm" target))))   ;arm-linux-gnueabihf
 
-(define (qemu-jobs store system)
-  "Return a list of jobs that build QEMU images for SYSTEM."
+  (define (pointless? target)
+    ;; Return #t if it makes no sense to cross-build to TARGET from SYSTEM.
+    (match system
+      ((or "x86_64-linux" "i686-linux")
+       (if (string-contains target "mingw")
+           (not (string=? "x86_64-linux" system))
+           #f))
+      (_
+       ;; Don't try to cross-compile from non-Intel platforms: this isn't
+       ;; very useful and these are often brittle configurations.
+       #t)))
+
+  (define (either proc1 proc2 proc3)
+    (lambda (x)
+      (or (proc1 x) (proc2 x) (proc3 x))))
+
+  (append-map (lambda (target)
+                (map (lambda (package)
+                       (package-cross-job store (job-name package)
+                                          package target system))
+                     (packages-to-cross-build target)))
+              (remove (either from-32-to-64? same? pointless?)
+                      %cross-targets)))
+
+;; Architectures that are able to build or cross-build Guix System images.
+;; This does not mean that other architectures are not supported, only that
+;; they are often not fast enough to support Guix System images building.
+(define %guix-system-supported-systems
+  '("x86_64-linux" "i686-linux"))
+
+(define %guix-system-images
+  (list hurd-barebones-disk-image))
+
+(define (image-jobs store system)
+  "Return a list of jobs that build images for SYSTEM."
   (define (->alist drv)
     `((derivation . ,(derivation-file-name drv))
-      (description . "Stand-alone QEMU image of the GNU system")
-      (long-description . "This is a demo stand-alone QEMU image of the GNU
+      (description . "Stand-alone image of the GNU system")
+      (long-description . "This is a demo stand-alone image of the GNU
 system.")
       (license . ,(license-name gpl3+))
       (max-silent-time . 600)
@@ -159,64 +215,70 @@ system.")
                    (parameterize ((%graft? #f))
                      (->alist drv))))))
 
+  (define (build-image image)
+    (run-with-store store
+      (mbegin %store-monad
+        (set-guile-for-build (default-guile))
+        (lower-object (system-image image)))))
+
   (define MiB
     (expt 2 20))
 
-  (if (member system %guixsd-supported-systems)
-      (if (member system %u-boot-systems)
-          (list (->job 'flash-image
-                       (run-with-store store
-                         (mbegin %store-monad
-                           (set-guile-for-build (default-guile))
-                           (system-disk-image
-                            (operating-system (inherit installation-os)
-                             (bootloader (bootloader-configuration
-                                          (bootloader u-boot-bootloader)
-                                          (target #f))))
-                            #:disk-image-size
-                            (* 1500 MiB))))))
-          (list (->job 'usb-image
-                       (run-with-store store
-                         (mbegin %store-monad
-                           (set-guile-for-build (default-guile))
-                           (system-disk-image installation-os
-                                              #:disk-image-size
-                                              (* 1500 MiB)))))
-                (->job 'iso9660-image
-                       (run-with-store store
-                         (mbegin %store-monad
-                           (set-guile-for-build (default-guile))
-                           (system-disk-image installation-os
-                                              #:file-system-type
-                                              "iso9660"))))))
+  (if (member system %guix-system-supported-systems)
+      `(,(->job 'usb-image
+                (build-image
+                 (image
+                  (inherit efi-disk-image)
+                  (operating-system installation-os))))
+        ,(->job 'iso9660-image
+                (build-image
+                 (image
+                  (inherit iso9660-image)
+                  (operating-system installation-os))))
+        ;; Only cross-compile Guix System images from x86_64-linux for now.
+        ,@(if (string=? system "x86_64-linux")
+              (map (lambda (image)
+                     (->job (image-name image) (build-image image)))
+                   %guix-system-images)
+              '()))
       '()))
 
 (define channel-build-system
   ;; Build system used to "convert" a channel instance to a package.
   (let* ((build (lambda* (store name inputs
-                                #:key instance system
+                                #:key source commit system
                                 #:allow-other-keys)
                   (run-with-store store
-                    (channel-instances->derivation (list instance))
+                    ;; SOURCE can be a lowerable object such as <local-file>
+                    ;; or a file name.  Adjust accordingly.
+                    (mlet* %store-monad ((source (if (string? source)
+                                                     (return source)
+                                                     (lower-object source)))
+                                         (instance
+                                          -> (checkout->channel-instance
+                                              source #:commit commit)))
+                      (channel-instances->derivation (list instance)))
                     #:system system)))
-         (lower (lambda* (name #:key system instance #:allow-other-keys)
+         (lower (lambda* (name #:key system source commit
+                               #:allow-other-keys)
                   (bag
                     (name name)
                     (system system)
                     (build build)
-                    (arguments `(#:instance ,instance))))))
+                    (arguments `(#:source ,source
+                                 #:commit ,commit))))))
     (build-system (name 'channel)
                   (description "Turn a channel instance into a package.")
                   (lower lower))))
 
-(define (channel-instance->package instance)
-  "Return a package for the given channel INSTANCE."
+(define* (channel-source->package source #:key commit)
+  "Return a package for the given channel SOURCE, a lowerable object."
   (package
     (inherit guix)
-    (version (or (string-take (channel-instance-commit instance) 7)
-                 (string-append (package-version guix) "+")))
+    (version (string-append (package-version guix) "+"))
     (build-system channel-build-system)
-    (arguments `(#:instance ,instance))
+    (arguments `(#:source ,source
+                 #:commit ,commit))
     (inputs '())
     (native-inputs '())
     (propagated-inputs '())))
@@ -224,9 +286,6 @@ system.")
 (define* (system-test-jobs store system
                            #:key source commit)
   "Return a list of jobs for the system tests."
-  (define instance
-    (checkout->channel-instance source #:commit commit))
-
   (define (test->thunk test)
     (lambda ()
       (define drv
@@ -253,17 +312,13 @@ system.")
                                 "." system))))
       (cons name (test->thunk test))))
 
-  (if (and (member system %guixsd-supported-systems)
-
-           ;; XXX: Our build farm has too few ARMv7 machines and they are very
-           ;; slow, so skip system tests there.
-           (not (string=? system "armhf-linux")))
+  (if (member system %guix-system-supported-systems)
       ;; Override the value of 'current-guix' used by system tests.  Using a
       ;; channel instance makes tests that rely on 'current-guix' less
       ;; expensive.  It also makes sure we get a valid Guix package when this
       ;; code is not running from a checkout.
       (parameterize ((current-guix-package
-                      (channel-instance->package instance)))
+                      (channel-source->package source #:commit commit)))
         (map ->job (all-system-tests)))
       '()))
 
@@ -373,6 +428,17 @@ valid."
                              load-manifest)
                     manifests))))
 
+(define (find-current-checkout arguments)
+  "Find the first checkout of ARGUMENTS that provided the current file.
+Return #f if no such checkout is found."
+  (let ((current-root
+         (canonicalize-path
+          (string-append (dirname (current-filename)) "/.."))))
+    (find (lambda (argument)
+            (and=> (assq-ref argument 'file-name)
+                   (lambda (name)
+                     (string=? name current-root)))) arguments)))
+
 
 ;;;
 ;;; Hydra entry point.
@@ -395,61 +461,14 @@ valid."
       ((? string? str) (call-with-input-string str read))))
 
   (define checkout
-    ;; Extract metadata about the 'guix' checkout.  Its key in ARGUMENTS may
-    ;; vary, so pick up the first one that's neither 'subset' nor 'systems'.
-    (any (match-lambda
-           ((key . value)
-            (and (not (memq key '(systems subset)))
-                 value)))
-         arguments))
+    (or (find-current-checkout arguments)
+        (assq-ref arguments 'superior-guix-checkout)))
 
   (define commit
     (assq-ref checkout 'revision))
 
   (define source
     (assq-ref checkout 'file-name))
-
-  (define (cross-jobs system)
-    (define (from-32-to-64? target)
-      ;; Return true if SYSTEM is 32-bit and TARGET is 64-bit.  This hack
-      ;; prevents known-to-fail cross-builds from i686-linux or armhf-linux to
-      ;; mips64el-linux-gnuabi64.
-      (and (or (string-prefix? "i686-" system)
-               (string-prefix? "i586-" system)
-               (string-prefix? "armhf-" system))
-           (string-contains target "64")))    ;x86_64, mips64el, aarch64, etc.
-
-    (define (same? target)
-      ;; Return true if SYSTEM and TARGET are the same thing.  This is so we
-      ;; don't try to cross-compile to 'mips64el-linux-gnu' from
-      ;; 'mips64el-linux'.
-      (or (string-contains target system)
-          (and (string-prefix? "armhf" system)    ;armhf-linux
-               (string-prefix? "arm" target))))   ;arm-linux-gnueabihf
-
-    (define (pointless? target)
-      ;; Return #t if it makes no sense to cross-build to TARGET from SYSTEM.
-      (match system
-        ((or "x86_64-linux" "i686-linux")
-         (if (string-contains target "mingw")
-             (not (string=? "x86_64-linux" system))
-             #f))
-        (_
-         ;; Don't try to cross-compile from non-Intel platforms: this isn't
-         ;; very useful and these are often brittle configurations.
-         #t)))
-
-    (define (either proc1 proc2 proc3)
-      (lambda (x)
-        (or (proc1 x) (proc2 x) (proc3 x))))
-
-    (append-map (lambda (target)
-                  (map (lambda (package)
-                         (package-cross-job store (job-name package)
-                                            package target system))
-                       %packages-to-cross-build))
-                (remove (either from-32-to-64? same? pointless?)
-                        %cross-targets)))
 
   ;; Turn off grafts.  Grafting is meant to happen on the user's machines.
   (parameterize ((%graft? #f))
@@ -470,19 +489,19 @@ valid."
                                   (package->job store package
                                                 system))))
                        (append (filter-map job all)
-                               (qemu-jobs store system)
+                               (image-jobs store system)
                                (system-test-jobs store system
                                                  #:source source
                                                  #:commit commit)
                                (tarball-jobs store system)
-                               (cross-jobs system))))
+                               (cross-jobs store system))))
                     ((core)
                      ;; Build core packages only.
                      (append (map (lambda (package)
                                     (package-job store (job-name package)
                                                  package system))
                                   %core-packages)
-                             (cross-jobs system)))
+                             (cross-jobs store system)))
                     ((hello)
                      ;; Build hello package only.
                      (if (string=? system (%current-system))

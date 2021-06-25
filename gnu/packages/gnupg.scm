@@ -1,20 +1,22 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2013, 2015, 2018 Andreas Enge <andreas@enge.fr>
 ;;; Copyright © 2014, 2018 Eric Bavier <bavier@member.fsf.org>
 ;;; Copyright © 2014, 2015, 2016 Mark H Weaver <mhw@netris.org>
 ;;; Copyright © 2015 Paul van der Walt <paul@denknerd.org>
-;;; Copyright © 2015, 2016, 2017, 2018, 2019 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2015, 2016, 2017, 2018, 2019, 2020 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2015, 2016, 2017, 2019 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2016 Christopher Allan Webber <cwebber@dustycloud.org>
-;;; Copyright © 2016, 2017 ng0 <ng0@n0.is>
+;;; Copyright © 2016, 2017 Nikita <nikita@n0.is>
 ;;; Copyright © 2016 Christopher Baines <mail@cbaines.net>
 ;;; Copyright © 2016 Mike Gerwitz <mtg@gnu.org>
 ;;; Copyright © 2016 Troy Sankey <sankeytms@gmail.com>
-;;; Copyright © 2017 Leo Famulari <leo@famulari.name>
+;;; Copyright © 2017, 2020 Leo Famulari <leo@famulari.name>
 ;;; Copyright © 2017 Petter <petter@mykolab.ch>
-;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
-;;; Copyright © 2018 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018, 2019 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2018 Björn Höfling <bjoern.hoefling@bjoernhoefling.de>
+;;; Copyright © 2019 Mathieu Othacehe <m.othacehe@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -64,6 +66,7 @@
   #:use-module (gnu packages tls)
   #:use-module (gnu packages tor)
   #:use-module (gnu packages web)
+  #:use-module (gnu packages xorg)
   #:use-module (gnu packages xml)
   #:use-module (guix packages)
   #:use-module (guix download)
@@ -76,7 +79,7 @@
 (define-public libgpg-error
   (package
     (name "libgpg-error")
-    (version "1.32")
+    (version "1.37")
     (source
      (origin
       (method url-fetch)
@@ -84,8 +87,33 @@
                           version ".tar.bz2"))
       (sha256
        (base32
-        "1jj08ns4sh1hmafqp1giskvdicdz18la516va26jycy27kkwaif3"))))
+        "0qwpx8mbc2l421a22l0l1hpzkip9jng06bbzgxwpkkvk5bvnybdk"))))
     (build-system gnu-build-system)
+    (arguments
+     (if (%current-target-system)
+         `(#:modules ((ice-9 match)
+                      (guix build gnu-build-system)
+                      (guix build utils))
+           #:phases
+           (modify-phases %standard-phases
+             ;; When cross-compiling, some platform specific properties cannot
+             ;; be detected. Create a symlink to the appropriate platform
+             ;; file. See Cross-Compiling section at:
+             ;; https://github.com/gpg/libgpg-error/blob/master/README
+             (add-after 'unpack 'cross-symlinks
+               (lambda* (#:key target inputs #:allow-other-keys)
+                 (let ((triplet
+                        (match (string-take target
+                                            (string-index target #\-))
+                          ("armhf" "arm-unknown-linux-gnueabi")
+                          (x
+                           (string-append x "-unknown-linux-gnu")))))
+                   (symlink
+                    (string-append "lock-obj-pub." triplet ".h")
+                    "src/syscfg/lock-obj-pub.linux-gnu.h"))
+                 #t))))
+         '()))
+    (native-inputs `(("gettext" ,gettext-minimal)))
     (home-page "https://gnupg.org")
     (synopsis "Library of error values for GnuPG components")
     (description
@@ -100,16 +128,14 @@ Daemon and possibly more in the future.")
 (define-public libgcrypt
   (package
     (name "libgcrypt")
-    (version "1.8.3")
+    (version "1.8.5")
     (source (origin
              (method url-fetch)
              (uri (string-append "mirror://gnupg/libgcrypt/libgcrypt-"
                                  version ".tar.bz2"))
              (sha256
               (base32
-               "0z5gs1khzyknyfjr19k8gk4q148s6q987ya85cpn0iv70fz91v36"))
-             (patches
-              (search-patches "libgcrypt-make-yat2m-reproducible.patch"))))
+                "1hvsazms1bfd769q0ngl0r9g5i4m9mpz9jmvvrdzyzk3rfa2ljiv"))))
     (build-system gnu-build-system)
     (propagated-inputs
      `(("libgpg-error-host" ,libgpg-error)))
@@ -122,7 +148,10 @@ Daemon and possibly more in the future.")
      ;; the 'gpg-error-config' it runs is the native one---i.e., the wrong one.
      `(#:configure-flags
        (list (string-append "--with-gpg-error-prefix="
-                            (assoc-ref %build-inputs "libgpg-error-host")))))
+                            (assoc-ref %build-inputs "libgpg-error-host"))
+             ;; When cross-compiling, _gcry_mpih_lshift etc are undefined
+             ,@(if (%current-target-system) '("--disable-asm")
+                   '()))))
     (outputs '("out" "debug"))
     (home-page "https://gnupg.org/")
     (synopsis "Cryptographic function library")
@@ -225,14 +254,15 @@ compatible to GNU Pth.")
 (define-public gnupg
   (package
     (name "gnupg")
-    (version "2.2.17")
+    (version "2.2.20")
     (source (origin
               (method url-fetch)
               (uri (string-append "mirror://gnupg/gnupg/gnupg-" version
                                   ".tar.bz2"))
+              (patches (search-patches "gnupg-default-pinentry.patch"))
               (sha256
                (base32
-                "056mgy09lvsi03531a437qj58la1j2x1y1scvfi53diris3658mg"))))
+                "0c6a4v9p6qzhsw1pfcwc459bxpc8hma0w9z8iqb9khvligack9q4"))))
     (build-system gnu-build-system)
     (native-inputs
      `(("pkg-config" ,pkg-config)))
@@ -378,6 +408,15 @@ libskba (working with X.509 certificates and CMS data).")
       (sha256
        (base32 "0imyjfryvvjdbai454p70zcr95m94j9xnzywrlilqdw2fqi0pqy4"))))
     (build-system gnu-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-before 'check 'disable-failing-test
+           ;; XXX gnupg@2.2.20 breaks the expected JSON response for this test.
+           (lambda _
+             (substitute* "tests/json/t-json.c"
+               (("\"t-keylist-secret\", ") ""))
+             #t)))))
     (native-inputs
      `(("gnupg" ,gnupg)))
     (propagated-inputs
@@ -434,7 +473,7 @@ gpgpme starting with version 1.7.")
 (define-public guile-gcrypt
   (package
     (name "guile-gcrypt")
-    (version "0.2.0")
+    (version "0.3.0")
     (home-page "https://notabug.org/cwebber/guile-gcrypt")
     (source (origin
               (method git-fetch)
@@ -443,20 +482,35 @@ gpgpme starting with version 1.7.")
                     (commit (string-append "v" version))))
               (sha256
                (base32
-                "1mhc5m4xygkfj7x18f8apiqpfdn9mrql0am5sk13cf5xn8x1r63z"))
-              (file-name (string-append name "-" version "-checkout"))))
+                "0m29fg4pdfifnqqsa437zc5c1bhbfh62mc69ba25ak4x2cla41ll"))
+              (file-name (git-file-name name version))))
     (build-system gnu-build-system)
+    (arguments
+     ;; When cross-compiling, the bash script libgcrypt-config provided by
+     ;; libgcrypt must be accessible during configure phase.
+     `(,@(if (%current-target-system)
+             '(#:phases
+               (modify-phases %standard-phases
+                 (add-before 'configure 'add-libgrypt-config
+                   (lambda _
+                     (setenv "PATH" (string-append
+                                     (assoc-ref %build-inputs "libgcrypt")
+                                     "/bin:"
+                                     (getenv "PATH")))
+                     #t))))
+             '())))
     (native-inputs
      `(("pkg-config" ,pkg-config)
        ("autoconf" ,autoconf)
        ("automake" ,automake)
-       ("texinfo" ,texinfo)))
+       ("texinfo" ,texinfo)
+       ("guile" ,guile-3.0)))
     (inputs
-     `(("guile" ,guile-2.2)
+     `(("guile" ,guile-3.0)
        ("libgcrypt" ,libgcrypt)))
     (synopsis "Cryptography library for Guile using Libgcrypt")
     (description
-     "Guile-Gcrypt provides a Guile 2.x interface to a subset of the
+     "Guile-Gcrypt provides a Guile interface to a subset of the
 GNU Libgcrypt crytographic library.  It provides modules for cryptographic
 hash functions, message authentication codes (MAC), public-key cryptography,
 strong randomness, and more.  It is implemented using the foreign function
@@ -466,9 +520,26 @@ interface (FFI) of Guile.")
 (define-public guile2.0-gcrypt
   (package (inherit guile-gcrypt)
     (name "guile2.0-gcrypt")
+    (native-inputs
+     `(("guile" ,guile-2.0)
+       ,@(alist-delete "guile" (package-native-inputs guile-gcrypt))))
     (inputs
      `(("guile" ,guile-2.0)
        ,@(alist-delete "guile" (package-inputs guile-gcrypt))))))
+
+(define-public guile2.2-gcrypt
+  (package
+    (inherit guile-gcrypt)
+    (name "guile2.2-gcrypt")
+    (native-inputs
+     `(("guile" ,guile-2.2)
+       ,@(alist-delete "guile" (package-native-inputs guile-gcrypt))))
+    (inputs
+     `(("guile" ,guile-2.2)
+       ,@(alist-delete "guile" (package-inputs guile-gcrypt))))))
+
+(define-public guile3.0-gcrypt
+  (deprecated-package "guile3.0-gcrypt" guile-gcrypt))
 
 (define-public python-gpg
   (package
@@ -837,8 +908,6 @@ software.")))
     (inputs
      `(("qtbase" ,qtbase)
        ,@(package-inputs pinentry-tty)))
-    (arguments
-     `(#:configure-flags '("CXXFLAGS=-std=gnu++11")))
   (description
    "Pinentry provides a console and a Qt GUI that allows users to enter a
 passphrase when @code{gpg} is run and needs it.")))
@@ -878,15 +947,15 @@ passphrase when @code{gpg} is run and needs it.")))
 (define-public paperkey
   (package
     (name "paperkey")
-    (version "1.5")
+    (version "1.6")
     (source (origin
               (method url-fetch)
-              (uri (string-append "http://www.jabberwocky.com/"
+              (uri (string-append "https://www.jabberwocky.com/"
                                   "software/paperkey/paperkey-"
                                   version ".tar.gz"))
               (sha256
                (base32
-                "1prd2jaf4zjad3xhv160hmi5n408ssljfg7iz90jxs9w111pjwy4"))))
+                "1xq5gni6gksjkd5avg0zpd73vsr97appksfx0gx2m38s4w9zsid2"))))
     (build-system gnu-build-system)
     (arguments
      `(#:phases
@@ -897,7 +966,7 @@ passphrase when @code{gpg} is run and needs it.")))
                             "checks/roundtrip-raw.sh")
                (("/bin/echo") "echo"))
              #t)))))
-    (home-page "http://www.jabberwocky.com/software/paperkey/")
+    (home-page "https://www.jabberwocky.com/software/paperkey/")
     (synopsis "Backup OpenPGP keys to paper")
     (description
      "Paperkey extracts the secret bytes from an OpenPGP (GnuPG, PGP, etc) key
@@ -947,6 +1016,16 @@ however, pgpdump produces more detailed and easier to understand output.")
                (base32
                 "1cbpc45f8qbdkd62p12s3q2rdq6fa5xdzwmcwd3xrj55bzkspnwm"))))
     (build-system gnu-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-after 'install 'wrap-program
+           (lambda* (#:key inputs outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out"))
+                   (gnupg (assoc-ref inputs "gnupg")))
+               (wrap-program (string-append out "/bin/gpa")
+                 `("PATH" ":" prefix (,(string-append gnupg "/bin"))))
+               #t))))))
     (native-inputs
      `(("pkg-config" ,pkg-config)))
     (inputs
@@ -968,7 +1047,7 @@ files, to verify signatures, and to manage the private and public keys.")
 (define-public parcimonie
   (package
     (name "parcimonie")
-    (version "0.10.3")
+    (version "0.11.0")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://gaffer.boum.org/intrigeri/files/"
@@ -976,10 +1055,10 @@ files, to verify signatures, and to manage the private and public keys.")
                                   version ".tar.gz"))
               (sha256
                (base32
-                "1kf891117s1f3k6lxvbjdb21va9gxh29vlp9bd664ssgw266rcyb"))))
+                "14pvapvzrxh1yh8zgcj1llmc2dd8g1fgzskxlja21gmw8c88aqdk"))))
     (build-system perl-build-system)
     (inputs
-     `(("gnupg" ,gnupg-1)    ; This is the version used by perl-gnupg-interface
+     `(("gnupg" ,gnupg)
        ("perl-config-general" ,perl-config-general)
        ("perl-clone" ,perl-clone)
        ("perl-data" ,perl-data)
@@ -999,10 +1078,12 @@ files, to verify signatures, and to manage the private and public keys.")
        ("perl-moox-handlesvia" ,perl-moox-handlesvia)
        ("perl-moox-late" ,perl-moox-late)
        ("perl-moox-options" ,perl-moox-options)
+       ("perl-moox-strictconstructor" ,perl-moox-strictconstructor)
        ("perl-namespace-clean" ,perl-namespace-clean)
        ("perl-net-dbus" ,perl-net-dbus)
        ("perl-net-dbus-glib" ,perl-net-dbus-glib)
        ("perl-path-tiny" ,perl-path-tiny)
+       ("perl-strictures" ,perl-strictures-2)
        ("perl-test-most" ,perl-test-most)
        ("perl-test-trap" ,perl-test-trap)
        ("perl-time-duration" ,perl-time-duration)
@@ -1014,24 +1095,29 @@ files, to verify signatures, and to manage the private and public keys.")
        ("perl-xml-parser" ,perl-xml-parser)
        ("perl-xml-twig" ,perl-xml-twig)
        ("torsocks" ,torsocks)))
+    (native-inputs
+     `(("xorg-server" ,xorg-server-for-tests)))
     (arguments
      `(#:phases
        (modify-phases %standard-phases
          ;; Needed for using gpg-connect-agent during tests.
-         (add-before 'check 'set-HOME
-           (lambda _ (setenv "HOME" "/tmp") #t))
+         (add-before 'check 'prepare-for-tests
+           (lambda* (#:key inputs #:allow-other-keys)
+             (let ((xorg-server (assoc-ref inputs "xorg-server")))
+               (system (string-append xorg-server "/bin/Xvfb :1 &"))
+               (setenv "DISPLAY" ":1")
+               (setenv "HOME" "/tmp")
+               ;; These tests are known to fail
+               (delete-file "t/32-keyserver_defined_on_command_line.t")
+               (delete-file "t/33-checkGpgHasDefinedKeyserver.t")
+               ;; The applet is deprecated upstream.
+               (delete-file "t/00-load_all.t")
+               #t)))
          (add-before 'install 'fix-references
            (lambda* (#:key inputs outputs #:allow-other-keys)
              (substitute* "lib/App/Parcimonie/GnuPG/Interface.pm"
-               (("gpg2") "gpg")
                ;; Skip check whether dependencies are in the PATH
-               (("defined which.*") "")
-               (("call\\('parcimonie-torified-gpg'\\)")
-                (string-append "call('" (assoc-ref outputs "out")
-                               "/bin/parcimonie-torified-gpg')")))
-             (substitute* "bin/parcimonie-torified-gpg"
-               (("torsocks") (string-append (assoc-ref inputs "torsocks")
-                                            "/bin/torsocks")))
+               (("defined which.*") ""))
              #t))
          (add-after 'install 'wrap-program
            (lambda* (#:key inputs outputs #:allow-other-keys)
@@ -1055,15 +1141,17 @@ over.")
 (define-public jetring
   (package
     (name "jetring")
-    (version "0.27")
+    (version "0.29")
     (source
       (origin
-        (method url-fetch)
-        (uri (string-append "mirror://debian/pool/main/j/" name "/"
-                            name "_" version ".tar.xz"))
+        (method git-fetch)
+        (uri (git-reference
+               (url "https://salsa.debian.org/debian/jetring")
+               (commit (string-append "debian/" version))))
+        (file-name (git-file-name name version))
         (sha256
          (base32
-          "0jy0x5zj7v87xgyldlsx1knzp0mv10wzamblrw1b61i2m1ii4pxz"))))
+          "1acbx2vnbkms1c0wgcnh05d4g359sg5z0aiw541vx2qq9sgdhlv6"))))
     (build-system gnu-build-system)
     (arguments
      '(#:phases

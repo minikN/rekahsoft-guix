@@ -1,5 +1,5 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2013, 2014, 2015, 2016, 2018 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2013, 2014, 2015, 2016, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2013, 2015 Andreas Enge <andreas@enge.fr>
 ;;; Copyright © 2015 Eric Bavier <bavier@member.fsf.org>
 ;;; Copyright © 2015 Sou Bunnbu <iyzsong@gmail.com>
@@ -11,9 +11,9 @@
 ;;; Copyright © 2016, 2017 Leo Famulari <leo@famulari.name>
 ;;; Copyright © 2016 Ben Woodcroft <donttrustben@gmail.com>
 ;;; Copyright © 2016 Jan Nieuwenhuizen <janneke@gnu.org>
-;;; Copyright © 2016, 2017 ng0 <ng0@n0.is>
-;;; Copyright © 2016, 2017, 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
-;;; Copyright © 2016, 2017, 2018 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2016, 2017 Nikita <nikita@n0.is>
+;;; Copyright © 2016, 2017, 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2016, 2017, 2018, 2019, 2020 Marius Bakke <mbakke@fastmail.com>
 ;;; Copyright © 2017 Adriano Peluso <catonano@gmail.com>
 ;;; Copyright © 2017 Gregor Giesen <giesen@zaehlwerk.net>
 ;;; Copyright © 2017 Alex Vong <alexvong1995@gmail.com>
@@ -21,6 +21,8 @@
 ;;; Copyright © 2017 Stefan Reichör <stefan@xsteve.at>
 ;;; Copyright © 2018 Pierre Neidhardt <mail@ambrevar.xyz>
 ;;; Copyright © 2018 Jack Hill <jackhill@jackhill.us>
+;;; Copyright © 2019 Giacomo Leidi <goodoldpaul@autistici.org>
+;;; Copyright © 2020 Paul Garlick <pgarlick@tourbillion-technology.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -66,21 +68,22 @@
 (define-public expat
   (package
     (name "expat")
-    (replacement expat/fixed)
-    (version "2.2.6")
+    (version "2.2.9")
     (source (let ((dot->underscore (lambda (c) (if (char=? #\. c) #\_ c))))
               (origin
                 (method url-fetch)
                 (uri (list (string-append "mirror://sourceforge/expat/expat/"
-                                          version "/expat-" version ".tar.bz2")
+                                          version "/expat-" version ".tar.xz")
                            (string-append
                             "https://github.com/libexpat/libexpat/releases/download/R_"
                             (string-map dot->underscore version)
-                            "/expat-" version ".tar.bz2")))
+                            "/expat-" version ".tar.xz")))
                 (sha256
                  (base32
-                  "1wl1x93b5w457ddsdgj0lh7yjq4q6l7wfbgwhagkc8fm2qkkrd0p")))))
+                  "1960mmgbb4cm64n1p0nz3hrs1pw03hkrfcw8prmnn4622mdrd9hy")))))
     (build-system gnu-build-system)
+    (arguments
+     '(#:configure-flags '("--disable-static")))
     (home-page "https://libexpat.github.io/")
     (synopsis "Stream-oriented XML parser library written in C")
     (description
@@ -89,25 +92,17 @@ stream-oriented parser in which an application registers handlers for
 things the parser might find in the XML document (like start tags).")
     (license license:expat)))
 
-(define expat/fixed
-  (package
-    (inherit expat)
-    (source
-     (origin
-       (inherit (package-source expat))
-       (patches (search-patches "expat-CVE-2018-20843.patch"))))))
-
 (define-public libebml
   (package
     (name "libebml")
-    (version "1.3.9")
+    (version "1.4.0")
     (source
      (origin
        (method url-fetch)
        (uri (string-append "https://dl.matroska.org/downloads/libebml/"
                            "libebml-" version ".tar.xz"))
        (sha256
-        (base32 "0j65r6i7s2k67c8f9wa653mqpxmfhdl67kjxrc1n5910ig6wddn6"))))
+        (base32 "1cy4hbk8qbxn4c6pwvlsvr1rp8vhfach9rwfg4c50qa94nlckaw0"))))
     (build-system cmake-build-system)
     (arguments
      `(#:configure-flags
@@ -124,14 +119,14 @@ hierarchical form with variable field lengths.")
 (define-public libxml2
   (package
     (name "libxml2")
-    (version "2.9.8")
+    (version "2.9.10")
     (source (origin
              (method url-fetch)
              (uri (string-append "ftp://xmlsoft.org/libxml2/libxml2-"
                                  version ".tar.gz"))
              (sha256
               (base32
-               "0ci7is75bwqqw2p32vxvrk6ds51ik7qgx73m920rakv5jlayax0b"))))
+               "07xynh8hcxb2yb1fs051xrgszjvj37wnxvxgsj10rzmqzy9y3zma"))))
     (build-system gnu-build-system)
     (outputs '("out" "static"))
     (arguments
@@ -146,6 +141,12 @@ hierarchical form with variable field lengths.")
                                     (rename-file ar (string-append dst "/"
                                                                    (basename ar))))
                                   (find-files src "\\.a$"))
+
+                        ;; Remove reference to the static library from the .la
+                        ;; file such that Libtool does the right thing when both
+                        ;; the shared and static variants are available.
+                        (substitute* (string-append src "/libxml2.la")
+                          (("^old_library='libxml2.a'") "old_library=''"))
                         #t))))))
     (home-page "http://www.xmlsoft.org/")
     (synopsis "C parser for XML")
@@ -169,6 +170,10 @@ project (but it is usable outside of the Gnome platform).")
 (define-public python-libxml2
   (package/inherit libxml2
     (name "python-libxml2")
+    (source (origin
+              (inherit (package-source libxml2))
+              (patches (cons (search-patch "python-libxml2-utf8.patch")
+                             (origin-patches (package-source libxml2))))))
     (build-system python-build-system)
     (outputs '("out"))
     (arguments
@@ -200,22 +205,35 @@ project (but it is usable outside of the Gnome platform).")
 (define-public libxslt
   (package
     (name "libxslt")
-    (version "1.1.32")
+    (version "1.1.34")
     (source (origin
              (method url-fetch)
              (uri (string-append "ftp://xmlsoft.org/libxslt/libxslt-"
                                  version ".tar.gz"))
              (sha256
               (base32
-               "0q2l6m56iv3ysxgm2walhg4c9wp7q183jb328687i9zlp85csvjj"))
+               "0zrzz6kjdyavspzik6fbkpvfpbd25r2qg6py5nnjaabrsr3bvccq"))
              (patches (search-patches "libxslt-generated-ids.patch"))))
     (build-system gnu-build-system)
+    (arguments
+     `(#:phases (modify-phases %standard-phases
+                  (add-before 'check 'disable-fuzz-tests
+                    (lambda _
+                      ;; Disable libFuzzer tests, because they require
+                      ;; instrumentation builds of libxml2 and libxslt.
+                      (substitute* "tests/Makefile"
+                        (("exslt plugins fuzz")
+                         "exslt plugins"))
+                      #t)))))
     (home-page "http://xmlsoft.org/XSLT/index.html")
     (synopsis "C library for applying XSLT stylesheets to XML documents")
     (inputs `(("libgcrypt" ,libgcrypt)
               ("libxml2" ,libxml2)
               ("python" ,python-minimal-wrapper)
-              ("zlib" ,zlib)))
+              ("zlib" ,zlib)
+              ("xz" ,xz)))
+    (native-inputs
+     `(("pkg-config" ,pkg-config)))
     (description
      "Libxslt is an XSLT C library developed for the GNOME project.  It is
 based on libxml for XML parsing, tree manipulation and XPath support.")
@@ -326,7 +344,7 @@ parsers for it.  @code{XML::Descent} allows such parsers to be created.")
 (define-public perl-xml-parser
   (package
     (name "perl-xml-parser")
-    (version "2.44")
+    (version "2.46")
     (source (origin
              (method url-fetch)
              (uri (string-append
@@ -334,7 +352,7 @@ parsers for it.  @code{XML::Descent} allows such parsers to be created.")
                    version ".tar.gz"))
              (sha256
               (base32
-               "05ij0g6bfn27iaggxf8nl5rhlwx6f6p6xmdav6rjcly3x5zd1s8s"))))
+               "0pai3ik47q7rgnix9644c673fwydz52gqkxr9kxwq765j4j36cfk"))))
     (build-system perl-build-system)
     (arguments `(#:make-maker-flags
                  (let ((expat (assoc-ref %build-inputs "expat")))
@@ -496,14 +514,14 @@ checks.")
 (define-public perl-xml-rss
   (package
     (name "perl-xml-rss")
-    (version "1.60")
+    (version "1.61")
     (source (origin
               (method url-fetch)
               (uri (string-append "mirror://cpan/authors/id/S/SH/SHLOMIF/"
                                   "XML-RSS-" version ".tar.gz"))
               (sha256
                (base32
-                "0xw6aaqka3vqwbv152sbh6fbi8j306q1gvg7v83br8miif3mjcsb"))))
+                "03f983l2dnkvcw6iyg1s0xmv5wn793d3kvqlshmhm01ibp7ffvzs"))))
     (build-system perl-build-system)
     (native-inputs
      `(("perl-module-build" ,perl-module-build)
@@ -800,16 +818,17 @@ server, collect the answer, and finally decoding the XML to Perl.")
                (base32
                 "1z1a88bpy64j42bbyl8acbfl3dn9iaz47gx6clkgy5sbn4kr0kgk"))))
     (build-system perl-build-system)
-    (arguments
-     `(#:tests? #f))                    ; tests require internet connection
     (native-inputs
      `(("perl-module-build" ,perl-module-build)
        ("perl-uri" ,perl-uri)
        ("perl-class-data-inheritable" ,perl-class-data-inheritable)))
-    (inputs
+    (propagated-inputs
      `(("perl-class-errorhandler" ,perl-class-errorhandler)
        ("perl-datetime" ,perl-datetime)
+       ("perl-datetime-format-flexible" ,perl-datetime-format-flexible)
+       ("perl-datetime-format-iso8601" ,perl-datetime-format-iso8601)
        ("perl-datetime-format-mail" ,perl-datetime-format-mail)
+       ("perl-datetime-format-natural" ,perl-datetime-format-natural)
        ("perl-datetime-format-w3cdtf" ,perl-datetime-format-w3cdtf)
        ("perl-feed-find" ,perl-feed-find)
        ("perl-html-parser" ,perl-html-parser)
@@ -854,20 +873,18 @@ the form of functions.")
 (define-public pugixml
   (package
     (name "pugixml")
-    (version "1.9")
+    (version "1.10")
     (source
      (origin
       (method url-fetch)
       (uri (string-append "https://github.com/zeux/pugixml/releases/download/v"
                           version "/pugixml-" version ".tar.gz"))
-      (patches (search-patches "pugixml-versioned-libdir.patch"))
       (sha256
-       (base32
-        "19nv3zhik3djp4blc4vrjwrl8dfhzmal8b21sq7y907nhddx6mni"))))
+       (base32 "02l7nllhydggf7s64d2x84kckbmwag4lsn28sc82953hnkxrkwsm"))))
     (build-system cmake-build-system)
     (arguments
      `(#:configure-flags '("-DBUILD_SHARED_LIBS=ON")
-       #:tests? #f))                     ;no tests
+       #:tests? #f))                    ; no tests
     (native-inputs
      `(("pkg-config" ,pkg-config)))
     (home-page "https://pugixml.org")
@@ -928,6 +945,8 @@ code for classes that correspond to data structures defined by XMLSchema.")
                                               (assoc-ref %build-inputs
                                                          "util-linux")
                                               "/bin/getopt"))))
+    (native-inputs
+     `(("util-linux" ,util-linux)))
     (inputs
      `(("util-linux" ,util-linux)                 ; for 'getopt'
        ("libxml2" ,libxml2)                       ; for 'xmllint'
@@ -943,14 +962,14 @@ XSL-T processor.  It also performs any necessary post-processing.")
 (define-public xmlsec
   (package
     (name "xmlsec")
-    (version "1.2.28")
+    (version "1.2.30")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://www.aleksey.com/xmlsec/download/"
                                   "xmlsec1-" version ".tar.gz"))
               (sha256
                (base32
-                "1m12caglhyx08g8lh2sl3nkldlpryzdx2d572q73y3m33s0w9vhk"))))
+                "1j5bf7ni45jghyrbf7a14wx2pvfara557zyry7g7h8840c5kd11d"))))
     (build-system gnu-build-system)
     (propagated-inputs                  ; according to xmlsec1.pc
      `(("libxml2" ,libxml2)
@@ -989,28 +1008,18 @@ Libxml2).")
     (name "minixml")
     (version "2.12")
     (source (origin
-              (method url-fetch/tarbomb)
+              (method url-fetch)
               (uri (string-append "https://github.com/michaelrsweet/mxml/"
                                   "releases/download/v" version
                                   "/mxml-" version ".tar.gz"))
               (sha256
                (base32
-                "1z8nqxa4pqdic8wpixkkgg1m2pak9wjikjjxnk3j5i0d29dbgmmg"))))
+                "0kq3wiycb40dcyswvajrqb1n5ffm5xcnsfxxaml92vhpl6x57yvb"))))
     (build-system gnu-build-system)
     (arguments
      `(#:configure-flags
        (list (string-append "LDFLAGS=-Wl,-rpath="
                             (assoc-ref %outputs "out") "/lib"))
-       #:phases
-       (modify-phases %standard-phases
-         (add-after 'unpack 'fix-permissions
-           ;; FIXME: url-fetch/tarbomb resets all permissions to 555/444.
-           (lambda _
-             (for-each
-              (lambda (file)
-                (chmod file #o644))
-              (find-files "doc" "\\."))
-             #t)))
        #:tests? #f))                    ; tests are run during build
     (home-page "https://michaelrsweet.github.io/mxml")
     (synopsis "Small XML parsing library")
@@ -1094,16 +1103,16 @@ C++ programming language.")
 (define-public tinyxml2
   (package
     (name "tinyxml2")
-    (version "7.0.1")
+    (version "8.0.0")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/leethomason/tinyxml2.git")
+             (url "https://github.com/leethomason/tinyxml2")
              (commit version)))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "1sf6sch1kawrna2f9dc8f4xl836acqcddkghzdib0s7dl48m9r7m"))))
+        (base32 "0raa8r2hsagk7gjlqjwax95ib8d47ba79n91r4aws2zg8y6ssv1d"))))
     (build-system cmake-build-system)
     (synopsis "Small XML parser for C++")
     (description "TinyXML2 is a small and simple XML parsing library for the
@@ -1148,7 +1157,7 @@ XSLT and EXSLT.")
 (define-public html-xml-utils
  (package
    (name "html-xml-utils")
-   (version "7.7")
+   (version "7.8")
    (source
     (origin
       (method url-fetch)
@@ -1156,8 +1165,7 @@ XSLT and EXSLT.")
             "https://www.w3.org/Tools/HTML-XML-utils/html-xml-utils-"
             version ".tar.gz"))
       (sha256
-       (base32
-        "1vwqp5q276j8di9zql3kygf31z2frp2c59yjqlrvvwcvccvkcdwr"))))
+       (base32 "0p8df3c6mw879vdi8l63kbdqylkf1is10b067mh9kipgfy91rd4s"))))
    (build-system gnu-build-system)
    (home-page "https://www.w3.org/Tools/HTML-XML-utils/")
    (synopsis "Command line utilities to manipulate HTML and XML files")
@@ -1208,7 +1216,7 @@ elements to their parents
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/dilshod/xlsx2csv.git")
+             (url "https://github.com/dilshod/xlsx2csv")
              (commit version)))
        (file-name (git-file-name name version))
        (sha256
@@ -1235,14 +1243,14 @@ files.  It is designed to be fast and to handle large input files.")
 (define-public python-defusedxml
   (package
     (name "python-defusedxml")
-    (version "0.5.0")
+    (version "0.6.0")
     (source
      (origin
        (method url-fetch)
        (uri (pypi-uri "defusedxml" version))
        (sha256
         (base32
-         "1x54n0h8hl92vvwyymx883fbqpqjwn2mc8fb383bcg3z9zwz5mr4"))))
+         "1xbp8fivl3wlbyg2jrvs4lalaqv1xp9a9f29p75wdx2s2d6h717n"))))
     (build-system python-build-system)
     (home-page "https://bitbucket.org/tiran/defusedxml")
     (synopsis "XML bomb protection for Python stdlib modules")
@@ -1278,14 +1286,14 @@ spreadsheet.")
 (define-public xerces-c
   (package
     (name "xerces-c")
-    (version "3.1.4")
+    (version "3.2.3")
     (source (origin
               (method url-fetch)
               (uri (string-append "mirror://apache/xerces/c/3/sources/"
                                   "xerces-c-" version ".tar.xz"))
               (sha256
                (base32
-                "0hb29c0smqlpxj0zdm09s983z5jx37szlliccnvgh0qq91wwqwwr"))))
+                "0jf1khvlssg31vkxbc25dxjxcxm56xb8nywj1sypj6hxzjlrkz0j"))))
     (build-system gnu-build-system)
     (arguments
      (let ((system (or (%current-target-system)
@@ -1295,7 +1303,7 @@ spreadsheet.")
            '(#:configure-flags '("--disable-sse2")))))
     (native-inputs
      `(("perl" ,perl)))
-    (home-page "http://xerces.apache.org/xerces-c/")
+    (home-page "https://xerces.apache.org/xerces-c/")
     (synopsis "Validating XML parser library for C++")
     (description "Xerces-C++ is a validating XML parser written in a portable
 subset of C++.  Xerces-C++ makes it easy to give your application the ability
@@ -1353,7 +1361,7 @@ maintaining each reference encountered.")
      "This module provides an XPath engine, that can be re-used by other
 modules/classes that implement trees.
 
-In order to use the XPath engine, nodes in the user module need to mimick DOM
+In order to use the XPath engine, nodes in the user module need to mimic DOM
 nodes.  The degree of similitude between the user tree and a DOM dictates how
 much of the XPath features can be used.  A module implementing all of the DOM
 should be able to use this module very easily (you might need to add the
@@ -1620,7 +1628,7 @@ with XPath too.")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/elharo/xom.git")
+                    (url "https://github.com/elharo/xom")
                     (commit (string-append "XOM_" version))))
               (file-name (git-file-name name version))
               (sha256
@@ -1667,7 +1675,7 @@ that strives for correctness and simplicity.")
     (version "2013.2")
     (source (origin
               (method url-fetch)
-              (uri (string-append "http://central.maven.org/maven2/com/sun/msv/"
+              (uri (string-append "https://repo1.maven.org/maven2/com/sun/msv/"
                                   "datatype/xsd/xsdlib/" version "/xsdlib-"
                                   version "-sources.jar"))
               (sha256
@@ -1680,7 +1688,8 @@ that strives for correctness and simplicity.")
        #:jdk ,icedtea-8))
     (inputs
      `(("java-xerces" ,java-xerces)))
-    (home-page "http://central.maven.org/maven2/com/sun/msv/datatype/xsd/xsdlib/")
+    (home-page (string-append "https://web.archive.org/web/20161127144537/"
+                              "https://msv.java.net//"))
     (synopsis "Sun Multi-Schema Validator")
     (description "Xsdlib contains an implementation of sun.com.msv, an XML
 validator.")
@@ -1754,16 +1763,16 @@ package is in maintenance mode.")
 (define-public java-dom4j
   (package
     (name "java-dom4j")
-    (version "2.1.0")
+    (version "2.1.1")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/dom4j/dom4j.git")
+                    (url "https://github.com/dom4j/dom4j")
                     (commit (string-append "version-" version))))
               (file-name (git-file-name name version))
               (sha256
                (base32
-                "1827jljs8mps489fm7xw63cakdqwc5grilrr5n9spr2rlk76jpx3"))
+                "0q907srj9v4hwicpcrn4slyld5npf2jv7hzchsgrg29q2xmbwkdl"))
               (modules '((guix build utils)))
               (snippet
                 '(begin ;; Delete bundled jar archives.
@@ -1831,7 +1840,7 @@ low memory footprint.")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/stefanhaustein/kxml2.git")
+                    (url "https://github.com/stefanhaustein/kxml2")
                     (commit (string-append "v" version))))
               (file-name (git-file-name name version))
               (sha256
@@ -1905,7 +1914,7 @@ and from a Java application.  It provides a standard pull parser interface.")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/codehaus/jettison.git")
+                    (url "https://github.com/codehaus/jettison")
                     (commit (string-append "jettison-" version))))
               (file-name (git-file-name name version))
               (sha256
@@ -1937,7 +1946,7 @@ implements @code{XMLStreamWriter} and @code{XMLStreamReader} and supports
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/hunterhacker/jdom.git")
+                    (url "https://github.com/hunterhacker/jdom")
                     (commit (string-append "JDOM-" version))))
               (file-name (git-file-name name version))
               (sha256
@@ -1965,7 +1974,7 @@ outputting XML data from Java code.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/x-stream/xstream.git")
+             (url "https://github.com/x-stream/xstream")
              (commit (string-append
                       "XSTREAM_"
                       (string-map (lambda (x) (if (eq? x #\.) #\_ x))
@@ -2035,17 +2044,113 @@ server using HTTP, and gets back the response as XML.  This library provides a
 modular implementation of XML-RPC for C and C++.")
     (license (list license:psfl license:expat))))
 
+(define-public python-elementpath
+  (package
+    (name "python-elementpath")
+    (version "1.4.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "elementpath" version))
+       (sha256
+        (base32
+         "15h7d41v48q31hzjay7qzixdv531hnga3h35hksk7x52pgqcrkz7"))))
+    (build-system python-build-system)
+    (home-page
+     "https://github.com/sissaschool/elementpath")
+    (synopsis
+     "XPath 1.0/2.0 parsers and selectors for ElementTree and lxml")
+    (description
+     "The proposal of this package is to provide XPath 1.0 and 2.0 selectors
+for Python's ElementTree XML data structures, both for the standard
+ElementTree library and for the @uref{http://lxml.de, lxml.etree} library.
+
+For lxml.etree this package can be useful for providing XPath 2.0 selectors,
+because lxml.etree already has it's own implementation of XPath 1.0.")
+    (license license:expat)))
+
+(define-public python-lxml
+  (package
+    (name "python-lxml")
+    (version "4.4.2")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "lxml" version))
+       (sha256
+        (base32 "01nvb5j8vs9nk4z5s3250b1m22b4d08kffa36if3g1mdygdrvxpg"))))
+    (build-system python-build-system)
+    (arguments
+     `(#:phases (modify-phases %standard-phases
+                  (replace 'check
+                    (lambda _
+                      (invoke "make" "test"))))))
+    (inputs
+     `(("libxml2" ,libxml2)
+       ("libxslt" ,libxslt)))
+    (home-page "https://lxml.de/")
+    (synopsis "Python XML processing library")
+    (description
+     "The lxml XML toolkit is a Pythonic binding for the C libraries
+libxml2 and libxslt.")
+    (license license:bsd-3))) ; and a few more, see LICENSES.txt
+
+(define-public python2-lxml
+  (package-with-python2 python-lxml))
+
+(define-public python-xmlschema
+  (package
+    (name "python-xmlschema")
+    (version "1.1.2")
+    (source (origin
+              ;; Unit tests are not distributed with the PyPI archive.
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/sissaschool/xmlschema")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "03bz5mp45y4shmlc1gxq1h69vjx60z1acg9cy4kq7fczgx8qg9jw"))))
+    (build-system python-build-system)
+    (arguments
+     '(#:phases
+       (modify-phases %standard-phases
+         (replace 'check
+           (lambda* (#:key (tests? #t) #:allow-other-keys)
+             (if tests?
+                 (begin
+                   (setenv "PYTHONPATH"
+                           (string-append "./build/lib:"
+                                          (getenv "PYTHONPATH")))
+                   (invoke "python" "-m" "unittest" "-v"))
+                 (format #t "test suite not run~%"))
+             #t)))))
+    (native-inputs
+     `(("python-lxml" ,python-lxml)))   ;for tests
+    (propagated-inputs
+     `(("python-elementpath" ,python-elementpath)))
+    (home-page "https://github.com/sissaschool/xmlschema")
+    (synopsis "XML Schema validator and data conversion library")
+    (description
+     "The @code{xmlschema} library is an implementation of
+@url{https://www.w3.org/2001/XMLSchema, XML Schema} for Python.  It has
+full support for the XSD 1.0 and 1.1 standards, an XPath-based API for
+finding schema's elements and attributes; and can encode and decode
+XML data to JSON and other formats.")
+    (license license:expat)))
+
 (define-public python-xmltodict
   (package
     (name "python-xmltodict")
-    (version "0.11.0")
+    (version "0.12.0")
     (source
-      (origin
-        (method url-fetch)
-        (uri (pypi-uri "xmltodict" version))
-        (sha256
-          (base32
-            "1pxh4yjhvmxi1h6f92skv41g4kbsws3ams57150kzn18m907v3cg"))))
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "xmltodict" version))
+       (sha256
+        (base32
+         "08cadlb9vsb4pmzc99lz3a2lx6qcfazyvgk10pcqijvyxlwcdn2h"))))
     (build-system python-build-system)
     (native-inputs
      `(("python-coverage" ,python-coverage)

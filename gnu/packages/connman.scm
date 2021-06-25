@@ -3,7 +3,7 @@
 ;;; Copyright © 2017 Mathieu Othacehe <m.othacehe@gmail.com>
 ;;; Copyright © 2017 Clément Lassieur <clement@lassieur.org>
 ;;; Copyright © 2017 Ricardo Wurmus <rekado@elephly.net>
-;;; Copyright © 2017, 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2017, 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -44,23 +44,22 @@
 (define-public connman
   (package
     (name "connman")
-    (version "1.37")
+    (version "1.38")
     (source
       (origin
         (method url-fetch)
         (uri (string-append "mirror://kernel.org/linux/network/connman/"
                             "connman-" version ".tar.xz"))
     (sha256
-     (base32 "05kfjiqhqfmbbwc4snnyvi5hc4zxanac62f6gcwaf5mvn0z9pqkc"))))
+     (base32 "0awkqigvhwwxiapw0x6yd4whl465ka8a4al0v2pcqy9ggjlsqc6b"))))
     (build-system gnu-build-system)
     (arguments
      `(#:configure-flags
        (list "--enable-nmcompat"
-             "--enable-polkit"
+             "--enable-polkit" ; Polkit doesn't need to be present at build time.
              "--enable-openconnect"
              "--enable-openvpn"
              "--enable-vpnc"
-             "--enable-pptp"
              "--enable-l2tp"
              "--localstatedir=/var"
              (string-append
@@ -69,13 +68,13 @@
               "--with-dbusdatadir=" (assoc-ref %outputs "out") "/share"))))
     (native-inputs
      `(("pkg-config" ,pkg-config)
-       ("python" ,python-2)))
+       ("python" ,python-wrapper)))
     (inputs
      `(("dbus" ,dbus)
        ("glib" ,glib)
        ("gnutls" ,gnutls)
        ("iptables" ,iptables)
-       ("polkit" ,polkit)        ;so connman can be used by unprivileged users
+       ("libmnl" ,libmnl)
        ("readline" ,readline)
        ;; These inputs are needed for connman to include the interface to
        ;; these technologies so IF they are installed they can be used.
@@ -84,7 +83,8 @@
        ("openvpn" ,openvpn)
        ("ppp" ,ppp)
        ("vpnc" ,vpnc)
-       ("wpa-supplicant" ,wpa-supplicant)))
+       ("wpa-supplicant" ,wpa-supplicant)
+       ("xl2tpd" ,xl2tpd)))
     (home-page "https://01.org/connman")
     (synopsis "Connection management daemon")
     (description "Connman provides a daemon for managing Internet connections.
@@ -126,9 +126,9 @@ sharing) to clients via USB, ethernet, WiFi, cellular and Bluetooth.")
     (native-inputs `(("pkg-config" ,pkg-config)))
     (inputs
      `(("efl" ,efl)
-       ("python-2" ,python-2)
-       ("python2-dbus" ,python2-dbus)
-       ("python2-efl" ,python2-efl)))
+       ("python" ,python-wrapper)
+       ("python-dbus" ,python-dbus)
+       ("python-efl" ,python-efl)))
     (home-page "https://www.enlightenment.org")
     (synopsis "Connman User Interface written using the EFL")
     (description
@@ -138,7 +138,7 @@ sharing) to clients via USB, ethernet, WiFi, cellular and Bluetooth.")
 (define-public cmst
   (package
     (name "cmst")
-    (version "2017.09.19")
+    (version "2019.01.13")
     (source
      (origin
        (method url-fetch)
@@ -146,7 +146,7 @@ sharing) to clients via USB, ethernet, WiFi, cellular and Bluetooth.")
              "https://github.com/andrew-bibb/cmst/releases/download/cmst-"
              version "/cmst-" version ".tar.xz"))
        (sha256
-        (base32 "0dh4639n3l8a19svaagib41hdq5q7x70bnc28dmnwy4jflf38yrm"))))
+        (base32 "1cn6xz2rpkf5kx5d6p2x2lh85zppjacp59l6gj3n6x12p90al1vl"))))
     (inputs
      `(("qtbase" ,qtbase)))
     (native-inputs

@@ -2,10 +2,11 @@
 ;;; Copyright © 2013, 2014, 2015 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2014, 2015 Mark H Weaver <mhw@netris.org>
 ;;; Copyright © 2015 Andreas Enge <andreas@enge.fr>
-;;; Copyright © 2017, 2018 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2017, 2018, 2019, 2020 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2017 Leo Famulari <leo@famulari.name>
 ;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2020 Mark Wielaard <mark@klomp.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -31,12 +32,15 @@
   #:use-module (gnu packages)
   #:use-module (gnu packages compression)
   #:use-module (gnu packages documentation)
+  #:use-module (gnu packages gcc)
   #:use-module (gnu packages m4)
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages python)
   #:use-module (gnu packages sphinx)
   #:use-module (gnu packages texinfo)
-  #:use-module (gnu packages xml))
+  #:use-module (gnu packages xml)
+  #:use-module (srfi srfi-1)
+  #:use-module (srfi srfi-26))
 
 (define-public elfutils
   (package
@@ -53,9 +57,10 @@
     (build-system gnu-build-system)
 
     ;; Separate programs because that's usually not what elfutils users want,
-    ;; and because they duplicate what Binutils provides.
+    ;; and because they duplicate what Binutils provides (but are named
+    ;; differently, using the eu- prefix and can be installed in parallel).
     (outputs '("out"                           ; libelf.so, elfutils/*.h, etc.
-               "bin"))                         ; ld, nm, objdump, etc.
+               "bin"))                         ; eu-nm, eu-objdump, etc.
 
     (arguments
      ;; Programs don't have libelf.so in their RUNPATH and libraries don't
@@ -64,10 +69,11 @@
                                               (assoc-ref %outputs "out")
                                               "/lib"))
 
-       ;; Disable tests on MIPS (without changing
+       ;; Disable tests on MIPS and PowerPC (without changing
        ;; the arguments list on other systems).
-       ,@(if (string-prefix? "mips" (or (%current-target-system)
-                                        (%current-system)))
+       ,@(if (any (cute string-prefix? <> (or (%current-target-system)
+                                              (%current-system)))
+                  '("mips" "powerpc"))
              '(#:tests? #f)
              '())
 
@@ -83,11 +89,21 @@
     (native-inputs `(("m4" ,m4)))
     (inputs `(("zlib" ,zlib)))
     (home-page "https://sourceware.org/elfutils/")
-    (synopsis "Linker and ELF manipulation tools")
+    (synopsis "Collection of utilities and libraries to handle ELF files and
+DWARF data")
     (description
-     "This package provides command-line tools to manipulate binaries in the
-Executable and Linkable Format (@dfn{ELF}).  This includes @command{ld},
-@command{ar}, @command{objdump}, @command{addr2line}, and more.")
+     "Elfutils is a collection of utilities and libraries to read, create and
+modify Executable and Linkable Format (@dfn{ELF}) binary files, find and
+handle Debugging With Arbitrary Record Formats (@dfn{DWARF}) debug data,
+symbols, thread state and stacktraces for processes and core files on
+GNU/Linux.  Elfutils includes @file{libelf} for manipulating ELF files,
+@file{libdw} for inspecting DWARF data and process state and utilities like
+@command{eu-stack} (to show backtraces), @command{eu-nm} (for listing symbols
+from object files), @command{eu-size} (for listing the section sizes of an
+object or archive file), @command{eu-strip} (for discarding symbols),
+@command{eu-readelf} (to see the raw ELF file structures),
+@command{eu-elflint} (to check for well-formed ELF files),
+@command{eu-elfcompress} (to compress or decompress ELF sections), and more.")
 
     ;; Libraries are dual-licensed LGPLv3.0+ | GPLv2, and programs are GPLv3+.
     (license lgpl3+)))
@@ -96,14 +112,14 @@ Executable and Linkable Format (@dfn{ELF}).  This includes @command{ld},
   (package
     (name "libabigail")
     (home-page "https://sourceware.org/libabigail/")
-    (version "1.6")
+    (version "1.7")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://sourceware.org/pub/libabigail/"
                                   "libabigail-" version ".tar.gz"))
               (sha256
                (base32
-                "04j07lhvwbp6qp8pdwbf7iqnr7kgpabmqylsw4invpmzwnyp6g6g"))))
+                "0bf8w01l6wm7mm4clfg5rqi30m1ws11qqa4bp2vxghfwgi9ai8i7"))))
     (build-system gnu-build-system)
     (arguments
      `(#:configure-flags '("--disable-static"
@@ -198,7 +214,7 @@ static analysis of the ELF binaries at hand.")
 (define-public patchelf
   (package
     (name "patchelf")
-    (version "0.8")
+    (version "0.10")
     (source (origin
              (method url-fetch)
              (uri (string-append
@@ -207,28 +223,24 @@ static analysis of the ELF binaries at hand.")
                    "/patchelf-" version ".tar.bz2"))
              (sha256
               (base32
-               "1rqpg84wrd3fa16wa9vqdvasnc05yz49w207cz1l0wrl4k8q97y9"))
-             (patches (search-patches "patchelf-page-size.patch"))))
+               "1wzwvnlyf853hw9zgqq5522bvf8gqadk8icgqa41a5n7593csw7n"))))
     (build-system gnu-build-system)
-
-    ;; XXX: The upstream 'patchelf' doesn't support ARM.  The only available
-    ;;      patch makes significant changes to the algorithm, possibly
-    ;;      introducing bugs.  So, we apply the patch only on ARM systems.
-    (inputs
-     (if (target-arm32?)
-         `(("patch/rework-for-arm" ,(search-patch
-                                     "patchelf-rework-for-arm.patch")))
-         '()))
     (arguments
-     (if (target-arm32?)
-         `(#:phases
-           (modify-phases %standard-phases
-             (add-after 'unpack 'patch/rework-for-arm
-               (lambda* (#:key inputs #:allow-other-keys)
-                 (let ((patch-file (assoc-ref inputs "patch/rework-for-arm")))
-                   (invoke "patch" "--force" "-p1" "--input" patch-file))))))
-         '()))
-
+     '(#:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'fix-tests
+           ;; Our GCC code ensures that RUNPATH is never empty, it includes
+           ;; at least glibc/lib and gcc:lib/lib.
+           (lambda* (#:key inputs #:allow-other-keys)
+             (substitute* "tests/no-rpath.sh"
+               ;; Disable checking for an empty runpath:
+               (("^if test.*") "")
+               ;; Find libgcc_s.so, which is necessary for the test:
+               (("/xxxxxxxxxxxxxxx") (string-append (assoc-ref inputs "gcc:lib")
+                                                    "/lib")))
+             #t)))))
+    (native-inputs
+     `(("gcc:lib" ,gcc "lib")))
     (home-page "https://nixos.org/patchelf.html")
     (synopsis "Modify the dynamic linker and RPATH of ELF executables")
     (description

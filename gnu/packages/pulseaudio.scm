@@ -1,7 +1,7 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2013, 2014, 2015 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2014, 2015, 2016 Mark H Weaver <mhw@netris.org>
-;;; Copyright © 2016 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2016, 2020 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2016 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2017 Thomas Danckaert <post@thomasdanckaert.be>
 ;;; Copyright © 2017 Leo Famulari <leo@famulari.name>
@@ -9,6 +9,9 @@
 ;;; Copyright © 2017 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018 Pierre Langlois <pierre.langlois@gmx.com>
 ;;; Copyright © 2019 Alex Griffin <a@ajgrf.com>
+;;; Copyright © 2019 Mathieu Othacehe <m.othacehe@gmail.com>
+;;; Copyright © 2020 Amin Bandali <bandali@gnu.org>
+;;; Copyright © 2020 Michael Rohleder <mike@rohleder.de>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -29,7 +32,9 @@
   #:use-module (guix packages)
   #:use-module (guix download)
   #:use-module (guix git-download)
+  #:use-module (guix utils)
   #:use-module ((guix licenses) #:prefix l:)
+  #:use-module (guix build-system glib-or-gtk)
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system python)
   #:use-module (gnu packages)
@@ -37,20 +42,26 @@
   #:use-module (gnu packages audio)
   #:use-module (gnu packages autotools)
   #:use-module (gnu packages avahi)
+  #:use-module (gnu packages boost)
   #:use-module (gnu packages check)
   #:use-module (gnu packages dbm)
   #:use-module (gnu packages glib)
+  #:use-module (gnu packages gettext)
+  #:use-module (gnu packages gnome)
   #:use-module (gnu packages gtk)
   #:use-module (gnu packages libcanberra)
   #:use-module (gnu packages web)
   #:use-module (gnu packages linux)
   #:use-module (gnu packages m4)
+  #:use-module (gnu packages perl)
   #:use-module (gnu packages protobuf)
   #:use-module (gnu packages python)
   #:use-module (gnu packages python-xyz)
   #:use-module (gnu packages python-web)
   #:use-module (gnu packages pkg-config)
-  #:use-module (gnu packages xiph))
+  #:use-module (gnu packages xiph)
+  #:use-module (gnu packages xml)
+  #:use-module (gnu packages xorg))
 
 (define-public libsndfile
   (package
@@ -102,10 +113,28 @@ for reading and writing new sound file formats.")
                "1ha46i0nbibq0pl0pjwcqiyny4hj8lp1bnl4dpxm64zjw9lb2zha"))))
     (build-system gnu-build-system)
     (native-inputs
-     `(("pkg-config" ,pkg-config)))
+     `(("pkg-config" ,pkg-config)
+       ("automake" ,automake))) ;For up to date 'config.guess' and 'config.sub'.
     (propagated-inputs
      `(("libsndfile" ,libsndfile)
        ("fftw" ,fftw)))
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'fix-configure
+           (lambda* (#:key inputs native-inputs #:allow-other-keys)
+             ;; Replace outdated config.sub and config.guess:
+             (with-directory-excursion "Cfg"
+               (for-each (lambda (file)
+                           (install-file (string-append
+                                          (assoc-ref
+                                           (or native-inputs inputs) "automake")
+                                          "/share/automake-"
+                                          ,(version-major+minor
+                                            (package-version automake))
+                                          "/" file) "."))
+                         '("config.sub" "config.guess")))
+             #t)))))
     (home-page "http://www.mega-nerd.com/SRC/index.html")
     (synopsis "Audio sample rate conversion library")
     (description
@@ -130,7 +159,7 @@ rates.")
 (define-public pulseaudio
   (package
     (name "pulseaudio")
-    (version "12.2")
+    (version "13.0")
     (source (origin
              (method url-fetch)
              (uri (string-append
@@ -138,7 +167,7 @@ rates.")
                    name "-" version ".tar.xz"))
              (sha256
               (base32
-               "0ma0p8iry7fil7qb4pm2nx2pm65kq9hk9xc4r5wkf14nqbzni5l0"))
+               "0mw0ybrqj7hvf8lqs5gjzip464hfnixw453lr0mqzlng3b5266wn"))
              (modules '((guix build utils)))
              (snippet
               ;; Disable console-kit support by default since it's deprecated
@@ -160,11 +189,6 @@ rates.")
                                               (assoc-ref %outputs "out")
                                               "/lib/udev/rules.d"))
        #:phases (modify-phases %standard-phases
-                  (add-before 'configure 'fix-alsa-include
-                    (lambda _
-                      (substitute* '("configure" "src/modules/alsa/alsa-ucm.h")
-                        (("use-case\\.h") "alsa/use-case.h"))
-                      #t))
                  (add-before 'check 'pre-check
                    (lambda _
                      ;; 'tests/lock-autospawn-test.c' wants to create a file
@@ -187,12 +211,21 @@ rates.")
        ("libltdl" ,libltdl)
        ("fftwf" ,fftwf)
        ("avahi" ,avahi)
+
+       ;; For the optional X11 modules.
+       ("libice" ,libice)
+       ("libsm" ,libsm)
+       ("libxcb" ,libxcb)
+       ("libxtst" ,libxtst)
+
        ("eudev" ,eudev)))         ;for the detection of hardware audio devices
     (native-inputs
      `(("check" ,check)
+       ("gettext" ,gettext-minimal)
        ("glib:bin" ,glib "bin")
-       ("intltool" ,intltool)
        ("m4" ,m4)
+       ("perl" ,perl)
+       ("perl-xml-parser" ,perl-xml-parser)
        ("pkg-config" ,pkg-config)))
     (propagated-inputs
      ;; 'libpulse*.la' contain `-lgdbm' and `-lcap', so propagate them.
@@ -216,7 +249,7 @@ sound server.")
 (define-public pavucontrol
   (package
     (name "pavucontrol")
-    (version "3.0")
+    (version "4.0")
     (source (origin
              (method url-fetch)
              (uri (string-append
@@ -225,13 +258,12 @@ sound server.")
                    ".tar.xz"))
              (sha256
               (base32
-               "14486c6lmmirkhscbfygz114f6yzf97h35n3h3pdr27w4mdfmlmk"))))
-    (build-system gnu-build-system)
-    (arguments
-     '(#:configure-flags '("CXXFLAGS=-std=c++11"))) ; required by gtkmm
+               "1qhlkl3g8d7h72xjskii3g1l7la2cavwp69909pzmbi2jyn5pi4g"))))
+    (build-system glib-or-gtk-build-system)
     (inputs
-     `(("libcanberra" ,libcanberra)
+     `(("adwaita-icon-theme" ,adwaita-icon-theme)          ;hard-coded theme
        ("gtkmm" ,gtkmm)
+       ("libcanberra" ,libcanberra)
        ("pulseaudio" ,pulseaudio)))
     (native-inputs
      `(("intltool" ,intltool)
@@ -249,13 +281,14 @@ easily control the volume of all clients, sinks, etc.")
     (name "ponymix")
     (version "5")
     (source (origin
-             (method url-fetch)
-             (uri (string-append "https://github.com/falconindy/ponymix/"
-                                 "archive/" version ".tar.gz"))
+             (method git-fetch)
+             (uri (git-reference
+                    (url "https://github.com/falconindy/ponymix/")
+                    (commit version)))
+             (file-name (git-file-name name version))
              (sha256
               (base32
-               "1c0ch98zry3c4ixywwynjid1n1nh4xl4l1p548giq2w3zwflaghn"))
-             (file-name (string-append name "-" version ".tar.gz"))))
+               "08yp7fprmzm6px5yx2rvzri0l60bra5h59l26pn0k071a37ks1rb"))))
     (build-system gnu-build-system)
     (arguments
      `(#:tests? #f ; There is no test suite.
@@ -282,15 +315,16 @@ sinks.")
 (define-public pulsemixer
   (package
     (name "pulsemixer")
-    (version "1.4.0")
+    (version "1.5.1")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/GeorgeFilipkin/"
-                                  "pulsemixer/archive/" version ".tar.gz"))
-              (file-name (string-append name "-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/GeorgeFilipkin/pulsemixer")
+                     (commit version)))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "1lpad90ifr2xfldyf39sbwx1v85rif2gm9w774gwwpjv53zfgk1g"))))
+                "1jagx9zmz5pfsld8y2rj2kqg6ww9f6vqiawfy3vhqc49x3xx92p4"))))
     (build-system python-build-system)
     (arguments
      `(#:phases
@@ -321,7 +355,7 @@ curses-style interfaces.")
        (origin
          (method git-fetch)
          (uri (git-reference
-               (url "https://github.com/masmu/pulseaudio-dlna.git")
+               (url "https://github.com/masmu/pulseaudio-dlna")
                (commit commit)))
          (file-name (git-file-name name version))
          (sha256
@@ -361,3 +395,77 @@ install one or more of the following packages alongside pulseaudio-dlna:
 @item vorbis-tools - Vorbis transcoding support
 @end itemize")
       (license l:gpl3+))))
+
+(define-public pamixer
+  (package
+    (name "pamixer")
+    (version "1.4")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/cdemoulins/pamixer")
+             (commit version)))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "1i14550n8paijwwnhksv5izgfqm3s5q2773bdfp6vyqybkll55f7"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:tests? #f                      ; There is no test suite.
+       #:make-flags
+       (list (string-append "PREFIX=" (assoc-ref %outputs "out")))
+       #:phases
+       (modify-phases %standard-phases
+         (delete 'configure)            ; There's no configure phase.
+         (add-before 'install 'mkdir-bin
+           (lambda _
+             (mkdir-p (string-append (assoc-ref %outputs "out") "/bin"))
+             #t)))))
+    (inputs
+     `(("boost" ,boost)
+       ("pulseaudio" ,pulseaudio)))
+    (home-page "https://github.com/cdemoulins/pamixer")
+    (synopsis "PulseAudio command line mixer")
+    (description
+     "pamixer is like amixer but for PulseAudio, allowing easy control of the
+volume levels of the sinks (get, set, decrease, increase, toggle mute, etc).")
+    (license l:gpl3+)))
+
+(define-public pasystray
+  (package
+    (name "pasystray")
+    (version "0.7.1")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/christophgysin/pasystray")
+             (commit (string-append name "-" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "0xx1bm9kimgq11a359ikabdndqg5q54pn1d1dyyjnrj0s41168fk"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-before 'bootstrap 'remove-bootstrap.sh
+           (lambda _
+             ;; Interferes with the bootstrap phase.
+             (delete-file "bootstrap.sh")
+             #t)))))
+    (native-inputs
+     `(("autoconf" ,autoconf)
+       ("automake" ,automake)
+       ("pkg-config" ,pkg-config)))
+    (inputs
+     `(("avahi" ,avahi)
+       ("gtk+" ,gtk+)
+       ("libnotify" ,libnotify)
+       ("libx11" ,libx11)
+       ("pulseaudio" ,pulseaudio)))
+    (home-page "https://github.com/christophgysin/pasystray")
+    (synopsis "PulseAudio controller for the system tray")
+    (description "@command{pasystray} enables control of various
+PulseAudio server settings from the X11 system tray.  See the project
+README.md for a detailed list of features.")
+    (license l:lgpl2.1+)))

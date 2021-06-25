@@ -1,9 +1,10 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2014 John Darringon <jmd@gnu.org>
-;;; Copyright © 2016 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2016, 2020 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2017 Hartmut Goebel <h.goebel@crazy-compilers.com>
 ;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2019 Guillaume Le Vaillant <glv@posteo.net>
+;;; Copyright © 2020 Leo Famulari <leo@famulari.name>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -90,7 +91,7 @@ characters, and is highly robust.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/dmtx/libdmtx.git")
+             (url "https://github.com/dmtx/libdmtx")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
@@ -130,8 +131,7 @@ C/C++ programs to use its capabilities without restrictions or overhead.")
                                "--with-python=auto"
                                (string-append "--with-dbusconfdir="
                                               (assoc-ref %outputs "out")
-                                              "/etc")
-                               "CXXFLAGS=-std=c++11")))
+                                              "/etc"))))
     (native-inputs
      `(("glib" ,glib "bin")
        ("pkg-config" ,pkg-config)))
@@ -155,3 +155,36 @@ For application developers, language bindings are included for C, C++ and
 Python as well as GUI widgets for GTK and Qt.")
     (home-page "https://github.com/mchehab/zbar")
     (license license:lgpl2.1+)))
+
+(define-public qrcodegen-cpp
+  (package
+    (name "qrcodegen-cpp")
+    (version "1.6.0")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/nayuki/QR-Code-generator")
+                     (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (patches (search-patches "qrcodegen-cpp-make-install.patch"))
+              (sha256
+               (base32
+                "0iq9sv9na0vg996aqrxrjn9rrbiyy7sc9vslw945p3ky22pw3lql"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:tests? #f ; no test suite
+       #:make-flags
+       (list (string-append "PREFIX=" (assoc-ref %outputs "out")))
+       #:phases
+       (modify-phases %standard-phases
+         (delete 'configure) ; No ./configure script
+         ;; Only build the C++ variant.
+         (add-after 'unpack 'chdir
+           (lambda _
+             (chdir "cpp")
+             #t)))))
+    (synopsis "QR Code generator library")
+    (description "qrcodegen-cpp is a QR code generator library in C++.  The
+project also offers Java, Javascript, Python, C, and Rust implementations.")
+    (home-page "https://www.nayuki.io/page/qr-code-generator-library")
+    (license license:expat)))

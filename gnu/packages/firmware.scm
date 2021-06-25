@@ -5,6 +5,8 @@
 ;;; Copyright © 2017, 2018 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018 Vagrant Cascadian <vagrant@debian.org>
+;;; Copyright © 2019 Mathieu Othacehe <m.othacehe@gmail.com>
+;;; Copyright © 2020 Marius Bakke <mbakke@fastmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -31,6 +33,7 @@
   #:use-module (gnu packages)
   #:use-module (gnu packages admin)
   #:use-module (gnu packages assembly)
+  #:use-module (gnu packages base)
   #:use-module (gnu packages bison)
   #:use-module (gnu packages cmake)
   #:use-module (gnu packages cross-base)
@@ -47,19 +50,19 @@
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/qca/open-ath9k-htc-firmware.git")
+                    (url "https://github.com/qca/open-ath9k-htc-firmware")
                     (commit version)))
               (sha256
                (base32
                 "16jbj8avg5jkgvq5lxm0hdxxn4c3zn7fx8b4nxllvr024apk9w23"))
-              (file-name (string-append name "-" version "-checkout"))
+              (file-name (git-file-name name version))
               (patches (search-patches "ath9k-htc-firmware-objcopy.patch"))))
     (build-system gnu-build-system)
     (arguments
      '(#:phases
        (modify-phases %standard-phases
          (add-before 'configure 'pre-configure
-           (lambda* (#:key inputs #:allow-other-keys)
+           (lambda* (#:key inputs native-inputs #:allow-other-keys)
              (chdir "target_firmware")
 
              ;; 'configure' is a simple script that runs 'cmake' with
@@ -67,7 +70,7 @@
              (substitute* "configure"
                (("^TOOLCHAIN=.*$")
                 (string-append "TOOLCHAIN="
-                               (assoc-ref inputs "cross-gcc")
+                               (assoc-ref (or native-inputs inputs) "cross-gcc")
                                "\n")))
              #t))
          (replace 'install
@@ -82,11 +85,14 @@
 
     ;; The firmware is cross-compiled using a "bare bones" compiler (no libc.)
     ;; Use our own tool chain for that.
-    (native-inputs `(("cross-gcc" ,(cross-gcc "xtensa-elf"))
-                     ("cross-binutils" ,(cross-binutils "xtensa-elf"))
-                     ("cmake" ,cmake)
+    (native-inputs `(("cross-gcc" ,(cross-gcc
+                                    "xtensa-elf"
+                                    #:xbinutils (cross-binutils "xtensa-elf"
+                                                                binutils-2.33)))
+                     ("cross-binutils" ,(cross-binutils "xtensa-elf" binutils-2.33))
+                     ("cmake" ,cmake-minimal)
                      ("perl" ,perl)))
-    (home-page "http://wireless.kernel.org/en/users/Drivers/ath9k_htc")
+    (home-page "https://wireless.wiki.kernel.org/en/users/Drivers/ath9k_htc")
     (synopsis "Firmware for the Atheros AR7010 and AR9271 USB 802.11n NICs")
     (description
      "This is the firmware for the Qualcomm Atheros AR7010 and AR9271 USB
@@ -106,7 +112,7 @@ Linux-libre.")
          (uri (git-reference
                (url "http://git.bues.ch/git/b43-tools.git")
                (commit commit)))
-         (file-name (string-append name "-" version "-checkout"))
+         (file-name (git-file-name name version))
          (sha256
           (base32
            "1wgmj4d65izbhprwb5bcwimc2ryv19b9066lqzy4sa5m6wncm9cn"))))
@@ -183,10 +189,76 @@ Broadcom/AirForce chipset BCM43xx with Wireless-Core Revision 5.  It is used
 by the b43-open driver of Linux-libre.")
     (license license:gpl2)))
 
+(define* (make-opensbi-package platform name #:optional (arch "riscv64"))
+  (package
+    (name name)
+    (version "0.8")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/riscv/opensbi")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "1y9z0b6q6wpw7mgy31wml4djc6m8ydm71a9f1asnks4ragc7m98b"))))
+    (build-system gnu-build-system)
+    (native-inputs
+     `(,@(if (and (not (string-prefix? "riscv64" (%current-system)))
+                  (string-prefix? "riscv64" arch))
+           `(("cross-gcc" ,(cross-gcc "riscv64-linux-gnu" #:xgcc gcc-7))
+             ("cross-binutils" ,(cross-binutils "riscv64-linux-gnu")))
+           '())))
+    (arguments
+     `(#:tests? #f ; no check target
+       #:make-flags (list (string-append "PLATFORM=" ,platform)
+                          ,@(if (and (not (string-prefix? "riscv64"
+                                                          (%current-system)))
+                                     (string-prefix? "riscv64" arch))
+                                `("CROSS_COMPILE=riscv64-linux-gnu-")
+                                '())
+                          "FW_PAYLOAD=n"
+                          "V=1")
+       #:phases
+       (modify-phases %standard-phases
+         (delete 'configure)
+         (replace 'install
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out"))
+                   (bin (find-files "." ".*fw_.*.elf$")))
+               (for-each
+                 (lambda (file)
+                   (install-file file out))
+                 bin))
+             #t)))))
+    (home-page "https://github.com/riscv/opensbi")
+    (synopsis "RISC-V Open Source Supervisor Binary Interface")
+    (description "A reference implementation of the RISC-V SBI specifications
+for platform-specific firmwares executing in M-mode.")
+    (license (list license:bsd-2
+                   ;; lib/utils/libfdt/* is dual licensed under bsd-2 and gpl2+.
+                   license:gpl2+
+                   ;; platform/ariane-fpga/* is gpl2.
+                   license:gpl2))))
+
+(define-public opensbi-qemu-generic
+  (make-opensbi-package "generic" "opensbi-qemu-generic"))
+
+(define-public opensbi-qemu-virt
+  (deprecated-package "opensbi-qemu-virt" opensbi-qemu-generic))
+
+(define-public opensbi-sifive-fu540
+  (make-opensbi-package "sifive/fu540" "opensbi-sifive-fu540"))
+
+(define-public opensbi-qemu-sifive-u
+  ;; Dropped upstream, as all functionality is present in the sifive-fu540
+  ;; target for recent versions of qemu, u-boot and linux.
+  (deprecated-package "opensbi-qemu-sifive-u" opensbi-sifive-fu540))
+
 (define-public seabios
   (package
     (name "seabios")
-    (version "1.12.1")
+    (version "1.13.0")
     (source
      (origin
        (method git-fetch)
@@ -195,10 +267,10 @@ by the b43-open driver of Linux-libre.")
              (commit (string-append "rel-" version))))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "1g9y03r5ky58q2g9rhbwfhs42z0zb9f59wfxpwh6zjqa6fyv1r80"))))
+        (base32 "1n1bd6msfs7xn8844sz2qnm7hb5x2qfl3zb06kp4bx9vdc3i6619"))))
     (build-system gnu-build-system)
     (native-inputs
-     `(("python-2" ,python-2)))
+     `(("python" ,python-wrapper)))
     (arguments
      `(#:tests? #f                      ; no check target
        #:phases
@@ -249,13 +321,26 @@ coreboot.")
     (build-system gnu-build-system)
     (native-inputs
      `(("acpica" ,acpica)
+       ("gcc@5" ,gcc-5)
        ("nasm" ,nasm)
        ("python-2" ,python-2)
-       ("util-linux" ,util-linux)))
+       ("util-linux" ,util-linux "lib")))
     (arguments
      `(#:tests? #f ; No check target.
        #:phases
        (modify-phases %standard-phases
+         ;; Hide the default GCC from CPLUS_INCLUDE_PATH to prevent it from
+         ;; shadowing the version of GCC provided in native-inputs.
+         (add-after 'set-paths 'hide-gcc7
+           (lambda* (#:key inputs #:allow-other-keys)
+             (let ((gcc (assoc-ref inputs "gcc")))
+               (setenv "CPLUS_INCLUDE_PATH"
+                       (string-join
+                        (delete (string-append gcc "/include/c++")
+                                (string-split (getenv "CPLUS_INCLUDE_PATH")
+                                              #\:))
+                        ":"))
+               #t)))
          (replace 'configure
            (lambda _
              (let* ((cwd (getcwd))
@@ -379,27 +464,33 @@ Virtual Machines.  OVMF contains a sample UEFI firmware for QEMU and KVM.")
 (define* (make-arm-trusted-firmware platform #:optional (arch "aarch64"))
   (package
     (name (string-append "arm-trusted-firmware-" platform))
-    (version "2.1")
+    (version "2.3")
     (source
       (origin
         (method git-fetch)
         (uri (git-reference
                ;; There are only GitHub generated release snapshots.
-               (url "https://github.com/ARM-software/arm-trusted-firmware.git")
+               (url "https://git.trustedfirmware.org/TF-A/trusted-firmware-a.git/")
                (commit (string-append "v" version))))
         (file-name (git-file-name "arm-trusted-firmware" version))
        (sha256
         (base32
-         "1gy5qskrjy8n3kxdcm1dx8b45l5b75n0pm8pq80wl6xic1ycy24r"))))
+         "113mcf1hwwl0i90cqh08lywxs1bfbg0nwqibay9wlkmx1a5v0bnj"))))
     (build-system gnu-build-system)
     (arguments
      `(#:phases
        (modify-phases %standard-phases
          (delete 'configure) ; no configure script
+         ;; Remove binary blobs which do not contain source or proper license.
+         (add-after 'unpack 'remove-binary-blobs
+           (lambda _
+             (for-each (lambda (file)
+                         (delete-file file))
+                       (find-files "." ".*\\.bin$"))))
          (replace 'install
            (lambda* (#:key outputs #:allow-other-keys)
              (let ((out (assoc-ref outputs "out"))
-                   (bin (find-files "." ".*\\.bin$")))
+                   (bin (find-files "." ".*\\.(bin|elf)$")))
                (for-each
                  (lambda (file)
                    (install-file file out))
@@ -432,7 +523,7 @@ Virtual Machines.  OVMF contains a sample UEFI firmware for QEMU and KVM.")
              ("cross-binutils" ,(cross-binutils "arm-linux-gnueabihf")))
            '())
         ))
-    (home-page "https://github.com/ARM-software/arm-trusted-firmware")
+    (home-page "https://www.trustedfirmware.org/")
     (synopsis "Implementation of \"secure world software\"")
     (description
      "ARM Trusted Firmware provides a reference implementation of secure world
@@ -455,6 +546,9 @@ such as:
       (inherit base)
       (name "arm-trusted-firmware-sun50i-a64"))))
 
+(define-public arm-trusted-firmware-rk3328
+  (make-arm-trusted-firmware "rk3328"))
+
 (define-public arm-trusted-firmware-puma-rk3399
   (let ((base (make-arm-trusted-firmware "rk3399"))
         ;; Vendor's arm trusted firmware branch hasn't been upstreamed yet.
@@ -474,6 +568,16 @@ such as:
           (sha256
            (base32
             "0vqhwqqh8h9qlkpybg2v94911091c1418bc4pnzq5fd7zf0fjkf8")))))))
+
+(define-public arm-trusted-firmware-rk3399
+  (let ((base (make-arm-trusted-firmware "rk3399")))
+    (package
+      (inherit base)
+      (name "arm-trusted-firmware-rk3399")
+      (native-inputs
+       `(("cross32-gcc" ,(cross-gcc "arm-none-eabi"))
+         ("cross32-binutils", (cross-binutils "arm-none-eabi"))
+         ,@(package-native-inputs base))))))
 
 (define-public rk3399-cortex-m0
   (package

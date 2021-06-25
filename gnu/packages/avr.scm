@@ -4,6 +4,7 @@
 ;;; Copyright © 2016 David Thompson <davet@gnu.org>
 ;;; Copyright © 2016 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2020 Marius Bakke <mbakke@fastmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -49,6 +50,21 @@
        (substitute-keyword-arguments (package-arguments xgcc)
          ((#:phases phases)
           `(modify-phases ,phases
+             (add-after 'set-paths 'augment-CPLUS_INCLUDE_PATH
+               (lambda* (#:key inputs #:allow-other-keys)
+                 (let ((gcc (assoc-ref inputs  "gcc")))
+                   ;; Remove the default compiler from CPLUS_INCLUDE_PATH to
+                   ;; prevent header conflict with the GCC from native-inputs.
+                   (setenv "CPLUS_INCLUDE_PATH"
+                           (string-join
+                            (delete (string-append gcc "/include/c++")
+                                    (string-split (getenv "CPLUS_INCLUDE_PATH")
+                                                  #\:))
+                            ":"))
+                   (format #t
+                           "environment variable `CPLUS_INCLUDE_PATH' changed to ~a~%"
+                           (getenv "CPLUS_INCLUDE_PATH"))
+                   #t)))
              ;; Without a working multilib build, the resulting GCC lacks
              ;; support for nearly every AVR chip.
              (add-after 'unpack 'fix-genmultilib
@@ -63,17 +79,32 @@
           `(delete "--disable-multilib" ,flags))))
       (native-search-paths
        (list (search-path-specification
-              (variable "CROSS_CPATH")
+              (variable "CROSS_C_INCLUDE_PATH")
+              (files '("avr/include")))
+             (search-path-specification
+              (variable "CROSS_CPLUS_INCLUDE_PATH")
+              (files '("avr/include")))
+             (search-path-specification
+              (variable "CROSS_OBJC_INCLUDE_PATH")
+              (files '("avr/include")))
+             (search-path-specification
+              (variable "CROSS_OBJCPLUS_INCLUDE_PATH")
               (files '("avr/include")))
              (search-path-specification
               (variable "CROSS_LIBRARY_PATH")
-              (files '("avr/lib"))))))))
+              (files '("avr/lib")))))
+      (native-inputs
+       `(("gcc@5" ,gcc-5)
+         ,@(package-native-inputs xgcc))))))
 
 (define-public avr-gcc-5
   (package
     (inherit avr-gcc-4.9)
     (version (package-version gcc-5))
-    (source (package-source gcc-5))))
+    (source (origin
+              (inherit (package-source gcc-5))
+              (patches (append (origin-patches (package-source gcc-5))
+                               (search-patches "gcc-cross-environment-variables.patch")))))))
 
 (define (avr-libc avr-gcc)
   (package
@@ -94,11 +125,12 @@
        (modify-phases %standard-phases
          (add-before 'unpack 'fix-cpath
            (lambda _
-             ;; C_INCLUDE_PATH poses issues for cross-building, leading to
-             ;; failures when building avr-libc on 64-bit systems.  Simply
-             ;; unsetting it allows the build to succeed because it doesn't
-             ;; try to use any of the native system's headers.
+             ;; C_INCLUDE_PATH and CPATH pose issues for cross-building,
+             ;; leading to failures when building avr-libc on 64-bit systems.
+             ;; Simply unsetting them allows the build to succeed because it
+             ;; doesn't try to use any of the native system's headers.
              (unsetenv "C_INCLUDE_PATH")
+             (unsetenv "CPATH")
              #t)))))
     (native-inputs `(("avr-binutils" ,avr-binutils)
                      ("avr-gcc" ,avr-gcc)))
@@ -144,7 +176,7 @@ C++.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/ryansuchocki/microscheme.git")
+             (url "https://github.com/ryansuchocki/microscheme")
              (commit (string-append "v" version))))
        (sha256
         (base32 "1r3ng4pw1s9yy1h5rafra1rq19d3vmb5pzbpcz1913wz22qdd976"))

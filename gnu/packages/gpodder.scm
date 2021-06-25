@@ -1,5 +1,6 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2019 Pierre Langlois <pierre.langlois@gmx.com>
+;;; Copyright © 2019, 2020 Pierre Langlois <pierre.langlois@gmx.com>
+;;; Copyright © 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -31,25 +32,28 @@
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages python-web)
   #:use-module (gnu packages python-xyz)
-  #:use-module (gnu packages qt))
+  #:use-module (gnu packages qt)
+  #:use-module (gnu packages video))
 
 (define-public gpodder
   (package
     (name "gpodder")
-    (version "3.10.9")
+    (version "3.10.15")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/gpodder/gpodder.git")
+             (url "https://github.com/gpodder/gpodder")
              (commit version)))
        (sha256
         (base32
-         "1sdmr1sq1d4p492zp9kq3npl7p56yr0pr470z9r6xxcylax5mhfq"))
+         "0ghbanj142n0hgydzfjmnkdgri2kswsjal3mn10c723kih4ir4yr"))
        (file-name (git-file-name name version))))
     (build-system python-build-system)
     (native-inputs
-     `(("intltool" ,intltool)))
+     `(("intltool" ,intltool)
+       ("python-coverage" ,python-coverage)
+       ("python-minimock" ,python-minimock)))
     (inputs
      `(("gtk+" ,gtk+)
        ("python-pygobject" ,python-pygobject)
@@ -58,6 +62,7 @@
        ("python-html5lib" ,python-html5lib)
        ("python-mygpoclient" ,python-mygpoclient)
        ("python-podcastparser" ,python-podcastparser)
+       ("youtube-dl" ,youtube-dl)
        ("xdg-utils" ,xdg-utils)))
     (arguments
      '(#:phases
@@ -69,6 +74,12 @@
                (substitute* "src/gpodder/util.py"
                  (("xdg-open") (string-append xdg-utils "/bin/xdg-open")))
                #t)))
+         (replace 'check
+           (lambda _
+             ; The `unittest' target overrides the PYTHONPATH variable.
+             (substitute* "makefile"
+               (("PYTHONPATH=src/") "PYTHONPATH=${PYTHONPATH}:src/"))
+             (invoke "make" "unittest")))
          ;; 'msgmerge' introduces non-determinism by resetting the
          ;; POT-Creation-Date in .po files.
          (add-before 'install 'do-not-run-msgmerge
@@ -125,7 +136,7 @@ locally for later listening.")
        ;; TODO: Enable tests when https://github.com/gpodder/gpodder/issues/446
        ;; is fixed.
        #:tests? #f))
-    (home-page "http://wiki.gpodder.org/wiki/Libmygpo-qt")
+    (home-page "https://gpodder.github.io")
     (synopsis "Qt/C++ library wrapping the gpodder web service")
     (description "@code{libmygpo-qt} is a Qt/C++ library wrapping the
 @url{https://gpodder.net} APIs.  It allows applications to discover, manage
@@ -165,16 +176,21 @@ downloading episode status changes.")
 (define-public python-podcastparser
   (package
     (name "python-podcastparser")
-    (version "0.6.4")
+    (version "0.6.5")
     (source
      (origin
        (method url-fetch)
        (uri (pypi-uri "podcastparser" version))
        (sha256
-        (base32
-         "1ksj1gcmbnm5i43xhpqxbs2mqi6xzawwwkwbh9h6lwa1wxxvv247"))))
+        (base32 "0k62ppg20i41gcc5x8ddjn7zbpy47hqpxzrq9257g2c71m4qw07b"))))
     (native-inputs
-     `(("python-nose" ,python-nose)))
+     `(("python-coverage" ,python-coverage)
+       ("python-nose" ,python-nose)))
+    (arguments
+     '(#:phases
+       (modify-phases %standard-phases
+         (replace 'check
+           (lambda _ (invoke "nosetests"))))))
     (build-system python-build-system)
     (home-page "http://gpodder.org/podcastparser")
     (synopsis "Simplified and fast RSS parser Python library")

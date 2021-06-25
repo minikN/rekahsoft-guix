@@ -5,7 +5,8 @@
 ;;; Copyright © 2016 Danny Milosavljevic <dannym@scratchpost.org>
 ;;; Copyright © 2017 Leo Famulari <leo@famulari.name>
 ;;; Copyright © 2017 Mark H Weaver <mhw@netris.org>
-;;; Copyright © 2017, 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2017, 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2020 Marius Bakke <mbakke@fastmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -58,7 +59,7 @@
 (define-public cups-filters
   (package
     (name "cups-filters")
-    (version "1.25.1")
+    (version "1.27.4")
     (source(origin
               (method url-fetch)
               (uri
@@ -66,7 +67,7 @@
                               "cups-filters-" version ".tar.xz"))
               (sha256
                (base32
-                "0nlq44jnjcnrbdv0dv5myg5kaycmk6a4klynpvj65xvn3l9cq28s"))
+                "110b1xhb5vfpcx0zq9kkas7pj281skx5dpnnr22idx509jfdzj8b"))
               (modules '((guix build utils)))
               (snippet
                ;; install backends, banners and filters to cups-filters output
@@ -124,12 +125,6 @@
                           (("/usr/local/lib/cups/filter")
                            (string-append out "/lib/cups/filter")))
                         #t)))
-                  (add-after 'unpack 'patch-for-poppler
-                    (lambda _
-                      (substitute* "filter/pdf.cxx"
-                        (("GooString \\*field_name;" m)
-                         (string-append "const " m)))
-                      #t))
                   (add-after 'install 'wrap-filters
                     (lambda* (#:key inputs outputs #:allow-other-keys)
                       ;; Some filters expect to find 'gs' in $PATH.  We cannot
@@ -158,7 +153,7 @@
        ("ijs"          ,ijs)
        ("dbus"         ,dbus)
        ("lcms"         ,lcms)
-       ("libjpeg"      ,libjpeg)
+       ("libjpeg"      ,libjpeg-turbo)
        ("libpng"       ,libpng)
        ("libtiff"      ,libtiff)
        ("glib"         ,glib)
@@ -187,7 +182,7 @@ filters for the PDF-centric printing workflow introduced by OpenPrinting.")
 (define-public cups-minimal
   (package
     (name "cups-minimal")
-    (version "2.2.11")
+    (version "2.3.3")
     (source
      (origin
        (method url-fetch)
@@ -195,7 +190,7 @@ filters for the PDF-centric printing workflow introduced by OpenPrinting.")
                            version "/cups-" version "-source.tar.gz"))
        (sha256
         (base32
-         "0v5p10lyv8wv48s8ghkhjmdrxg6iwj8hn36v1ilkz46n7y0i107m"))))
+         "1vpk0b2vq830f8fvf9z8qjsm5k141i7pi8djbinpnr78pi4dj7r6"))))
     (build-system gnu-build-system)
     (arguments
      `(#:configure-flags
@@ -225,7 +220,7 @@ filters for the PDF-centric printing workflow introduced by OpenPrinting.")
                #t)))
          (add-before 'build 'patch-tests
            (lambda _
-             (substitute* "test/ippserver.c"
+             (substitute* "tools/ippeveprinter.c"
                (("#  else /\\* HAVE_AVAHI \\*/")
                 "#elif defined(HAVE_AVAHI)"))
              #t)))))
@@ -245,10 +240,11 @@ networked printers, and printers can be shared from one computer to another.
 Internally, CUPS uses PostScript Printer Description (@dfn{PPD}) files to
 describe printer capabilities and features, and a wide variety of generic and
 device-specific programs to convert and print many types of files.")
-    (license license:gpl2)))
+    ;; CUPS is Apache 2.0 with exceptions, see the NOTICE file.
+    (license license:asl2.0)))
 
 (define-public cups
-  (package (inherit cups-minimal)
+  (package/inherit cups-minimal
     (name "cups")
     (arguments
      `(;; Three tests fail:
@@ -419,14 +415,14 @@ should only be used as part of the Guix cups-pk-helper service.")
 (define-public hplip
   (package
     (name "hplip")
-    (version "3.19.8")
+    (version "3.20.6")
     (source (origin
               (method url-fetch)
               (uri (string-append "mirror://sourceforge/hplip/hplip/" version
                                   "/hplip-" version ".tar.gz"))
               (sha256
                (base32
-                "0cmshi5dkmc1n5yiahhp0cv5p94zg61018piiqa2sna10ahgx1d3"))
+                "083w58wpvvm6sir6rf5dwx3r0rman9sv1zpl26chl0a88crjsjy6"))
               (modules '((guix build utils)))
               (patches (search-patches "hplip-remove-imageprocessor.patch"))
               (snippet
@@ -491,54 +487,103 @@ should only be used as part of the Guix cups-pk-helper service.")
                   (guix build utils)
                   ((guix build python-build-system) #:prefix python:))
 
-       #:phases (modify-phases %standard-phases
-                  (add-after 'unpack 'fix-hard-coded-file-names
-                    (lambda* (#:key inputs outputs #:allow-other-keys)
-                      (let ((out (assoc-ref outputs "out"))
-                            ;; FIXME: use merged ppds (I think actually only
-                            ;; drvs need to be merged).
-                            (cupsdir (assoc-ref inputs "cups-minimal")))
-                        (substitute* "base/g.py"
-                          (("'/usr/share;[^']*'")
-                           (string-append "'" cupsdir "/share'"))
-                          (("'/etc/hp/hplip.conf'")
-                           (string-append "'" out
-                                          "/etc/hp/hplip.conf" "'")))
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'fix-hard-coded-file-names
+           (lambda* (#:key inputs outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out"))
+                   ;; FIXME: use merged ppds (I think actually only
+                   ;; drvs need to be merged).
+                   (cupsdir (assoc-ref inputs "cups-minimal")))
+               (substitute* "base/g.py"
+                 (("'/usr/share;[^']*'")
+                  (string-append "'" cupsdir "/share'"))
+                 (("'/etc/hp/hplip.conf'")
+                  (string-append "'" out
+                                 "/etc/hp/hplip.conf" "'")))
 
-                        (substitute* "Makefile.in"
-                          (("[[:blank:]]check-plugin\\.py[[:blank:]]") " ")
-                          ;; FIXME Use beginning-of-word in regexp.
-                          (("[[:blank:]]plugin\\.py[[:blank:]]") " ")
-                          (("/usr/include/libusb-1.0")
-                           (string-append (assoc-ref inputs "libusb")
-                                          "/include/libusb-1.0"))
-                          (("hplip_statedir =.*$")
-                           ;; Don't bail out while trying to create
-                           ;; /var/lib/hplip.  We can safely change its value
-                           ;; here because it's hard-coded in the code anyway.
-                           "hplip_statedir = $(prefix)\n")
-                          (("hplip_confdir = /etc/hp")
-                           ;; This is only used for installing the default config.
-                           (string-append "hplip_confdir = " out
-                                          "/etc/hp"))
-                          (("halpredir = /usr/share/hal/fdi/preprobe/10osvendor")
-                           ;; We don't use hal.
-                           (string-append "halpredir = " out
-                                          "/share/hal/fdi/preprobe/10osvendor"))
-                          (("rulesdir = /etc/udev/rules.d")
-                           ;; udev rules will be merged by base service.
-                           (string-append "rulesdir = " out
-                                          "/lib/udev/rules.d"))
-                          (("rulessystemdir = /usr/lib/systemd/system")
-                           ;; We don't use systemd.
-                           (string-append "rulessystemdir = " out
-                                          "/lib/systemd/system"))
-                          (("/etc/sane.d")
-                           (string-append out "/etc/sane.d"))))))
-
-                  ;; Wrap bin/* so that the Python libraries are found.
-                  (add-after 'install 'wrap-binaries
-                    (assoc-ref python:%standard-phases 'wrap)))))
+               (substitute* "Makefile.in"
+                 (("[[:blank:]]check-plugin\\.py[[:blank:]]") " ")
+                 ;; FIXME Use beginning-of-word in regexp.
+                 (("[[:blank:]]plugin\\.py[[:blank:]]") " ")
+                 (("/usr/include/libusb-1.0")
+                  (string-append (assoc-ref inputs "libusb")
+                                 "/include/libusb-1.0"))
+                 (("hplip_statedir =.*$")
+                  ;; Don't bail out while trying to create
+                  ;; /var/lib/hplip.  We can safely change its value
+                  ;; here because it's hard-coded in the code anyway.
+                  "hplip_statedir = $(prefix)\n")
+                 (("hplip_confdir = /etc/hp")
+                  ;; This is only used for installing the default config.
+                  (string-append "hplip_confdir = " out
+                                 "/etc/hp"))
+                 (("halpredir = /usr/share/hal/fdi/preprobe/10osvendor")
+                  ;; We don't use hal.
+                  (string-append "halpredir = " out
+                                 "/share/hal/fdi/preprobe/10osvendor"))
+                 (("rulesdir = /etc/udev/rules.d")
+                  ;; udev rules will be merged by base service.
+                  (string-append "rulesdir = " out
+                                 "/lib/udev/rules.d"))
+                 (("rulessystemdir = /usr/lib/systemd/system")
+                  ;; We don't use systemd.
+                  (string-append "rulessystemdir = " out
+                                 "/lib/systemd/system"))
+                 (("/etc/sane.d")
+                  (string-append out "/etc/sane.d")))
+               #t)))
+         (add-before 'configure 'fix-build-with-python-3.8
+           (lambda* (#:key inputs #:allow-other-keys)
+             (let ((python (assoc-ref inputs "python")))
+               ;; XXX: The configure script of looks for Python headers in the
+               ;; wrong places as of version 3.20.3.  Help it by adding the
+               ;; include directory on C_INCLUDE_PATH.
+               (when python
+                 (setenv "C_INCLUDE_PATH"
+                         (string-append python "/include/python"
+                                        (python:python-version python)
+                                        ":" (getenv "C_INCLUDE_PATH"))))
+               #t)))
+         (add-after 'install 'install-models-dat
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (models-dir (string-append out
+                                               "/share/hplip/data/models")))
+               (install-file "data/models/models.dat" models-dir))
+             #t))
+         (add-after 'install 'wrap-binaries
+           ;; Scripts in /bin are all symlinks to .py files in /share/hplip.
+           ;; Symlinks are immune to the Python build system's 'WRAP phase,
+           ;; and the .py files can't be wrapped because they are reused as
+           ;; modules.  Replacing the symlinks in /bin with copies and
+           ;; wrapping them also doesn't work (“ModuleNotFoundError:
+           ;; No module named 'base'”).  Behold: a custom WRAP-PROGRAM.
+           (lambda* (#:key inputs outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (bin (string-append out "/bin"))
+                    (python (assoc-ref inputs "python")))
+               (with-directory-excursion bin
+                 (for-each (lambda (file)
+                             (let ((target (readlink file)))
+                               (delete-file file)
+                               (with-output-to-file file
+                                 (lambda _
+                                   (format #t
+                                           "#!~a~@
+                                           export PYTHONPATH=\"~a:~a\"~@
+                                           exec -a \"$0\" \"~a/~a\" \"$@\"~%"
+                                           (which "bash")
+                                           (string-append
+                                            out "/lib/python"
+                                            (python:python-version python)
+                                            "/site-packages")
+                                           (getenv "PYTHONPATH")
+                                           bin target)))
+                               (chmod file #o755)))
+                  (find-files "." (lambda (file stat)
+                                    (eq? 'symlink (stat:type stat)))))
+                 #t)))))))
 
     ;; Note that the error messages printed by the tools in the case of
     ;; missing dependencies are often downright misleading.
@@ -548,7 +593,7 @@ should only be used as part of the Guix cups-pk-helper service.")
     (inputs
      `(("cups-minimal" ,cups-minimal)
        ("dbus" ,dbus)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libusb" ,libusb)
        ("python" ,python)
        ("python-dbus" ,python-dbus)
@@ -636,14 +681,14 @@ printer/driver specific, but spooler-independent PPD file.")
 (define-public foo2zjs
   (package
     (name "foo2zjs")
-    (version "20190909")
+    (version "20200610")
     (source (origin
               (method url-fetch)
               ;; XXX: This is an unversioned URL!
               (uri "http://foo2zjs.rkkda.com/foo2zjs.tar.gz")
               (sha256
                (base32
-                "1nn84c045mbv6yzpjfggc6152bvgrmcxiyvgz9v2w3sws7ihshrm"))))
+                "11ddx6wf8b5ksl4fqw6fnyz9m3y470lryyrskkya2bsch2bvj9lg"))))
     (build-system gnu-build-system)
     (arguments
      '(#:phases (modify-phases %standard-phases

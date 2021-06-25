@@ -3,7 +3,7 @@
 ;;; Copyright © 2017, 2019 Marius Bakke <mbakke@fastmail.com>
 ;;; Copyright © 2017 Oleg Pykhalov <go.wigust@gmail.com>
 ;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
-;;; Copyright © 2018 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2018, 2020 Efraim Flashner <efraim@flashner.co.il>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -90,7 +90,7 @@
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/graeme-hill/crossguid.git")
+                      (url "https://github.com/graeme-hill/crossguid")
                       (commit commit)))
                 (file-name (string-append name "-" version "-checkout"))
                 (sha256
@@ -104,14 +104,12 @@
            (replace 'build
              (lambda _
                (invoke "g++" "-c" "guid.cpp" "-o" "guid.o"
-                       "-std=c++11" "-DGUID_LIBUUID")
+                        "-DGUID_LIBUUID")
                (invoke "ar" "rvs" "libcrossguid.a" "guid.o")))
            (replace 'check
              (lambda _
-               (invoke "g++" "-c" "test.cpp" "-o" "test.o"
-                       "-std=c++11")
-               (invoke "g++" "-c" "testmain.cpp" "-o" "testmain.o"
-                       "-std=c++11")
+               (invoke "g++" "-c" "test.cpp" "-o" "test.o")
+               (invoke "g++" "-c" "testmain.cpp" "-o" "testmain.o")
                (invoke "g++" "test.o" "guid.o" "testmain.o"
                        "-o" "test" "-luuid")
                (invoke (string-append (getcwd) "/test"))))
@@ -123,7 +121,7 @@
                                (string-append out "/lib"))
                  #t))))))
       (inputs
-       `(("util-linux" ,util-linux)))
+       `(("libuuid" ,util-linux "lib")))
       (synopsis "Lightweight universal identifier library")
       (description "CrossGuid is a minimal GUID/UUID
 generator library for C++.")
@@ -142,7 +140,7 @@ generator library for C++.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/xbmc/libdvdnav.git")
+                      (url "https://github.com/xbmc/libdvdnav")
                       (commit commit)))
                 (file-name (string-append name "-" version "-checkout"))
                 (sha256
@@ -177,7 +175,7 @@ generator library for C++.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/xbmc/libdvdread.git")
+                      (url "https://github.com/xbmc/libdvdread")
                       (commit commit)))
                 (file-name (string-append name "-" version "-checkout"))
                 (sha256
@@ -212,7 +210,7 @@ generator library for C++.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/xbmc/libdvdcss.git")
+                      (url "https://github.com/xbmc/libdvdcss")
                       (commit commit)))
                 (file-name (string-append name "-" version "-checkout"))
                 (sha256
@@ -271,17 +269,18 @@ alternatives. In compilers, this can reduce the cascade of secondary errors.")
 (define-public kodi
   (package
     (name "kodi")
-    (version "18.3")
+    (version "18.7.1")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/xbmc/xbmc.git")
+                    (url "https://github.com/xbmc/xbmc")
                     (commit (string-append version "-Leia"))))
               (file-name (git-file-name name version))
               (sha256
                (base32
-                "18fbl5hs3aqccrn0m3x7hp95wlafjav0yvrwmb5q3gj24mwf6jld"))
+                "1ypn29yhy49mz9x4xqh2zfdrsbfwm1b4canvh9zvy9c1irjwf419"))
               (patches (search-patches "kodi-skip-test-449.patch"
+                                       "kodi-increase-test-timeout.patch"
                                        "kodi-set-libcurl-ssl-parameters.patch"))
               (snippet
                '(begin
@@ -420,7 +419,7 @@ alternatives. In compilers, this can reduce the cascade of secondary errors.")
        ("libcdio" ,libcdio)
        ("libdrm" ,libdrm)
        ("libgcrypt" ,libgcrypt)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libltdl" ,libltdl)
        ("libmad" ,libmad)
        ("libmicrohttpd" ,libmicrohttpd)
@@ -436,7 +435,8 @@ alternatives. In compilers, this can reduce the cascade of secondary errors.")
        ("libxrender" ,libxrender)
        ("libxslt" ,libxslt)
        ("lzo" ,lzo)
-       ("mariadb" ,mariadb)
+       ("mariadb" ,mariadb "lib")
+       ("mariadb-dev" ,mariadb "dev")
        ("openssl" ,openssl)
        ("pcre" ,pcre)
        ("pulseaudio" ,pulseaudio)

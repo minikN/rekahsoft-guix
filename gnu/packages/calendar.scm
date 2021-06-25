@@ -6,6 +6,9 @@
 ;;; Copyright © 2016 Troy Sankey <sankeytms@gmail.com>
 ;;; Copyright © 2016 Stefan Reichoer <stefan@xsteve.at>
 ;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2020 Marius Bakke <mbakke@fastmail.com
+;;; Copyright © 2020 Brendan Tildesley <mail@brendan.scot>
+;;; Copyright © 2020 Tanguy Le Carrour <tanguy@bioneland.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -25,6 +28,7 @@
 (define-module (gnu packages calendar)
   #:use-module (gnu packages)
   #:use-module ((guix licenses) #:prefix license:)
+  #:use-module (guix git-download)
   #:use-module (guix packages)
   #:use-module (guix download)
   #:use-module (guix build-system gnu)
@@ -35,6 +39,7 @@
   #:use-module (gnu packages dav)
   #:use-module (gnu packages freedesktop)
   #:use-module (gnu packages glib)
+  #:use-module (gnu packages gnome)
   #:use-module (gnu packages gtk)
   #:use-module (gnu packages icu4c)
   #:use-module (gnu packages perl)
@@ -47,10 +52,66 @@
   #:use-module (gnu packages xml)
   #:use-module (srfi srfi-26))
 
+(define-public date
+  ;; We make the same choice as the Arch package maintainer by choosing a
+  ;; recent commit to fix some bugs.
+  ;; https://github.com/Alexays/Waybar/issues/565
+  (let ((commit "9a0ee2542848ab8625984fc8cdbfb9b5414c0082"))
+    (package
+      (name "date")
+      (version (string-append "2.4.1-" (string-take commit 8)))
+      (source
+       (origin
+         (method git-fetch)
+         (uri (git-reference
+               (url "https://github.com/HowardHinnant/date")
+               (commit "9a0ee2542848ab8625984fc8cdbfb9b5414c0082")))
+         (file-name (git-file-name name version))
+         (sha256
+          (base32 "0yxsn0hj22n61bjywysxqgfv7hj5xvsl6isma95fl8xrimpny083"))
+         (patches
+          ;; Install pkg-config files
+          ;; https://github.com/HowardHinnant/date/pull/538
+          (search-patches "date-output-pkg-config-files.patch"))))
+      (inputs `(("tzdata" ,tzdata)))
+      (build-system cmake-build-system)
+      (arguments
+       '(#:configure-flags (list "-DUSE_SYSTEM_TZ_DB=ON"
+                                 "-DBUILD_SHARED_LIBS=ON"
+                                 "-DBUILD_TZ_LIB=ON"
+                                 "-DENABLE_DATE_TESTING=ON")
+         #:phases
+         (modify-phases %standard-phases
+           (add-after 'unpack 'patch-bin-bash
+             (lambda* (#:key inputs #:allow-other-keys)
+               (substitute* "compile_fail.sh"
+                 (("/bin/bash") (which "bash")))
+               #t))
+           (add-after 'unpack 'patch-zoneinfo-path
+             (lambda* (#:key inputs #:allow-other-keys)
+               (substitute* "src/tz.cpp"
+                 (("/usr/share/zoneinfo")
+                  (string-append (assoc-ref inputs "tzdata") "/share/zoneinfo")))
+               #t))
+           (replace 'check
+             (lambda _
+               ;; Disable test that requires checking timezone that
+               ;; isn't set in the build environment.
+               (substitute* "CTestTestfile.cmake"
+                 (("add_test.tz_test_pass_zoned_time_deduction_test.*") "")
+                 (("set_tests_properties.tz_test_pass_zoned_time_deduction_test.*") ""))
+               (invoke "make" "testit"))))))
+      (synopsis "Date and time library for C++11 and C++14")
+      (description "Date is a header only C++ library that extends the chrono
+date algorithms library for calendar dates and durations.  It also provides
+the <tz.h> library for handling time zones and leap seconds.")
+      (home-page "https://howardhinnant.github.io/date/date.html")
+      (license license:expat))))
+
 (define-public libical
   (package
     (name "libical")
-    (version "3.0.5")
+    (version "3.0.8")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -58,16 +119,20 @@
                     version "/libical-" version ".tar.gz"))
               (sha256
                (base32
-                "1rkq9qkvbv76n6k6kc8pxhwj9vhyigkb6flfcn1rk6wwqk451mbs"))))
+                "0vr8s7hn8204lyc4ys5bs3j5qss4lmc9ffly2m1a59avyz5cmzh9"))))
     (build-system cmake-build-system)
     (arguments
      '(#:tests? #f ; test suite appears broken
-       #:configure-flags '("-DSHARED_ONLY=true")
+       #:configure-flags '("-DSHARED_ONLY=true"
+                           ;; required by evolution-data-server
+                           "-DGOBJECT_INTROSPECTION=true"
+                           "-DICAL_GLIB_VAPI=true")
        #:phases
        (modify-phases %standard-phases
          (add-before 'configure 'patch-paths
            (lambda* (#:key inputs #:allow-other-keys)
-             ;; FIXME: This should be patched to use TZDIR so we can drop
+             ;; TODO: libical 3.1.0 supports using TZDIR instead of a hard-coded
+             ;; zoneinfo database.  When that is released we can drop
              ;; the tzdata dependency.
              (let ((tzdata (assoc-ref inputs "tzdata")))
                (substitute* "src/libical/icaltz-util.c"
@@ -78,9 +143,11 @@
                  (("\\\"/usr/share/lib/zoneinfo\\\"") "")))
              #t)))))
     (native-inputs
-     `(("gtk-doc" ,gtk-doc)
+     `(("gobject-introspection" ,gobject-introspection)
+       ("gtk-doc" ,gtk-doc)
        ("perl" ,perl)
-       ("pkg-config" ,pkg-config)))
+       ("pkg-config" ,pkg-config)
+       ("vala" ,vala)))
     (inputs
      `(("glib" ,glib)
        ("libxml2" ,libxml2)
@@ -105,7 +172,17 @@ data units.")
              (uri (pypi-uri "khal" version))
              (sha256
               (base32
-               "1r8bkgjwkh7i8ygvsv51h1cnax50sb183vafg66x5snxf3dgjl6l"))))
+               "1r8bkgjwkh7i8ygvsv51h1cnax50sb183vafg66x5snxf3dgjl6l"))
+             (patches
+               (list
+                 (origin
+                   (method url-fetch)
+                   ;; This patch fixes an issue with python-urwid-2.1.0
+                   (uri "https://github.com/pimutils/khal/commit/2c5990c2de2015b251ba23617faa40ee11b8c22a.patch")
+                   (file-name "khal-compat-urwid-2.1.0.patch")
+                   (sha256
+                    (base32
+                     "11nd8hkjz68imwqqn0p54zmb53z2pfxmzchaviy7jc1ky5s9l663")))))))
     (build-system python-build-system)
     (arguments
      `(#:phases (modify-phases %standard-phases
@@ -118,6 +195,12 @@ data units.")
             (install-file
              "doc/build/man/khal.1"
              (string-append (assoc-ref outputs "out") "/share/man/man1"))
+            #t))
+        (add-before 'check 'fix-tests
+          (lambda _
+            ;; Reported upstream: <https://github.com/pimutils/khal/issues/947>.
+            (substitute* "tests/cli_test.py"
+             (("Invalid value for \"\\[ICS\\]\"") "Invalid value for \\'[ICS]\\'"))
             #t))
         (replace 'check
           (lambda* (#:key inputs #:allow-other-keys)
@@ -138,9 +221,8 @@ data units.")
        ("python-sphinxcontrib-newsfeed" ,python-sphinxcontrib-newsfeed)
        ("python-sphinx" ,python-sphinx)))
     (inputs
-     `(("sqlite" ,sqlite)))
-    (propagated-inputs
-     `(("python-configobj" ,python-configobj)
+     `(("sqlite" ,sqlite)
+       ("python-configobj" ,python-configobj)
        ("python-dateutil" ,python-dateutil)
        ("python-icalendar" ,python-icalendar)
        ("python-tzlocal" ,python-tzlocal)
@@ -155,7 +237,7 @@ able to synchronize with CalDAV servers through vdirsyncer.")
 (define-public remind
   (package
     (name "remind")
-    (version "3.1.16")
+    (version "3.1.17")
     (source
      (origin
        (method url-fetch)
@@ -166,7 +248,7 @@ able to synchronize with CalDAV servers through vdirsyncer.")
                                         ".")
                            ".tar.gz"))
        (sha256
-        (base32 "14yavwqmimba8rdpwx3wlav9sfb0v5rcd1iyzqrs08wx07a9pdzf"))))
+        (base32 "0lgyc2j69aqqk4knywr8inz4fsnni0zq54dgqh7p4s6kzybc2mf9"))))
     (build-system gnu-build-system)
     (arguments
      '(#:tests? #f))                    ; no "check" target
