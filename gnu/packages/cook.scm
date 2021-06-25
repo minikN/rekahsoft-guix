@@ -1,6 +1,7 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2014 John Darrington <jmd@gnu.org>
 ;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2020 Marius Bakke <mbakke@fastmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -60,6 +61,13 @@
              (substitute* "test/00/t0077a.sh"
                (("ar qc") "ar qcU"))
 
+             ;; Guix builds have LC_ALL set to "en_US.utf8", which causes
+             ;; `date` to use a 12-hour clock instead of 24h, which in turn
+             ;; makes t0217a.sh fail because of unexpected date output.
+             (substitute* "test/02/t0217a.sh"
+               (("export TZ")
+                "export TZ\nLC_ALL=POSIX\nexport LC_ALL"))
+
              (setenv "SH" (which "sh"))
              #t)))))
     (native-inputs `(("bison" ,bison)
@@ -73,7 +81,8 @@
                      ;; This test is therefore just skipped.
                      ;; ("inetutils" ,inetutils)
                      ("ed" ,ed)))
-    (home-page "http://miller.emu.id.au/pmiller/software/cook")
+    (home-page (string-append "https://web.archive.org/web/20140727122520/"
+                              "http://miller.emu.id.au/pmiller/software/cook/"))
     (synopsis "Tool for constructing files")
     (description "Cook is a tool for constructing files.  It is given a set of
 files to create, and recipes of how to create them.  In any non-trivial program

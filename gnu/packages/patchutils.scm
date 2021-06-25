@@ -1,7 +1,7 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2014, 2018 Eric Bavier <bavier@member.fsf.org>
 ;;; Copyright © 2015, 2018 Leo Famulari <leo@famulari.name>
-;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2019 Christopher Baines <mail@cbaines.net>
 ;;;
 ;;; This file is part of GNU Guix.
@@ -111,7 +111,7 @@ listing the files modified by a patch.")
         (base32 "01vfvk4pqigahx82fhaaffg921ivd3k7rylz1yfvy4zbdyd32jri"))))
     (build-system gnu-build-system)
     (native-inputs
-     `(("gettext" ,gnu-gettext)))
+     `(("gettext" ,gettext-minimal)))
     (inputs `(("perl" ,perl)
               ("less" ,less)
               ("file" ,file)
@@ -163,7 +163,7 @@ refreshed, and more.")
 (define-public colordiff
   (package
     (name "colordiff")
-    (version "1.0.18")
+    (version "1.0.19")
     (source
       (origin
         (method url-fetch)
@@ -172,8 +172,7 @@ refreshed, and more.")
                    (string-append "http://www.colordiff.org/archive/colordiff-"
                                   version ".tar.gz")))
       (sha256
-       (base32
-        "1q6n60n4b9fnzccxyxv04mxjsql4ddq17vl2c74ijvjdhpcfrkr9"))))
+       (base32 "069vzzgs7b44bmfh3ks2psrdb26s1w19gp9w4xxbgi7nhx6w3s26"))))
     (build-system gnu-build-system)
     (arguments
      `(#:tests? #f                      ; no tests
@@ -247,7 +246,7 @@ GiB).")
 (define-public meld
   (package
     (name "meld")
-    (version "3.20.1")
+    (version "3.20.2")
     (source
      (origin
        (method url-fetch)
@@ -255,7 +254,7 @@ GiB).")
                            (version-major+minor version)
                            "/meld-" version ".tar.xz"))
        (sha256
-        (base32 "0jdj7kd6vj1mdc16gvrj1kar88b2j5875ajq18fx7cbc9ny46j55"))))
+        (base32 "0a0x156zr3w2yg0rnhwy39giy3xnfm6sqcfa4xcw4i6ahvwqa2dc"))))
     (build-system python-build-system)
     (native-inputs
      `(("intltool" ,intltool)
@@ -265,11 +264,17 @@ GiB).")
     (inputs
      `(("python-cairo" ,python-pycairo)
        ("python-gobject" ,python-pygobject)
-       ("gtksourceview" ,gtksourceview)))
+       ("gsettings-desktop-schemas" ,gsettings-desktop-schemas)
+       ("gtksourceview" ,gtksourceview-3)))
     (propagated-inputs
      `(("dconf" ,dconf)))
     (arguments
-     `(#:phases
+     `(#:imported-modules ((guix build glib-or-gtk-build-system)
+                           ,@%python-build-system-modules)
+       #:modules ((guix build python-build-system)
+                  ((guix build glib-or-gtk-build-system) #:prefix glib-or-gtk:)
+                  (guix build utils))
+       #:phases
        (modify-phases %standard-phases
          ;; This setup.py script does not support one of the Python build
          ;; system's default flags, "--single-version-externally-managed".
@@ -292,7 +297,16 @@ GiB).")
              (setenv "HOME" "/tmp")
              (invoke "py.test" "-v" "-k"
                      ;; TODO: Those tests fail, why?
-                     "not test_classify_change_actions"))))))
+                     "not test_classify_change_actions")))
+         (add-after 'wrap 'glib-or-gtk-wrap
+           (assoc-ref glib-or-gtk:%standard-phases 'glib-or-gtk-wrap))
+         (add-after 'wrap 'wrap-typelib
+           (lambda* (#:key inputs outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out")))
+               (wrap-program (string-append out "/bin/meld")
+                 `("GI_TYPELIB_PATH" prefix
+                   ,(search-path-as-string->list (getenv "GI_TYPELIB_PATH"))))
+               #t))))))
     (home-page "https://meldmerge.org/")
     (synopsis "Compare files, directories and working copies")
     (description "Meld is a visual diff and merge tool targeted at
@@ -307,16 +321,16 @@ you to figure out what is going on in that merge you keep avoiding.")
 (define-public patchwork
   (package
     (name "patchwork")
-    (version "2.1.4")
+    (version "2.1.5")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/getpatchwork/patchwork.git")
+                    (url "https://github.com/getpatchwork/patchwork")
                     (commit (string-append "v" version))))
               (file-name (git-file-name name version))
               (sha256
                (base32
-                "0zi1hcqb0pi2diyznbv0c1631qk4rx02zl8ghyrr59g3ljlyr18y"))))
+                "1n4hfwlgmw6mj5kp261zfx47mgb0l7g2yzl1rf0rnm8x69lr3as6"))))
     (build-system python-build-system)
     (arguments
      `(;; TODO: Tests require a running database

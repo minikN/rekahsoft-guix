@@ -1,8 +1,9 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2013, 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2016 Mark H Weaver <mhw@netris.org>
 ;;; Copyright © 2016 Jan Nieuwenhuizen <janneke@gnu.org>
 ;;; Copyright © 2017, 2019 Mathieu Othacehe <m.othacehe@gmail.com>
+;;; Copyright © 2019 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -30,11 +31,12 @@
   #:use-module (gnu packages compression)
   #:use-module (gnu packages disk)
   #:use-module (gnu packages linux)
+  #:use-module (gnu packages file-systems)
   #:use-module (gnu packages guile)
   #:use-module ((gnu packages xorg)
                 #:select (console-setup xkeyboard-config))
   #:use-module ((gnu packages make-bootstrap)
-                #:select (%guile-static-stripped))
+                #:select (%guile-3.0-static-stripped))
   #:use-module (gnu system file-systems)
   #:use-module (gnu system mapped-devices)
   #:use-module (gnu system keyboard)
@@ -60,7 +62,7 @@
 
 (define* (expression->initrd exp
                              #:key
-                             (guile %guile-static-stripped)
+                             (guile %guile-3.0-static-stripped)
                              (gzip gzip)
                              (name "guile-initrd")
                              (system (%current-system)))
@@ -99,7 +101,7 @@ the derivations referenced by EXP are automatically copied to the initrd."
                         #:init #$init
                         ;; Copy everything INIT refers to into the initrd.
                         #:references-graphs '("closure")
-                        #:gzip (string-append #$gzip "/bin/gzip")))))
+                        #:gzip (string-append #+gzip "/bin/gzip")))))
 
   (file-append (computed-file name builder
                               #:options
@@ -133,7 +135,10 @@ MODULES and taken from LINUX."
                       (copy-file module
                                  (string-append #$output "/"
                                                 (basename module))))
-                    (delete-duplicates modules)))))
+                    (delete-duplicates modules))
+
+          ;; Hyphen or underscore?  This database tells us.
+          (write-module-name-database #$output))))
 
   (computed-file "linux-modules" build-exp))
 
@@ -192,7 +197,7 @@ upon error."
      #~(begin
          (use-modules (gnu build linux-boot)
                       (gnu system file-systems)
-                      (guix build utils)
+                      ((guix build utils) #:hide (delete))
                       (guix build bournish)   ;add the 'bournish' meta-command
                       (srfi srfi-26)
 
@@ -208,18 +213,19 @@ upon error."
              (set-path-environment-variable "PATH" '("bin" "sbin")
                                             '#$helper-packages)))
 
-         (boot-system #:mounts
-                      (map spec->file-system
-                           '#$(map file-system->spec file-systems))
-                      #:pre-mount (lambda ()
-                                    (and #$@device-mapping-commands))
-                      #:linux-modules '#$linux-modules
-                      #:linux-module-directory '#$kodir
-                      #:keymap-file #+(and=> keyboard-layout
-                                             keyboard-layout->console-keymap)
-                      #:qemu-guest-networking? #$qemu-networking?
-                      #:volatile-root? '#$volatile-root?
-                      #:on-error '#$on-error)))
+         (parameterize ((current-warning-port (%make-void-port "w")))
+           (boot-system #:mounts
+                        (map spec->file-system
+                             '#$(map file-system->spec file-systems))
+                        #:pre-mount (lambda ()
+                                      (and #$@device-mapping-commands))
+                        #:linux-modules '#$linux-modules
+                        #:linux-module-directory '#$kodir
+                        #:keymap-file #+(and=> keyboard-layout
+                                               keyboard-layout->console-keymap)
+                        #:qemu-guest-networking? #$qemu-networking?
+                        #:volatile-root? '#$volatile-root?
+                        #:on-error '#$on-error))))
    #:name "raw-initrd"))
 
 (define* (file-system-packages file-systems #:key (volatile-root? #f))
@@ -237,6 +243,12 @@ FILE-SYSTEMS."
           '())
     ,@(if (find (file-system-type-predicate "btrfs") file-systems)
           (list btrfs-progs/static)
+          '())
+    ,@(if (find (file-system-type-predicate "jfs") file-systems)
+          (list jfs_fsck/static)
+          '())
+    ,@(if (find (file-system-type-predicate "f2fs") file-systems)
+          (list f2fs-fsck/static)
           '())))
 
 (define-syntax vhash                              ;TODO: factorize
@@ -266,6 +278,8 @@ FILE-SYSTEMS."
                     ("9p" => '("9p" "9pnet_virtio"))
                     ("btrfs" => '("btrfs"))
                     ("iso9660" => '("isofs"))
+                    ("jfs" => '("jfs"))
+                    ("f2fs" => '("f2fs" "crc32_generic"))
                     (else '())))
 
 (define (file-system-modules file-systems)

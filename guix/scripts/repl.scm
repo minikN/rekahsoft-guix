@@ -1,5 +1,7 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2020 Simon Tournier <zimon.toutoune@gmail.com>
+;;; Copyright © 2020 Konrad Hinsen <konrad.hinsen@fastmail.net>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -20,10 +22,8 @@
   #:use-module (guix ui)
   #:use-module (guix scripts)
   #:use-module (guix repl)
-  #:use-module (guix utils)
-  #:use-module (guix packages)
-  #:use-module (gnu packages)
   #:use-module (srfi srfi-1)
+  #:use-module (srfi srfi-26)
   #:use-module (srfi srfi-37)
   #:use-module (ice-9 match)
   #:use-module (rnrs bytevectors)
@@ -34,7 +34,8 @@
 
 ;;; Commentary:
 ;;;
-;;; This command provides a Guile REPL
+;;; This command provides a Guile script runner and REPL in an environment
+;;; that contains all the modules comprising Guix.
 
 (define %default-options
   `((type . guile)))
@@ -52,14 +53,31 @@
                   (alist-cons 'type (string->symbol arg) result)))
         (option '("listen") #t #f
                 (lambda (opt name arg result)
-                  (alist-cons 'listen arg result)))))
+                  (alist-cons 'listen arg result)))
+        (option '(#\q) #f #f
+                (lambda (opt name arg result)
+                  (alist-cons 'ignore-dot-guile? #t result)))
+        (option '(#\L "load-path") #t #f
+                (lambda (opt name arg result)
+                  ;; XXX: Imperatively modify the search paths.
+                  (set! %load-path (cons arg %load-path))
+                  (set! %load-compiled-path (cons arg %load-compiled-path))
+                  result))))
 
 
 (define (show-help)
-  (display (G_ "Usage: guix repl [OPTIONS...]
-Start a Guile REPL in the Guix execution environment.\n"))
+  (display (G_ "Usage: guix repl [OPTIONS...] [-- FILE ARGS...]
+In the Guix execution environment, run FILE as a Guile script with
+command-line arguments ARGS.  If no FILE is given, start a Guile REPL.\n"))
   (display (G_ "
   -t, --type=TYPE        start a REPL of the given TYPE"))
+  (display (G_ "
+      --listen=ENDPOINT  listen to ENDPOINT instead of standard input"))
+  (display (G_ "
+  -q                     inhibit loading of ~/.guile"))
+  (newline)
+  (display (G_ "
+  -L, --load-path=DIR    prepend DIR to the package module search path"))
   (newline)
   (display (G_ "
   -h, --help             display this help and exit"))
@@ -121,36 +139,62 @@ call THUNK."
 
 (define (guix-repl . args)
   (define opts
-    ;; Return the list of package names.
     (args-fold* args %options
                 (lambda (opt name arg result)
                   (leave (G_ "~A: unrecognized option~%") name))
                 (lambda (arg result)
-                  (leave (G_ "~A: extraneous argument~%") arg))
+                  (append `((script . ,arg)
+                            (ignore-dot-guile? . #t))
+                          result))
                 %default-options))
 
+  (define user-config
+    (and=> (getenv "HOME")
+           (lambda (home)
+             (string-append home "/.guile"))))
+
+  (define (set-user-module)
+    (set-current-module user-module)
+    (when (and (not (assoc-ref opts 'ignore-dot-guile?))
+               user-config
+               (file-exists? user-config))
+      (load user-config)))
+
+  (define script
+    (reverse
+     (filter-map (match-lambda
+                   (('script . script) script)
+                   (_ #f))
+                 opts)))
+
   (with-error-handling
-    (let ((type (assoc-ref opts 'type)))
-      (call-with-connection (assoc-ref opts 'listen)
-        (lambda ()
-          (case type
-            ((guile)
-             (save-module-excursion
-              (lambda ()
-                (set-current-module user-module)
-                (and=> (getenv "HOME")
-                       (lambda (home)
-                         (let ((guile (string-append home "/.guile")))
-                           (when (file-exists? guile)
-                             (load guile)))))
-                ;; Do not exit repl on SIGINT.
-                ((@@ (ice-9 top-repl) call-with-sigint)
-                 (lambda ()
-                   (start-repl))))))
-            ((machine)
-             (machine-repl))
-            (else
-             (leave (G_ "~a: unknown type of REPL~%") type))))))))
+
+    (unless (null? script)
+      ;; Run script
+      (save-module-excursion
+       (lambda ()
+         (set-program-arguments script)
+         (set-user-module)
+         (load-in-vicinity "." (car script)))))
+
+    (when (null? script)
+      ;; Start REPL
+      (let ((type (assoc-ref opts 'type)))
+        (call-with-connection (assoc-ref opts 'listen)
+          (lambda ()
+            (case type
+              ((guile)
+               (save-module-excursion
+                (lambda ()
+                  (set-user-module)
+                  ;; Do not exit repl on SIGINT.
+                  ((@@ (ice-9 top-repl) call-with-sigint)
+                   (lambda ()
+                     (start-repl))))))
+              ((machine)
+               (machine-repl))
+              (else
+               (leave (G_ "~a: unknown type of REPL~%") type)))))))))
 
 ;; Local Variables:
 ;; eval: (put 'call-with-connection 'scheme-indent-function 1)

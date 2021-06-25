@@ -24,7 +24,7 @@ set -e
 
 guix environment --version
 
-if ! guile -c '((@@ (guix scripts environment) assert-container-features))'
+if ! guile -c '((@ (guix scripts environment) assert-container-features))'
 then
     # User containers are not supported; skip this test.
     exit 77
@@ -43,6 +43,11 @@ then
 else
     test $? = 42
 fi
+
+# Make sure '--preserve' is honored.
+result="`FOOBAR=42; export FOOBAR; guix environment -C --ad-hoc --bootstrap \
+   guile-bootstrap -E ^FOO -- guile -c '(display (getenv \"FOOBAR\"))'`"
+test "$result" = "42"
 
 # By default, the UID inside the container should be the same as outside.
 uid="`id -u`"
@@ -144,6 +149,13 @@ HOME="$tmpdir" guix environment --bootstrap --container --user=foognu \
      --share="$tmpdir/umock" \
      -- guile -c "$usertest"
 
+# if not sharing CWD, chdir home
+(
+  cd "$tmpdir" \
+    && guix environment --bootstrap --container --no-cwd --user=foo  \
+            --ad-hoc guile-bootstrap --pure \
+            -- /bin/sh -c 'test $(pwd) == "/home/foo" -a ! -d '"$tmpdir"
+)
 
 # Check the exit code.
 

@@ -1,8 +1,9 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2015 Federico Beffa <beffa@fbengineering.ch>
 ;;; Copyright © 2016 Eric Bavier <bavier@member.fsf.org>
-;;; Copyright © 2016 ng0 <ng0@n0.is>
+;;; Copyright © 2016 Nikita <nikita@n0.is>
 ;;; Copyright © 2018 Ricardo Wurmus <rekado@elephly.net>
+;;; Copyright © 2019 Robert Vollmert <rob@vllmrt.net>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -51,8 +52,8 @@
             hackage-package?))
 
 (define ghc-standard-libraries
-  ;; List of libraries distributed with ghc (8.4.3).
-  ;; https://downloads.haskell.org/~ghc/8.4.3/docs/html/users_guide/8.4.3-notes.html
+  ;; List of libraries distributed with ghc (8.6.5).
+  ;; Contents of ...-ghc-8.6.5/lib/ghc-8.6.5.
   '("ghc"
     "cabal" ;; in the output of `ghc-pkg list` Cabal is uppercased, but
             ;; hackage-name->package-name takes this into account.
@@ -65,17 +66,24 @@
     "deepseq"
     "directory"
     "filepath"
+    "ghc"
     "ghc-boot"
+    "ghc-boot-th"
     "ghc-compact"
+    "ghc-heap"
     "ghc-prim"
     "ghci"
     "haskeline"
     "hpc"
     "integer-gmp"
+    "libiserv"
     "mtl"
     "parsec"
+    "pretty"
     "process"
+    "stm"
     "template-haskell"
+    "terminfo"
     "text"
     "time"
     "transformers"
@@ -338,22 +346,9 @@ respectively."
                                                   (cons name args)))
                     #:guix-name hackage-name->package-name))
 
-(define (hackage-package? package)
-  "Return #t if PACKAGE is a Haskell package from Hackage."
-
-  (define haskell-url?
-    (let ((hackage-rx (make-regexp "https?://hackage.haskell.org")))
-      (lambda (url)
-        (regexp-exec hackage-rx url))))
-
-  (let ((source-url (and=> (package-source package) origin-uri))
-        (fetch-method (and=> (package-source package) origin-method)))
-    (and (eq? fetch-method url-fetch)
-         (match source-url
-           ((? string?)
-            (haskell-url? source-url))
-           ((source-url ...)
-            (any haskell-url? source-url))))))
+(define hackage-package?
+  (let ((hackage-rx (make-regexp "https?://hackage.haskell.org")))
+    (url-predicate (cut regexp-exec hackage-rx <>))))
 
 (define (latest-release package)
   "Return an <upstream-source> for the latest release of PACKAGE."

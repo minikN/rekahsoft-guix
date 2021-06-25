@@ -1,12 +1,14 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2014, 2015, 2018 Mark H Weaver <mhw@netris.org>
 ;;; Copyright © 2014, 2015, 2016, 2017, 2019 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2015 Andreas Enge <andreas@enge.fr>
-;;; Copyright © 2015, 2016, 2017, 2018 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2015, 2016, 2017, 2018, 2020 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2016 Carlos Sánchez de La Lama <csanchezdll@gmail.com>
 ;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
-;;; Copyright © 2018 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2018, 2020 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2020 Joseph LaFreniere <joseph@lafreniere.xyz>
+;;; Copyright © 2020 Guy Fleury Iteriteka <gfleury@disroot.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -340,7 +342,9 @@ where the OS part is overloaded to denote a specific ABI---into GCC
                (files '("include")))
               (search-path-specification
                (variable "CPLUS_INCLUDE_PATH")
-               (files '("include")))
+               ;; Add 'include/c++' here so that <cstdlib>'s "#include_next
+               ;; <stdlib.h>" finds GCC's <stdlib.h>, not libc's.
+               (files '("include/c++" "include")))
               (search-path-specification
                (variable "LIBRARY_PATH")
                (files '("lib" "lib64")))))
@@ -400,6 +404,7 @@ Go.  It also includes runtime support libraries for these languages.")
                 "14l06m7nvcvb0igkbip58x59w3nq6315k6jcz3wr9ch1rn9d44bc"))
               (patches (search-patches "gcc-4.9-libsanitizer-fix.patch"
                                        "gcc-4.9-libsanitizer-ustat.patch"
+                                       "gcc-4.9-libsanitizer-mode-size.patch"
                                        "gcc-arm-bug-71399.patch"
                                        "gcc-asan-missing-include.patch"
                                        "gcc-libvtv-runpath.patch"
@@ -419,7 +424,33 @@ Go.  It also includes runtime support libraries for these languages.")
                   #t))))
     ;; Override inherited texinfo-5 with latest version.
     (native-inputs `(("perl" ,perl)   ;for manpages
-                     ("texinfo" ,texinfo)))))
+                     ("texinfo" ,texinfo)))
+    (arguments
+     (if (%current-target-system)
+         (package-arguments gcc-4.8)
+         ;; For native builds of GCC 4.9 and GCC 5, the C++ include path needs
+         ;; to be adjusted so it does not interfere with GCC's own build processes.
+         (substitute-keyword-arguments (package-arguments gcc-4.8)
+           ((#:modules modules %gnu-build-system-modules)
+            `((srfi srfi-1)
+              ,@modules))
+           ((#:phases phases)
+            `(modify-phases ,phases
+               (add-after 'set-paths 'adjust-CPLUS_INCLUDE_PATH
+                 (lambda* (#:key inputs #:allow-other-keys)
+                   (let ((libc (assoc-ref inputs "libc"))
+                         (gcc (assoc-ref inputs  "gcc")))
+                     (setenv "CPLUS_INCLUDE_PATH"
+                             (string-join (fold delete
+                                                (string-split (getenv "CPLUS_INCLUDE_PATH")
+                                                              #\:)
+                                                (list (string-append libc "/include")
+                                                      (string-append gcc "/include/c++")))
+                                          ":"))
+                     (format #t
+                             "environment variable `CPLUS_INCLUDE_PATH' changed to ~a~%"
+                             (getenv "CPLUS_INCLUDE_PATH"))
+                     #t))))))))))
 
 (define-public gcc-5
   ;; Note: GCC >= 5 ships with .info files but 'make install' fails to install
@@ -439,7 +470,9 @@ Go.  It also includes runtime support libraries for these languages.")
                                        "gcc-5.0-libvtv-runpath.patch"
                                        "gcc-5-source-date-epoch-1.patch"
                                        "gcc-5-source-date-epoch-2.patch"
-                                       "gcc-fix-texi2pod.patch"))
+                                       "gcc-6-libsanitizer-mode-size.patch"
+                                       "gcc-fix-texi2pod.patch"
+                                       "gcc-5-hurd.patch"))
               (modules '((guix build utils)))
               (snippet
                ;; Fix 'libcc1/configure' error when cross-compiling GCC.
@@ -471,35 +504,37 @@ Go.  It also includes runtime support libraries for these languages.")
                (base32
                 "0i89fksfp6wr1xg9l8296aslcymv2idn60ip31wr9s4pwin7kwby"))
               (patches (search-patches "gcc-strmov-store-file-names.patch"
+                                       "gcc-6-libsanitizer-mode-size.patch"
                                        "gcc-6-source-date-epoch-1.patch"
                                        "gcc-6-source-date-epoch-2.patch"
                                        "gcc-5.0-libvtv-runpath.patch"))))
+
+    ;; GCC 4.9 and 5 has a workaround that is not needed for GCC 6 and later.
+    (arguments (package-arguments gcc-4.8))
+
     (inputs
      `(("isl" ,isl)
-       ,@(package-inputs gcc-4.7)))
 
-    (native-search-paths
-     ;; We have to use 'CPATH' for GCC > 5, not 'C_INCLUDE_PATH' & co., due to
-     ;; <https://gcc.gnu.org/bugzilla/show_bug.cgi?id=70129>.
-     (list (search-path-specification
-            (variable "CPATH")
-            (files '("include")))
-           (search-path-specification
-            (variable "LIBRARY_PATH")
-            (files '("lib" "lib64")))))))
+       ;; XXX: This gross hack allows us to have libstdc++'s <bits/c++config.h>
+       ;; in the search path, thereby avoiding misconfiguration of libstdc++:
+       ;; <https://bugs.gnu.org/42392>.
+       ("libstdc++" ,libstdc++-headers)
+
+       ,@(package-inputs gcc-4.7)))))
 
 (define-public gcc-7
   (package
     (inherit gcc-6)
-    (version "7.4.0")
+    (version "7.5.0")
     (source (origin
               (method url-fetch)
               (uri (string-append "mirror://gnu/gcc/gcc-"
                                   version "/gcc-" version ".tar.xz"))
               (sha256
                (base32
-                "0lgy170b0pp60j9cczqkmaqyjjb584vfamj4c30swd7k0j6y5pgd"))
+                "0qg6kqc5l72hpnj4vr6l0p69qav0rh4anlkk3y55540zy3klc6dq"))
               (patches (search-patches "gcc-strmov-store-file-names.patch"
+                                       "gcc-7-libsanitizer-mode-size.patch"
                                        "gcc-5.0-libvtv-runpath.patch"))))
     (description
      "GCC is the GNU Compiler Collection.  It provides compiler front-ends
@@ -509,36 +544,50 @@ It also includes runtime support libraries for these languages.")))
 (define-public gcc-8
   (package
     (inherit gcc-7)
-    (version "8.3.0")
+    (version "8.4.0")
     (source (origin
               (method url-fetch)
               (uri (string-append "mirror://gnu/gcc/gcc-"
                                   version "/gcc-" version ".tar.xz"))
               (sha256
                (base32
-                "0b3xv411xhlnjmin2979nxcbnidgvzqdf4nbhix99x60dkzavfk4"))
+                "1m1d3gfix56w4aq8myazzfffkl8bqcrx4jhhapnjf7qfs596w2p3"))
               (patches (search-patches "gcc-8-strmov-store-file-names.patch"
                                        "gcc-5.0-libvtv-runpath.patch"))))))
 
 (define-public gcc-9
   (package
    (inherit gcc-8)
-   (version "9.1.0")
+   (version "9.3.0")
    (source (origin
             (method url-fetch)
             (uri (string-append "mirror://gnu/gcc/gcc-"
                                 version "/gcc-" version ".tar.xz"))
             (sha256
              (base32
-              "1817nc2bqdc251k0lpc51cimna7v68xjrnvqzvc50q3ax4s6i9kr"))
+              "1la2yy27ziasyf0jvzk58y1i5b5bq2h176qil550bxhifs39gqbi"))
             (patches (search-patches "gcc-9-strmov-store-file-names.patch"
                                      "gcc-9-asan-fix-limits-include.patch"
+                                     "gcc-5.0-libvtv-runpath.patch"))))))
+
+(define-public gcc-10
+  (package
+   (inherit gcc-8)
+   (version "10.2.0")
+   (source (origin
+            (method url-fetch)
+            (uri (string-append "mirror://gnu/gcc/gcc-"
+                                version "/gcc-" version ".tar.xz"))
+            (sha256
+             (base32
+              "130xdkhmz1bc2kzx061s3sfwk36xah1fw5w332c0nzwwpdl47pdq"))
+            (patches (search-patches "gcc-9-strmov-store-file-names.patch"
                                      "gcc-5.0-libvtv-runpath.patch"))))))
 
 ;; Note: When changing the default gcc version, update
 ;;       the gcc-toolchain-* definitions and the gfortran definition
 ;;       accordingly.
-(define-public gcc gcc-5)
+(define-public gcc gcc-7)
 
 (define-public (make-libstdc++ gcc)
   "Return a libstdc++ package based on GCC.  The primary use case is when
@@ -564,6 +613,31 @@ using compilers other than GCC."
     (propagated-inputs '())
     (synopsis "GNU C++ standard library")))
 
+(define libstdc++
+  ;; Libstdc++ matching the default GCC.
+  (make-libstdc++ gcc))
+
+(define libstdc++-headers
+  ;; XXX: This package is for internal use to work around
+  ;; <https://bugs.gnu.org/42392> (see above).  The main difference compared
+  ;; to the libstdc++ headers that come with 'gcc' is that <bits/c++config.h>
+  ;; is right under include/c++ and not under
+  ;; include/c++/x86_64-unknown-linux-gnu (aka. GPLUSPLUS_TOOL_INCLUDE_DIR).
+  (package
+    (inherit libstdc++)
+    (name "libstdc++-headers")
+    (outputs '("out"))
+    (build-system trivial-build-system)
+    (arguments
+     '(#:builder (let* ((out       (assoc-ref %outputs "out"))
+                        (libstdc++ (assoc-ref %build-inputs "libstdc++")))
+                   (mkdir out)
+                   (mkdir (string-append out "/include"))
+                   (symlink (string-append libstdc++ "/include")
+                            (string-append out "/include/c++")))))
+    (inputs `(("libstdc++" ,libstdc++)))
+    (synopsis "Headers of GNU libstdc++")))
+
 (define-public libstdc++-4.9
   (make-libstdc++ gcc-4.9))
 
@@ -577,26 +651,22 @@ using compilers other than GCC."
        #:phases
        (modify-phases %standard-phases
          (add-before 'configure 'chdir
-                     (lambda _
-                       (chdir "libiberty")
-                       #t))
-         (replace
-          'install
-          (lambda* (#:key outputs #:allow-other-keys)
-            (let* ((out     (assoc-ref outputs "out"))
-                   (lib     (string-append out "/lib/"))
-                   (include (string-append out "/include/")))
-              (mkdir-p lib)
-              (mkdir-p include)
-              (copy-file "libiberty.a"
-                         (string-append lib "libiberty.a"))
-              (copy-file "../include/libiberty.h"
-                         (string-append include "libiberty.h"))
-              #t))))))
+           (lambda _
+             (chdir "libiberty")
+             #t))
+         (replace 'install
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let* ((out     (assoc-ref outputs "out"))
+                    (lib     (string-append out "/lib/"))
+                    (include (string-append out "/include/")))
+               (install-file "libiberty.a" lib)
+               (install-file "../include/libiberty.h" include))
+             #t)))))
     (inputs '())
     (outputs '("out"))
     (native-inputs '())
     (propagated-inputs '())
+    (properties '())
     (synopsis "Collection of subroutines used by various GNU programs")))
 
 (define-public libiberty
@@ -616,12 +686,12 @@ as the 'native-search-paths' field."
     (native-search-paths search-paths)
     (properties (alist-delete 'hidden? (package-properties gcc)))
     (arguments
-     (substitute-keyword-arguments `(#:modules ((guix build gnu-build-system)
-                                                (guix build utils)
-                                                (ice-9 regex)
-                                                (srfi srfi-1)
-                                                (srfi srfi-26))
-                                               ,@(package-arguments gcc))
+     (substitute-keyword-arguments (package-arguments gcc)
+       ((#:modules modules %gnu-build-system-modules)
+        `(,@modules
+          (srfi srfi-1)
+          (srfi srfi-26)
+          (ice-9 regex)))
        ((#:configure-flags flags)
         `(cons (string-append "--enable-languages="
                               ,(string-join languages ","))
@@ -648,36 +718,49 @@ as the 'native-search-paths' field."
          (variable "LIBRARY_PATH")
          (files '("lib" "lib64")))))
 
-(define-public gfortran-4.8
-  (custom-gcc gcc-4.8 "gfortran" '("fortran")
-              %generic-search-paths))
-
-(define-public gfortran-4.9
-  (custom-gcc gcc-4.9 "gfortran" '("fortran")
-              %generic-search-paths))
-
-(define-public gfortran-5
-  (custom-gcc gcc-5 "gfortran" '("fortran")
-              %generic-search-paths))
-
-(define-public gfortran-6
-  (custom-gcc gcc-6 "gfortran" '("fortran")
-              %generic-search-paths))
-
-(define-public gfortran-7
-  (custom-gcc gcc-7 "gfortran" '("fortran")
-              %generic-search-paths))
-
-(define-public gfortran-8
-  (custom-gcc gcc-8 "gfortran" '("fortran")
-              %generic-search-paths))
-
 (define-public gfortran
-  ;; Note: Update this when GCC changes!  We cannot use
-  ;; (custom-gcc gcc "fortran" …) because that would lead to a package object
-  ;; that is not 'eq?' with GFORTRAN-5, and thus 'fold-packages' would
-  ;; report two gfortran@5 that are in fact identical.
-  gfortran-5)
+  (hidden-package
+   (custom-gcc (package
+                 (inherit gcc)
+                 ;; XXX: Remove LIBSTDC++-HEADERS from the inputs just to
+                 ;; avoid a rebuild of all the GFORTRAN dependents.
+                 ;; TODO: Remove this hack on the next rebuild cycle.
+                 (inputs (alist-delete "libstdc++" (package-inputs gcc))))
+               "gfortran" '("fortran")
+               %generic-search-paths)))
+
+(define-public gdc-10
+  (hidden-package
+   (custom-gcc gcc-10 "gdc" '("d")
+               %generic-search-paths)))
+
+(define-public libgccjit
+  (package
+    (inherit gcc-9)
+    (name "libgccjit")
+    (outputs (delete "lib" (package-outputs gcc)))
+    (properties (alist-delete 'hidden? (package-properties gcc)))
+    (arguments
+     (substitute-keyword-arguments `(#:modules ((guix build gnu-build-system)
+                                                (guix build utils)
+                                                (ice-9 regex)
+                                                (srfi srfi-1)
+                                                (srfi srfi-26))
+                                     ,@(package-arguments gcc))
+       ((#:configure-flags flags)
+        `(append `("--enable-host-shared"
+                   ,(string-append "--enable-languages=jit"))
+                 (remove (cut string-match "--enable-languages.*" <>)
+                         ,flags)))
+       ((#:phases phases)
+        `(modify-phases ,phases
+           (add-after 'install 'remove-broken-or-conflicting-files
+             (lambda* (#:key outputs #:allow-other-keys)
+               (for-each delete-file
+                         (find-files (string-append (assoc-ref outputs "out") "/bin")
+                                     ".*(c\\+\\+|cpp|g\\+\\+|gcov|gcc|gcc-.*)"))
+               #t))))))))
+
 
 (define-public gccgo-4.9
   (custom-gcc gcc-4.9 "gccgo" '("go")
@@ -687,117 +770,89 @@ as the 'native-search-paths' field."
               ;; a cyclic dependency.  <http://debbugs.gnu.org/18101>
               #:separate-lib-output? #f))
 
+(define %objc-search-paths
+  (list (search-path-specification
+         (variable "OBJC_INCLUDE_PATH")
+         (files '("include")))
+        (search-path-specification
+         (variable "LIBRARY_PATH")
+         (files '("lib" "lib64")))))
+
 (define-public gcc-objc-4.8
   (custom-gcc gcc-4.8 "gcc-objc" '("objc")
-              (list (search-path-specification
-                     (variable "OBJC_INCLUDE_PATH")
-                     (files '("include")))
-                    (search-path-specification
-                     (variable "LIBRARY_PATH")
-                     (files '("lib" "lib64"))))))
+              %objc-search-paths))
 
 (define-public gcc-objc-4.9
   (custom-gcc gcc-4.9 "gcc-objc" '("objc")
-              (list (search-path-specification
-                     (variable "OBJC_INCLUDE_PATH")
-                     (files '("include")))
-                    (search-path-specification
-                     (variable "LIBRARY_PATH")
-                     (files '("lib" "lib64"))))))
+              %objc-search-paths))
 
 (define-public gcc-objc-5
   (custom-gcc gcc-5 "gcc-objc" '("objc")
-              (list (search-path-specification
-                     (variable "OBJC_INCLUDE_PATH")
-                     (files '("include")))
-                    (search-path-specification
-                     (variable "LIBRARY_PATH")
-                     (files '("lib" "lib64"))))))
+              %objc-search-paths))
 
 (define-public gcc-objc-6
   (custom-gcc gcc-6 "gcc-objc" '("objc")
-              (list (search-path-specification
-                     (variable "OBJC_INCLUDE_PATH")
-                     (files '("include")))
-                    (search-path-specification
-                     (variable "LIBRARY_PATH")
-                     (files '("lib" "lib64"))))))
+              %objc-search-paths))
 
 (define-public gcc-objc-7
   (custom-gcc gcc-7 "gcc-objc" '("objc")
-              (list (search-path-specification
-                     (variable "OBJC_INCLUDE_PATH")
-                     (files '("include")))
-                    (search-path-specification
-                     (variable "LIBRARY_PATH")
-                     (files '("lib" "lib64"))))))
+              %objc-search-paths))
 
 (define-public gcc-objc-8
   (custom-gcc gcc-8 "gcc-objc" '("objc")
-              (list (search-path-specification
-                     (variable "OBJC_INCLUDE_PATH")
-                     (files '("include")))
-                    (search-path-specification
-                     (variable "LIBRARY_PATH")
-                     (files '("lib" "lib64"))))))
+              %objc-search-paths))
 
-(define-public gcc-objc gcc-objc-5)
+(define-public gcc-objc-9
+  (custom-gcc gcc-9 "gcc-objc" '("objc")
+              %objc-search-paths))
+
+(define-public gcc-objc-10
+  (custom-gcc gcc-10 "gcc-objc" '("objc")
+              %objc-search-paths))
+
+(define-public gcc-objc gcc-objc-7)
+
+(define %objc++-search-paths
+  (list (search-path-specification
+         (variable "OBJCPLUS_INCLUDE_PATH")
+         (files '("include")))
+        (search-path-specification
+         (variable "LIBRARY_PATH")
+         (files '("lib" "lib64")))))
 
 (define-public gcc-objc++-4.8
   (custom-gcc gcc-4.8 "gcc-objc++" '("obj-c++")
-              (list (search-path-specification
-                     (variable "OBJCPLUS_INCLUDE_PATH")
-                     (files '("include")))
-                    (search-path-specification
-                     (variable "LIBRARY_PATH")
-                     (files '("lib" "lib64"))))))
+              %objc++-search-paths))
 
 (define-public gcc-objc++-4.9
   (custom-gcc gcc-4.9 "gcc-objc++" '("obj-c++")
-              (list (search-path-specification
-                     (variable "OBJCPLUS_INCLUDE_PATH")
-                     (files '("include")))
-                    (search-path-specification
-                     (variable "LIBRARY_PATH")
-                     (files '("lib" "lib64"))))))
+              %objc++-search-paths))
 
 (define-public gcc-objc++-5
   (custom-gcc gcc-5 "gcc-objc++" '("obj-c++")
-              (list (search-path-specification
-                     (variable "OBJCPLUS_INCLUDE_PATH")
-                     (files '("include")))
-                    (search-path-specification
-                     (variable "LIBRARY_PATH")
-                     (files '("lib" "lib64"))))))
+              %objc++-search-paths))
 
 (define-public gcc-objc++-6
   (custom-gcc gcc-6 "gcc-objc++" '("obj-c++")
-              (list (search-path-specification
-                     (variable "OBJCPLUS_INCLUDE_PATH")
-                     (files '("include")))
-                    (search-path-specification
-                     (variable "LIBRARY_PATH")
-                     (files '("lib" "lib64"))))))
+              %objc++-search-paths))
 
 (define-public gcc-objc++-7
   (custom-gcc gcc-7 "gcc-objc++" '("obj-c++")
-              (list (search-path-specification
-                     (variable "OBJCPLUS_INCLUDE_PATH")
-                     (files '("include")))
-                    (search-path-specification
-                     (variable "LIBRARY_PATH")
-                     (files '("lib" "lib64"))))))
+              %objc++-search-paths))
 
 (define-public gcc-objc++-8
   (custom-gcc gcc-8 "gcc-objc++" '("obj-c++")
-              (list (search-path-specification
-                     (variable "OBJCPLUS_INCLUDE_PATH")
-                     (files '("include")))
-                    (search-path-specification
-                     (variable "LIBRARY_PATH")
-                     (files '("lib" "lib64"))))))
+              %objc++-search-paths))
 
-(define-public gcc-objc++ gcc-objc++-5)
+(define-public gcc-objc++-9
+  (custom-gcc gcc-9 "gcc-objc++" '("obj-c++")
+              %objc++-search-paths))
+
+(define-public gcc-objc++-10
+  (custom-gcc gcc-10 "gcc-objc++" '("obj-c++")
+              %objc++-search-paths))
+
+(define-public gcc-objc++ gcc-objc++-7)
 
 (define (make-libstdc++-doc gcc)
   "Return a package with the libstdc++ documentation for GCC."
@@ -860,7 +915,7 @@ as the 'native-search-paths' field."
 (define-public isl
   (package
     (name "isl")
-    (version "0.19")
+    (version "0.22.1")
     (source (origin
              (method url-fetch)
              (uri (list (string-append
@@ -868,11 +923,30 @@ as the 'native-search-paths' field."
                          version
                          ".tar.bz2")
                         (string-append %gcc-infrastructure
-                                       name "-" version ".tar.gz")))
+                                       name "-" version ".tar.bz2")))
              (sha256
               (base32
-               "1n4yz9rj24mv226hqbpw210ifvqkn8dgvpnkzf0s0lkq9zrjd5ym"))))
+               "1kf54jib0nind1pvakblnfhimmwzm0y1llz8470ag0di5vwqwrhs"))))
     (build-system gnu-build-system)
+    (outputs '("out" "static"))
+    (arguments
+     '(#:phases (modify-phases %standard-phases
+                  (add-after 'install 'move-static-library
+                    (lambda* (#:key outputs #:allow-other-keys)
+                      (let* ((out (assoc-ref outputs "out"))
+                             (static (assoc-ref outputs "static"))
+                             (source (string-append out "/lib/libisl.a"))
+                             (target (string-append static "/lib/libisl.a")))
+                        (mkdir-p (dirname target))
+                        (link source target)
+                        (delete-file source)
+
+                        ;; Remove reference to libisl.a from the .la file so
+                        ;; libtool looks for it in the usual locations.
+                        (substitute* (string-append out "/lib/libisl.la")
+                          (("^old_library=.*")
+                           "old_library=''\n"))
+                        #t))))))
     (inputs `(("gmp" ,gmp)))
     (home-page "http://isl.gforge.inria.fr/")
     (synopsis
@@ -898,7 +972,7 @@ dependence analysis and bounds on piecewise step-polynomials.")
               (uri (list (string-append "http://isl.gforge.inria.fr/isl-"
                                         version ".tar.bz2")
                          (string-append %gcc-infrastructure
-                                        "isl-" version ".tar.gz")))
+                                        "isl-" version ".tar.bz2")))
               (sha256
                (base32
                 "06ybml6llhi4i56q90jnimbcgk1lpcdwhy9nxdxra2hxz3bhz2vb"))))))
@@ -915,7 +989,7 @@ dependence analysis and bounds on piecewise step-polynomials.")
                          version
                          ".tar.bz2")
                         (string-append %gcc-infrastructure
-                                       name "-" version ".tar.gz")))
+                                       name "-" version ".tar.bz2")))
              (sha256
               (base32
                "13d9cqa5rzhbjq0xf0b2dyxag7pqa72xj9dhsa03m8ccr1a4npq9"))

@@ -48,17 +48,21 @@
     ;; The 7 release series has an incompatible API, while the 6 series is still
     ;; maintained. Don't update to 7 until we've made sure that the ImageMagick
     ;; users are ready for the 7-series API.
-    (version "6.9.10-51")
+    (version "6.9.11-11")
     (source (origin
              (method url-fetch)
              (uri (string-append "mirror://imagemagick/ImageMagick-"
                                  version ".tar.xz"))
              (sha256
               (base32
-               "03c5r14ycp7mmlk6pryfcnpvjjnghk3z7dbjd1b7m1bgzmw21jhj"))))
+               "1b67rrppvm04aqr76qky5h2a0j2d161h8kwa04fv611w5xwandr2"))))
     (build-system gnu-build-system)
     (arguments
-     `(#:configure-flags '("--with-frozenpaths" "--without-gcc-arch")
+     `(#:configure-flags '("--with-frozenpaths" "--without-gcc-arch"
+
+                           ;; Do not embed the build date in binaries.
+                           "--enable-reproducible-build")
+
        ;; FIXME: The test suite succeeded before version 6.9.6-2.
        ;; Try enabling it again with newer releases.
        #:tests? #f
@@ -101,7 +105,7 @@
               ("libxml2" ,libxml2)
               ("libtiff" ,libtiff)
               ("libpng" ,libpng)
-              ("libjpeg" ,libjpeg)
+              ("libjpeg" ,libjpeg-turbo)
               ("pango" ,pango)
               ("freetype" ,freetype)
               ("bzip2" ,bzip2)
@@ -170,7 +174,7 @@ script.")
 (define-public graphicsmagick
   (package
     (name "graphicsmagick")
-    (version "1.3.32")
+    (version "1.3.35")
     (source
      (origin
        (method url-fetch)
@@ -183,7 +187,7 @@ script.")
                         "/GraphicsMagick-" version ".tar.xz")))
        (sha256
         (base32
-         "1qclp9i31idpcbbqswmnq2q11lmv0a7cvdb1y72xcky8sshaahmq"))))
+         "0l024l4hawm9s3jqrgi2j0lxgm61dqh8sgkj1017ma7y11hqv2hq"))))
     (build-system gnu-build-system)
     (arguments
      `(#:configure-flags
@@ -204,7 +208,7 @@ script.")
        ("libxml2" ,libxml2)
        ("libtiff" ,libtiff)
        ("libpng" ,libpng)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("freetype" ,freetype)
        ("bzip2" ,bzip2)
        ("xz" ,xz)

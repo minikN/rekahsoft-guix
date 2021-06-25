@@ -1,7 +1,7 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2015 David Thompson <davet@gnu.org>
-;;; Copyright © 2015, 2016, 2017, 2018 Ludovic Courtès <ludo@gnu.org>
-;;; Copyright © 2016 ng0 <ng0@n0.is>
+;;; Copyright © 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2016 Nikita <nikita@n0.is>
 ;;; Copyright © 2016, 2017, 2018 Julien Lepiller <julien@lepiller.eu>
 ;;; Copyright © 2017 Christopher Baines <mail@cbaines.net>
 ;;; Copyright © 2017 nee <nee-git@hidamari.blue>
@@ -9,6 +9,9 @@
 ;;; Copyright © 2018 Pierre-Antoine Rouby <pierre-antoine.rouby@inria.fr>
 ;;; Copyright © 2017, 2018, 2019 Christopher Baines <mail@cbaines.net>
 ;;; Copyright © 2018 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2019, 2020 Florian Pelz <pelzflorian@pelzflorian.de>
+;;; Copyright © 2020 Ricardo Wurmus <rekado@elephly.net>
+;;; Copyright © 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -34,6 +37,7 @@
   #:use-module (gnu system pam)
   #:use-module (gnu system shadow)
   #:use-module (gnu packages admin)
+  #:use-module (gnu packages base)
   #:use-module (gnu packages databases)
   #:use-module (gnu packages web)
   #:use-module (gnu packages patchutils)
@@ -42,6 +46,7 @@
   #:use-module (gnu packages gnupg)
   #:use-module (gnu packages guile)
   #:use-module (gnu packages logging)
+  #:use-module (gnu packages mail)
   #:use-module (guix packages)
   #:use-module (guix records)
   #:use-module (guix modules)
@@ -53,20 +58,18 @@
   #:use-module (srfi srfi-1)
   #:use-module (srfi srfi-9)
   #:use-module (ice-9 match)
-  #:export (<httpd-configuration>
-            httpd-configuration
+  #:use-module (ice-9 format)
+  #:export (httpd-configuration
             httpd-configuration?
             httpd-configuration-package
             httpd-configuration-pid-file
             httpd-configuration-config
 
-            <httpd-virtualhost>
             httpd-virtualhost
             httpd-virtualhost?
             httpd-virtualhost-addresses-and-ports
             httpd-virtualhost-contents
 
-            <httpd-config-file>
             httpd-config-file
             httpd-config-file?
             httpd-config-file-modules
@@ -78,14 +81,12 @@
             httpd-config-file-user
             httpd-config-file-group
 
-            <httpd-module>
             httpd-module
             httpd-module?
             %default-httpd-modules
 
             httpd-service-type
 
-            <nginx-configuration>
             nginx-configuration
             nginx-configuration?
             nginx-configuartion-nginx
@@ -95,10 +96,11 @@
             nginx-configuration-upstream-blocks
             nginx-configuration-server-names-hash-bucket-size
             nginx-configuration-server-names-hash-bucket-max-size
+            nginx-configuration-modules
+            nginx-configuration-global-directives
             nginx-configuration-extra-content
             nginx-configuration-file
 
-            <nginx-server-configuration>
             nginx-server-configuration
             nginx-server-configuration?
             nginx-server-configuration-listen
@@ -111,19 +113,16 @@
             nginx-server-configuration-server-tokens?
             nginx-server-configuration-raw-content
 
-            <nginx-upstream-configuration>
             nginx-upstream-configuration
             nginx-upstream-configuration?
             nginx-upstream-configuration-name
             nginx-upstream-configuration-servers
 
-            <nginx-location-configuration>
             nginx-location-configuration
             nginx-location-configuration?
             nginx-location-configuration-uri
             nginx-location-configuration-body
 
-            <nginx-named-location-configuration>
             nginx-named-location-configuration
             nginx-named-location-configuration?
             nginx-named-location-configuration-name
@@ -136,7 +135,6 @@
             fcgiwrap-configuration?
             fcgiwrap-service-type
 
-            <php-fpm-configuration>
             php-fpm-configuration
             make-php-fpm-configuration
             php-fpm-configuration?
@@ -154,7 +152,6 @@
             php-fpm-configuration-workers-log-file
             php-fpm-configuration-file
 
-            <php-fpm-dynamic-process-manager-configuration>
             php-fpm-dynamic-process-manager-configuration
             make-php-fpm-dynamic-process-manager-configuration
             php-fpm-dynamic-process-manager-configuration?
@@ -163,13 +160,11 @@
             php-fpm-dynamic-process-manager-configuration-min-spare-servers
             php-fpm-dynamic-process-manager-configuration-max-spare-servers
 
-            <php-fpm-static-process-manager-configuration>
             php-fpm-static-process-manager-configuration
             make-php-fpm-static-process-manager-configuration
             php-fpm-static-process-manager-configuration?
             php-fpm-static-process-manager-configuration-max-children
 
-            <php-fpm-on-demand-process-manager-configuration>
             php-fpm-on-demand-process-manager-configuration
             make-php-fpm-on-demand-process-manager-configuration
             php-fpm-on-demand-process-manager-configuration?
@@ -185,7 +180,6 @@
             hpcguix-web-configuration?
             hpcguix-web-service-type
 
-            <tailon-configuration-file>
             tailon-configuration-file
             tailon-configuration-file?
             tailon-configuration-file-files
@@ -199,7 +193,6 @@
             tailon-configuration-file-http-auth
             tailon-configuration-file-users
 
-            <tailon-configuration>
             tailon-configuration
             tailon-configuration?
             tailon-configuration-config-file
@@ -207,7 +200,6 @@
 
             tailon-service-type
 
-            <varnish-configuration>
             varnish-configuration
             varnish-configuration?
             varnish-configuration-package
@@ -221,7 +213,6 @@
 
             varnish-service-type
 
-            <patchwork-database-configuration>
             patchwork-database-configuration
             patchwork-database-configuration?
             patchwork-database-configuration-engine
@@ -231,7 +222,6 @@
             patchwork-database-configuration-host
             patchwork-database-configuration-port
 
-            <patchwork-settings-module>
             patchwork-settings-module
             patchwork-settings-module?
             patchwork-settings-module-database-configuration
@@ -246,7 +236,6 @@
             patchwork-settings-module-force-https-links?
             patchwork-settings-module-extra-settings
 
-            <patchwork-configuration>
             patchwork-configuration
             patchwork-configuration?
             patchwork-configuration-patchwork
@@ -254,7 +243,16 @@
             patchwork-configuration-domain
 
             patchwork-virtualhost
-            patchwork-service-type))
+            patchwork-service-type
+
+            mumi-configuration
+            mumi-configuration?
+            mumi-configuration-mumi
+            mumi-configuration-mailer?
+            mumi-configuration-sender
+            mumi-configuration-smtp
+
+            mumi-service-type))
 
 ;;; Commentary:
 ;;;
@@ -438,7 +436,7 @@
                            addresses-and-ports
                            contents)
                         `(,(string-append
-                            "<VirtualHost " addresses-and-ports ">\n")
+                            "\n<VirtualHost " addresses-and-ports ">\n")
                           ,@contents
                           "\n</VirtualHost>\n"))
                        ((? string? x)
@@ -522,6 +520,9 @@
                                  (default #f))
   (server-names-hash-bucket-max-size nginx-configuration-server-names-hash-bucket-max-size
                                      (default #f))
+  (modules nginx-configuration-modules (default '()))
+  (global-directives nginx-configuration-global-directives
+                     (default '((events . ()))))
   (extra-content nginx-configuration-extra-content
                  (default ""))
   (file          nginx-configuration-file         ;#f | string | file-like
@@ -541,6 +542,16 @@ of index files."
  (map (match-lambda
         ((? string? str) (list str " ")))
       names))
+
+(define (emit-load-module module)
+  (list "load_module " module ";\n"))
+
+(define emit-global-directive
+  (match-lambda
+    ((key . (? list? alist))
+     (format #f "~a { ~{~a~}}~%" key (map emit-global-directive alist)))
+    ((key . value)
+     (format #f "~a ~a;~%" key value))))
 
 (define emit-nginx-location-config
   (match-lambda
@@ -615,12 +626,16 @@ of index files."
                  server-blocks upstream-blocks
                  server-names-hash-bucket-size
                  server-names-hash-bucket-max-size
+                 modules
+                 global-directives
                  extra-content)
    (apply mixed-text-file "nginx.conf"
           (flatten
            "user nginx nginx;\n"
            "pid " run-directory "/pid;\n"
            "error_log " log-directory "/error.log info;\n"
+           (map emit-load-module modules)
+           (map emit-global-directive global-directives)
            "http {\n"
            "    client_body_temp_path " run-directory "/client_body_temp;\n"
            "    proxy_temp_path " run-directory "/proxy_temp;\n"
@@ -645,8 +660,7 @@ of index files."
            (map emit-nginx-upstream-config upstream-blocks)
            (map emit-nginx-server-config server-blocks)
            extra-content
-           "\n}\n"
-           "events {}\n"))))
+           "\n}\n"))))
 
 (define %nginx-accounts
   (list (user-group (name "nginx") (system? #t))
@@ -682,7 +696,8 @@ of index files."
        (system* (string-append #$nginx "/sbin/nginx")
                 "-c" #$(or file
                            (default-nginx-config config))
-                  "-t"))))
+                "-p" #$run-directory
+                "-t"))))
 
 (define (nginx-shepherd-service config)
   (match-record config
@@ -733,8 +748,8 @@ of index files."
                             (server-blocks
                               (append (nginx-configuration-server-blocks config)
                               servers)))))
-                (default-value
-                  (nginx-configuration))))
+                (default-value (nginx-configuration))
+                (description "Run the nginx Web server.")))
 
 (define-record-type* <fcgiwrap-configuration> fcgiwrap-configuration
   make-fcgiwrap-configuration
@@ -1038,13 +1053,24 @@ a webserver.")
          (shell (file-append shadow "/sbin/nologin")))))
 
 (define %hpcguix-web-activation
-  #~(begin
-      (use-modules (guix build utils))
-      (let ((home-dir "/var/cache/guix/web")
-            (user (getpwnam "hpcguix-web")))
-        (mkdir-p home-dir)
-        (chown home-dir (passwd:uid user) (passwd:gid user))
-        (chmod home-dir #o755))))
+  (with-imported-modules '((guix build utils))
+    #~(begin
+        (use-modules (guix build utils)
+                     (ice-9 ftw))
+
+        (let ((home-dir "/var/cache/guix/web")
+              (user (getpwnam "hpcguix-web")))
+          (mkdir-p home-dir)
+          (chown home-dir (passwd:uid user) (passwd:gid user))
+          (chmod home-dir #o755)
+
+          ;; Remove stale 'packages.json.lock' file (and other lock files, if
+          ;; any) since that would prevent 'packages.json' from being updated.
+          (for-each (lambda (lock)
+                      (delete-file (string-append home-dir "/" lock)))
+                    (scandir home-dir
+                             (lambda (file)
+                               (string-suffix? ".lock" file))))))))
 
 (define %hpcguix-web-log-file
   "/var/log/hpcguix-web.log")
@@ -1413,6 +1439,10 @@ ALLOWED_HOSTS = [
           allowed-hosts))
 "]
 
+DEFAULT_FROM_EMAIL = '" #$default-from-email "'
+SERVER_EMAIL = DEFAULT_FROM_EMAIL
+NOTIFICATION_FROM_EMAIL = DEFAULT_FROM_EMAIL
+
 ADMINS = [
 " #$(string-concatenate
      (map (match-lambda
@@ -1424,7 +1454,7 @@ ADMINS = [
 
 DEBUG = " #$(if debug? "True" "False") "
 
-ENABLE_REST_API = " #$(if enable-xmlrpc? "True" "False") "
+ENABLE_REST_API = " #$(if enable-rest-api? "True" "False") "
 ENABLE_XMLRPC = " #$(if enable-xmlrpc? "True" "False") "
 
 FORCE_HTTPS_LINKS = " #$(if force-https-links? "True" "False") "
@@ -1632,3 +1662,101 @@ WSGIPassAuthorization On
                              patchwork-getmail-configs)))
    (description
     "Patchwork patch tracking system.")))
+
+
+;;;
+;;; Mumi.
+;;;
+
+(define-record-type* <mumi-configuration>
+  mumi-configuration make-mumi-configuration
+  mumi-configuration?
+  (mumi    mumi-configuration-mumi (default mumi))
+  (mailer? mumi-configuration-mailer? (default #t))
+  (sender  mumi-configuration-sender (default #f))
+  (smtp    mumi-configuration-smtp (default #f)))
+
+(define %mumi-activation
+  (with-imported-modules '((guix build utils))
+    #~(begin
+        (use-modules (guix build utils))
+
+        (mkdir-p "/var/mumi/db")
+        (mkdir-p "/var/mumi/mails")
+        (let* ((pw  (getpwnam "mumi"))
+               (uid (passwd:uid pw))
+               (gid (passwd:gid pw)))
+          (chown "/var/mumi" uid gid)
+          (chown "/var/mumi/mails" uid gid)
+          (chown "/var/mumi/db" uid gid)))))
+
+(define %mumi-accounts
+  (list (user-group (name "mumi") (system? #t))
+        (user-account
+         (name "mumi")
+         (group "mumi")
+         (system? #t)
+         (comment "Mumi web server")
+         (home-directory "/var/empty")
+         (shell (file-append shadow "/sbin/nologin")))))
+
+(define (mumi-shepherd-services config)
+  (define environment
+    #~(list "LC_ALL=en_US.utf8"
+            (string-append "GUIX_LOCPATH=" #$glibc-utf8-locales
+                           "/lib/locale")))
+
+  (match config
+    (($ <mumi-configuration> mumi mailer? sender smtp)
+     (list (shepherd-service
+            (provision '(mumi))
+            (documentation "Mumi bug-tracking web interface.")
+            (requirement '(networking))
+            (start #~(make-forkexec-constructor
+                      `(#$(file-append mumi "/bin/mumi") "web"
+                        ,@(if #$mailer? '() '("--disable-mailer")))
+                      #:environment-variables #$environment
+                      #:user "mumi" #:group "mumi"
+                      #:log-file "/var/log/mumi.log"))
+            (stop #~(make-kill-destructor)))
+           (shepherd-service
+            (provision '(mumi-worker))
+            (documentation "Mumi bug-tracking web interface database worker.")
+            (requirement '(networking))
+            (start #~(make-forkexec-constructor
+                      '(#$(file-append mumi "/bin/mumi") "worker")
+                      #:environment-variables #$environment
+                      #:user "mumi" #:group "mumi"
+                      #:log-file "/var/log/mumi.worker.log"))
+            (stop #~(make-kill-destructor)))
+           (shepherd-service
+            (provision '(mumi-mailer))
+            (documentation "Mumi bug-tracking web interface mailer.")
+            (requirement '(networking))
+            (start #~(make-forkexec-constructor
+                      `(#$(file-append mumi "/bin/mumi") "mailer"
+                        ,@(if #$sender
+                              (list (string-append "--sender=" #$sender))
+                              '())
+                        ,@(if #$smtp
+                              (list (string-append "--smtp=" #$smtp))
+                              '()))
+                      #:environment-variables #$environment
+                      #:user "mumi" #:group "mumi"
+                      #:log-file "/var/log/mumi.mailer.log"))
+            (stop #~(make-kill-destructor)))))))
+
+(define mumi-service-type
+  (service-type
+   (name 'mumi)
+   (extensions
+    (list (service-extension activation-service-type
+                             (const %mumi-activation))
+          (service-extension account-service-type
+                             (const %mumi-accounts))
+          (service-extension shepherd-root-service-type
+                             mumi-shepherd-services)))
+   (description
+    "Run Mumi, a Web interface to the Debbugs bug-tracking server.")
+   (default-value
+     (mumi-configuration))))

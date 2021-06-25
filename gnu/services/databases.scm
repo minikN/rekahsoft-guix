@@ -276,7 +276,9 @@ host	all	all	::1/128 	md5"))
                        (service-extension activation-service-type
                                           postgresql-activation)
                        (service-extension account-service-type
-                                          (const %postgresql-accounts))))
+                                          (const %postgresql-accounts))
+                       (service-extension profile-service-type
+                                          (compose list postgresql-configuration-postgresql))))
                 (default-value (postgresql-configuration))))
 
 (define* (postgresql-service #:key (postgresql postgresql)
@@ -463,7 +465,8 @@ storage:
   mysql-configuration make-mysql-configuration
   mysql-configuration?
   (mysql mysql-configuration-mysql (default mariadb))
-  (port mysql-configuration-port (default 3306)))
+  (port mysql-configuration-port (default 3306))
+  (extra-content mysql-configuration-extra-content (default "")))
 
 (define %mysql-accounts
   (list (user-group
@@ -478,11 +481,12 @@ storage:
 
 (define mysql-configuration-file
   (match-lambda
-    (($ <mysql-configuration> mysql port)
+    (($ <mysql-configuration> mysql port extra-content)
      (mixed-text-file "my.cnf" "[mysqld]
 datadir=/var/lib/mysql
 socket=/run/mysqld/mysqld.sock
 port=" (number->string port) "
+" extra-content "
 "))))
 
 (define (%mysql-activation config)
@@ -524,7 +528,7 @@ port=" (number->string port) "
                   (for-each
                    (lambda (sql)
                      (call-with-input-file
-                         (string-append #$mysql "/share/mysql/" sql)
+                         (string-append #$mysql:lib "/share/mysql/" sql)
                        (lambda (in) (dump-port in p))))
                    '("mysql_system_tables.sql"
                      "mysql_performance_tables.sql"

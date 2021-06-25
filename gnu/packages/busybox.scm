@@ -1,7 +1,7 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2014 John Darrington <jmd@gnu.org>
 ;;; Copyright © 2016, 2017, 2018, 2019 Efraim Flashner <efraim@flashner.co.il>
-;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -32,7 +32,7 @@
 (define-public busybox
   (package
     (name "busybox")
-    (version "1.29.3")
+    (version "1.31.1")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -40,11 +40,18 @@
                     version ".tar.bz2"))
               (sha256
                (base32
-                "1dzg45vgy2w1xcd3p6h8d76ykhabbvk1h0lf8yb24ikrwlv8cr4p"))))
+                "1659aabzp8w4hayr4z8kcpbk2z1q2wqhw7i1yb0l72b45ykl1yfh"))
+              (patches
+               (search-patches
+                "busybox-1.31.1-fix-build-with-glibc-2.31.patch"))))
     (build-system gnu-build-system)
     (arguments
      '(#:phases
        (modify-phases %standard-phases
+         (add-before 'configure 'disable-timestamps
+           (lambda _
+             (setenv "KCONFIG_NOTIMESTAMP" "1")
+             #t))
          (add-before 'configure 'disable-taskset
            ;; This feature fails its tests in the build environment,
            ;; was default 'n' until after 1.26.2.
@@ -53,7 +60,8 @@
                (("default y") "default n"))
              #t))
          (replace 'configure
-           (lambda _ (invoke "make" "defconfig")))
+           (lambda* (#:key make-flags #:allow-other-keys)
+             (apply invoke "make" "defconfig" make-flags)))
          (add-after 'configure 'dont-install-to-usr
            (lambda _
              (substitute* ".config"
@@ -61,7 +69,7 @@
                 "CONFIG_INSTALL_NO_USR=y"))
              #t))
          (replace 'check
-           (lambda _
+           (lambda* (#:key make-flags #:allow-other-keys)
              (substitute* '("testsuite/du/du-s-works"
                             "testsuite/du/du-works")
                (("/bin") "/etc"))  ; there is no /bin but there is a /etc
@@ -75,6 +83,9 @@
              (substitute* "testsuite/date/date-works-1"
                (("/bin/date") (which "date")))
 
+             (substitute* "testsuite/start-stop-daemon.tests"
+              (("/bin/false") (which "false")))
+
              ;; The pidof tests assume that pid 1 is called "init" but that is not
              ;; true in guix build environment
              (substitute* "testsuite/pidof.tests"
@@ -86,17 +97,17 @@
              (delete-file "testsuite/which/which-uses-default-path")
              (rmdir "testsuite/which")
 
-             (invoke "make"
+             (apply invoke "make"
                      ;; "V=1"
                      "SKIP_KNOWN_BUGS=1"
                      "SKIP_INTERNET_TESTS=1"
-                     "check")))
+                     "check" make-flags)))
          (replace 'install
-           (lambda* (#:key outputs #:allow-other-keys)
+           (lambda* (#:key outputs make-flags #:allow-other-keys)
              (let ((out (assoc-ref outputs "out")))
-               (invoke "make"
+               (apply invoke "make"
                        (string-append "CONFIG_PREFIX=" out)
-                       "install")))))))
+                       "install" make-flags)))))))
     (native-inputs `(("perl" ,perl) ; needed to generate the man pages (pod2man)
                      ;; The following are needed by the tests.
                      ("inetutils" ,inetutils)
@@ -113,7 +124,7 @@ any small or embedded system.")
 (define-public toybox
   (package
     (name "toybox")
-    (version "0.8.1")
+    (version "0.8.3")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -121,7 +132,7 @@ any small or embedded system.")
                     version ".tar.gz"))
               (sha256
                (base32
-                "1czxzvyggm157z8wgxbk8k0n675p1gig9xvrcijsplh9p1i1xi0s"))))
+                "00aw9d809wj1bqlb2fsssdgz7rj0363ya14py0gfdm0rkp98zcpa"))))
     (build-system gnu-build-system)
     (arguments
      '(#:phases

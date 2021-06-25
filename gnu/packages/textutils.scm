@@ -5,18 +5,21 @@
 ;;; Copyright © 2015 Roel Janssen <roel@gnu.org>
 ;;; Copyright © 2016 Jelle Licht <jlicht@fsfe.org>
 ;;; Copyright © 2016 Alex Griffin <a@ajgrf.com>
-;;; Copyright © 2016, 2018 Efraim Flashner <efraim@flashner.co.il>
-;;; Copyright © 2016 ng0 <ng0@n0.is>
-;;; Copyright © 2016 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2016, 2018, 2019 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2016 Nikita <nikita@n0.is>
+;;; Copyright © 2016, 2020 Marius Bakke <marius@gnu.org>
 ;;; Copyright © 2017 Eric Bavier <bavier@member.fsf.org>
 ;;; Copyright © 2017 Rene Saavedra <rennes@openmailbox.org>
-;;; Copyright © 2017 Hartmut Goebel <h.goebel@crazy-compilers.com>
+;;; Copyright © 2017,2019 Hartmut Goebel <h.goebel@crazy-compilers.com>
 ;;; Copyright © 2017 Kei Kebreau <kkebreau@posteo.net>
 ;;; Copyright © 2017 Alex Vong <alexvong1995@gmail.com>
-;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018 Pierre Neidhardt <mail@ambrevar.xyz>
 ;;; Copyright © 2018 Meiyo Peng <meiyo.peng@gmail.com>
 ;;; Copyright © 2019 Yoshinori Arai <kumagusu08@gmail.com>
+;;; Copyright © 2019 Mădălin Ionel Patrașcu <madalinionel.patrascu@mdc-berlin.de>
+;;; Copyright © 2019 Wiktor Żelazny <wzelazny@vurv.cz>
+;;; Copyright © 2020 Maxim Cournoyer <maxim.cournoyer@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -45,10 +48,13 @@
   #:use-module (guix build-system python)
   #:use-module (gnu packages)
   #:use-module (gnu packages autotools)
+  #:use-module (gnu packages base)
   #:use-module (gnu packages compression)
+  #:use-module (gnu packages gcc)
   #:use-module (gnu packages gettext)
   #:use-module (gnu packages java)
   #:use-module (gnu packages ncurses)
+  #:use-module (gnu packages pcre)
   #:use-module (gnu packages perl)
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages python)
@@ -60,14 +66,14 @@
 (define-public dos2unix
   (package
     (name "dos2unix")
-    (version "7.4.0")
+    (version "7.4.1")
     (source
      (origin
        (method url-fetch)
-       (uri (string-append "https://waterlan.home.xs4all.nl/" name "/"
-                           name "-" version ".tar.gz"))
+       (uri (string-append "https://waterlan.home.xs4all.nl/dos2unix/"
+                           "dos2unix-" version ".tar.gz"))
        (sha256
-        (base32 "12h4c61g376bhq03y5g2xszkrkrj5hwd928rly3xsp6rvfmnbixs"))))
+        (base32 "08w6yywzirsxq8bh87jycvvw922ybhc2l426j2iqzliyn1h8mm8w"))))
     (build-system gnu-build-system)
     (arguments
      '(#:make-flags (list "CC=gcc"
@@ -88,23 +94,18 @@ to DOS format and vice versa.")
 (define-public recode
   (package
     (name "recode")
-    (version "3.7.1")
+    (version "3.7.6")
     (source
      (origin
        (method url-fetch)
        (uri (string-append "https://github.com/rrthomas/recode/releases/"
-                           "download/v" version "/" name "-" version ".tar.gz"))
+                           "download/v" version "/recode-" version ".tar.gz"))
        (sha256
-        (base32
-         "0215hfj0rhlh0grg91qfx75pp6z09bpv8211qdxqihniw7y9a4fs"))
-       (modules '((guix build utils)))
-       (snippet '(begin
-                   (delete-file "tests/Recode.c")
-                   #t))))
+        (base32 "0m59sd1ca0zw1aydpc3m8sw03nc885knmccqryg7byzmqs585ia6"))))
     (build-system gnu-build-system)
     (native-inputs
-     `(("python" ,python-2)
-       ("python2-cython" ,python2-cython)))
+     `(("python" ,python)
+       ("python-cython" ,python-cython)))
     (home-page "https://github.com/rrthomas/recode")
     (synopsis "Text encoding converter")
     (description "The Recode library converts files between character sets and
@@ -121,12 +122,13 @@ handy front-end to the library.")
     (version "1.19")
     (source
      (origin
-       (method url-fetch)
-       (uri (string-append
-             "https://github.com/nijel/enca/archive/" version ".tar.gz"))
+       (method git-fetch)
+       (uri (git-reference
+              (url "https://github.com/nijel/enca")
+              (commit version)))
+       (file-name (git-file-name name version))
        (sha256
-        (base32 "099z526i7qgij7q1w3lvhl88iv3jc3nqxca2i09h6s08ghyrmzf4"))
-       (file-name (string-append name "-" version ".tar.gz"))))
+        (base32 "19q7cwwxmmk5j9438bsqdpjvdjawsd3zmw1zyqgi7s4m0rasr3ah"))))
     (build-system gnu-build-system)
     ;; enca-1.19 tests fail with recent recode.
     ;(inputs `(("recode" ,recode)))
@@ -140,7 +142,7 @@ libenca and several charset conversion libraries and tools.")
 (define-public utf8proc
   (package
     (name "utf8proc")
-    (version "2.4.0")
+    (version "2.5.0")
     (source
      (origin
        (method git-fetch)
@@ -149,26 +151,29 @@ libenca and several charset conversion libraries and tools.")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "1i42hqwc8znqii9brangwkxk5cyc2lk95ip405fg88zr7z2ncr34"))))
+        (base32 "1xlkazhdnja4lksn5c9nf4bln5gjqa35a8gwlam5r0728w0h83qq"))))
     (build-system gnu-build-system)
-    (native-inputs           ;test data that is otherwise downloaded with curl
-     `(("NormalizationTest.txt"
-        ,(origin
-           (method url-fetch)
-           (uri (string-append "https://www.unicode.org/Public/12.1.0/ucd/"
-                               "NormalizationTest.txt"))
-           (sha256
-            (base32 "0hb97k9xv1lr847hwz0719ksqy39s47xw6k01dgs1368jdibvawc"))))
-       ("GraphemeBreakTest.txt"
-        ,(origin
-           (method url-fetch)
-           (uri (string-append "https://www.unicode.org/Public/12.1.0/ucd/"
-                               "auxiliary/GraphemeBreakTest.txt"))
-           (sha256
-            (base32 "0qc90ppmrwfn3y9cdn8jcjrn7qpdf0fhxkwh945yp4rvh37mbgcm"))))
+    (native-inputs
+     (let ((UNICODE_VERSION "13.0.0"))  ; defined in data/Makefile
+       ;; Test data that is otherwise downloaded with curl.
+       `(("NormalizationTest.txt"
+          ,(origin
+             (method url-fetch)
+             (uri (string-append "https://www.unicode.org/Public/"
+                                 UNICODE_VERSION "/ucd/NormalizationTest.txt"))
+             (sha256
+              (base32 "07g0ya4f6zfzvpp24ccxkb2yq568kh83gls85rjl950nv5fya3nn"))))
+         ("GraphemeBreakTest.txt"
+          ,(origin
+             (method url-fetch)
+             (uri (string-append "https://www.unicode.org/Public/"
+                                 UNICODE_VERSION
+                                 "/ucd/auxiliary/GraphemeBreakTest.txt"))
+             (sha256
+              (base32 "07f8rrvcsq4pibdz6zxggxy8w7zjjqyw2ggclqlhalyv45yv7prj"))))
 
-       ;; For tests.
-       ("perl" ,perl)))
+         ;; For tests.
+         ("perl" ,perl))))
     (arguments
      '(#:make-flags (list "CC=gcc"
                           (string-append "prefix=" (assoc-ref %outputs "out")))
@@ -195,7 +200,7 @@ encoding, supporting Unicode version 9.0.0.")
 (define-public libconfuse
   (package
     (name "libconfuse")
-    (version "3.2.2")
+    (version "3.3")
     (source
      (origin
        (method url-fetch)
@@ -203,8 +208,10 @@ encoding, supporting Unicode version 9.0.0.")
                            "releases/download/v" version
                            "/confuse-" version ".tar.xz"))
        (sha256
-        (base32 "02r1mmzik2m0iigbc2da3y754vj24i18r3ml5p2wzs027mjhn959"))))
+        (base32 "043hqqykpprgrkw9s2hbdlxr308a7yxwsgxj4m8aadg1401hmm8x"))))
     (build-system gnu-build-system)
+    (arguments
+     '(#:configure-flags '("--disable-static")))
     (home-page "https://github.com/martinh/libconfuse")
     (synopsis "Configuration file parser library")
     (description "libconfuse is a configuration file parser library.  It
@@ -235,6 +242,7 @@ nested include statements).")
     (native-inputs
      `(("autoconf" ,autoconf)
        ("automake" ,automake)
+       ("gcc" ,gcc-5) ;; doesn't build with later versions
        ("libtool" ,libtool)))
     (home-page "https://github.com/agordon/libgtextutils")
     (synopsis "Gordon's text utils library")
@@ -251,7 +259,7 @@ the Hannon Lab.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/google/cityhash.git")
+                      (url "https://github.com/google/cityhash")
                       (commit commit)))
                 (file-name (string-append name "-" version ".tar.gz"))
                 (sha256
@@ -321,6 +329,112 @@ input bits thoroughly but are not suitable for cryptography.")
     ;; entails."
     (license license:public-domain)))
 
+(define-public ascii2binary
+  (package
+    (name "ascii2binary")
+    (version "2.14")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "http://billposer.org/Software/Downloads/"
+                           "ascii2binary-" version ".tar.bz2"))
+       (sha256
+        (base32 "0dc9fxcdmppbs9s06jvq61zbk552laxps0xyk098gj41697ihd96"))))
+    (build-system gnu-build-system)
+    (native-inputs
+     `(("gettext" ,gettext-minimal)))
+    (home-page "https://billposer.org/Software/a2b.html")
+    (synopsis "Convert between ASCII, hexadecimal and binary representations")
+    (description "The two programs are useful for generating test data, for
+inspecting binary files, and for interfacing programs that generate textual
+output to programs that require binary input and conversely.  They can also be
+useful when it is desired to reformat numbers.
+
+@itemize
+
+@item @command{ascii2binary} reads input consisting of ascii or hexadecimal
+   representation numbers separated by whitespace and produces as output
+   the binary equivalents.  The type and precision of the binary output
+   is selected using command line flags.
+
+@item @command{binary2ascii} reads input consisting of binary numbers
+   and converts them to their ascii or hexadecimal representation.
+   Command line flags specify the type and size of the binary numbers
+   and provide control over the format of the output.
+   Unsigned integers may be written out in binary, octal, decimal,
+   or hexadecimal.
+
+   Signed integers may be written out only in binary or decimal.  Floating
+   point numbers may be written out only decimal, either in standard or
+   scientific notation.  (If you want to examine the binary representation
+   of floating point numbers, just treat the input as a sequence of unsigned
+   characters.)
+
+@end itemize")
+    (license license:gpl3)))
+
+(define-public uniutils
+  (package
+    (name "uniutils")
+    (version "2.27")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "http://billposer.org/Software/Downloads/"
+                           "uniutils-" version ".tar.bz2"))
+       (sha256
+        (base32 "19w1510w87gx7n4qy3zsb0m467a4rn5scvh4ajajg7jh6x5xri08"))))
+    (build-system gnu-build-system)
+    (arguments
+     '(#:configure-flags '("--disable-dependency-tracking")
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'build 'fix-paths
+           (lambda* (#:key outputs inputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out"))
+                   (a2b (assoc-ref inputs "ascii2binary"))
+                   (iconv (assoc-ref inputs "libiconv")))
+               (substitute* "utf8lookup"
+                 (("^ascii2binary ") (string-append a2b "/bin/ascii2binary "))
+                 (("^uniname ") (string-append out "/bin/uniname "))
+                 (("^iconv ") (string-append iconv "/bin/iconv ")))
+             #t))))))
+    (inputs
+     `(("ascii2binary" ,ascii2binary)
+       ("libiconv" ,libiconv)))
+    (home-page "https://billposer.org/Software/unidesc.html")
+    (synopsis "Find out what is in a Unicode file")
+    (description "Useful tools when working with Unicode files when one
+doesn't know the writing system, doesn't have the necessary font, needs to
+inspect invisible characters, needs to find out whether characters have been
+combined or in what order they occur, or needs statistics on which characters
+occur.
+
+@itemize
+
+@item @command{uniname} defaults to printing the character offset of each
+character, its byte offset, its hex code value, its encoding, the glyph
+itself, and its name.  It may also be used to validate UTF-8 input.
+
+@item @command{unidesc} reports the character ranges to which different
+portions of the text belong.   It can also be used to identify Unicode encodings
+(e.g. UTF-16be) flagged by magic numbers.
+
+@item @command{unihist} generates a histogram of the characters in its input.
+
+@item @command{ExplicateUTF8} is intended for debugging or for learning about
+Unicode.  It determines and explains the validity of a sequence of bytes as a
+UTF8 encoding.
+
+@item @command{utf8lookup} provides a handy way to look up Unicode characters
+from the command line.
+
+@item @command{unireverse} reverse each line of UTF-8 input
+character-by-character.
+
+@end itemize")
+    (license license:gpl3)))
+
 (define-public libconfig
   (package
     (name "libconfig")
@@ -347,15 +461,16 @@ application code.")
     (name "pfff")
     (version "1.0")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/pfff/pfff/archive/v"
-                                  version ".tar.gz"))
-              (file-name (string-append name "-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/pfff/pfff")
+                     (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "00m553aa277iarxj6dalmklyb64r7ias49bfwzbacsfg8h3kar8m"))))
+                "1nxkfm7zliq3rmr7yp871sppwfnz71iz364m2sgazny71pzykggc"))))
     (build-system cmake-build-system)
-    (home-page "http://biit.cs.ut.ee/pfff/")
+    (home-page "https://biit.cs.ut.ee/pfff/")
     (synopsis "Probabilistic fast file fingerprinting tool")
     (description
      "pfff is a tool for calculating a compact digital fingerprint of a file
@@ -368,36 +483,27 @@ as existing hashing techniques, with provably negligible risk of collisions.")
 (define-public oniguruma
   (package
     (name "oniguruma")
-    (version "6.9.2")
+    (version "6.9.5-rev1")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://github.com/kkos/"
-                                  "oniguruma/releases/download/v" version
+                                  "oniguruma/releases/download/v"
+                                  ;; If there is a "-" in the version, convert
+                                  ;; to underscore for this part of the URI.
+                                  (string-map (lambda (c) (if (char=? #\- c) #\_ c))
+                                              version)
                                   "/onig-" version ".tar.gz"))
               (sha256
                (base32
-                "0slp4hpw9qxk4xhn7abyw7065sd355xwkyfq72glxczcjsqxsynv"))))
+                "17m92k1n6bvza6m35fpd5g36zwpwm3hfz3478iwj5bvj2sfq8g6k"))))
     (build-system gnu-build-system)
+    (arguments '(#:configure-flags '("--disable-static")))
     (home-page "https://github.com/kkos/oniguruma")
     (synopsis "Regular expression library")
     (description "Oniguruma is a regular expressions library.  The special
 characteristic of this library is that different character encoding for every
 regular expression object can be specified.")
     (license license:bsd-2)))
-
-;; PHP < 7.3.0 requires this old version.  Remove once no longer needed.
-(define-public oniguruma-5
-  (package
-    (inherit oniguruma)
-    (version "5.9.6")
-    (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/kkos/"
-                                  "oniguruma/releases/download/v" version
-                                  "/onig-" version ".tar.gz"))
-              (sha256
-               (base32
-                "19s79vsclqn170mw0ajwv7j37qsbn4f1yjz3yavnhvva6c820r6m"))))))
 
 (define-public antiword
   (package
@@ -467,7 +573,7 @@ runs Word\".")
            (lambda* (#:key outputs #:allow-other-keys)
              (let ((out (assoc-ref outputs "out")))
                (mkdir-p (string-append out "/share/man/man1"))))))))
-    (home-page "http://www.wagner.pp.ru/~vitus/software/catdoc/")
+    (home-page "https://www.wagner.pp.ru/~vitus/software/catdoc/")
     (synopsis "MS-Word to TeX or plain text converter")
     (description "@command{catdoc} extracts text from MS-Word files, trying to
 preserve as many special printable characters as possible.  It supports
@@ -488,14 +594,14 @@ spreadsheets and outputs it in comma-separated-value format, and
     (name "utfcpp")
     (version "2.3.5")
     (source (origin
-              (method url-fetch)
-              (uri
-               (string-append "https://github.com/nemtrif/utfcpp/archive/v"
-                              version ".tar.gz"))
-              (file-name (string-append name "-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/nemtrif/utfcpp")
+                     (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "0gcqcfw19kfim8xw29xdp91l310yfjyrqdj2zsx8xx02dkpy1zzk"))))
+                "1gr98d826z6wa58r1s5i7rz7q2x3r31v7zj0pjjlrc7gfxwklr4s"))))
     (build-system cmake-build-system)
     (arguments
      `(#:out-of-source? #f
@@ -518,15 +624,15 @@ in a portable way.")
 (define-public dbacl
   (package
     (name "dbacl")
-    (version "1.14")
+    (version "1.14.1")
     (source
      (origin
        (method url-fetch)
-       (uri (string-append "http://www.lbreyer.com/gpl/"
+       (uri (string-append "mirror://sourceforge/dbacl/dbacl/" version "/"
                            "dbacl-" version ".tar.gz"))
        (sha256
-        (base32
-         "0224g6x71hyvy7jikfxmgcwww1r5lvk0jx36cva319cb9nmrbrq7"))))
+        (base32 "1gas0112wqjvwn9qg3hxnawk7h3prr0w9b2h68f3p1ifd1kzn3gz"))
+       (patches (search-patches "dbacl-include-locale.h.patch"))))
     (build-system gnu-build-system)
     (arguments
      `(#:make-flags
@@ -554,10 +660,6 @@ in a portable way.")
            (lambda _
              (delete-file "src/tests/dbacl-jap.shin")
              #t))
-         (add-after 'delete-sample6-and-japanese 'autoreconf
-           (lambda _
-             (invoke "autoreconf" "-vif")
-             #t))
          (add-after 'unpack 'fix-test-files
            (lambda* (#:key inputs outputs #:allow-other-keys)
              (let* ((out (assoc-ref outputs "out"))
@@ -567,7 +669,11 @@ in a portable way.")
                   "#PATH=/bin:/usr/bin")
                  (("diff") (string-append (which "diff")))
                  (("tr") (string-append (which "tr"))))
-               #t))))))
+               #t)))
+         (replace 'bootstrap
+           (lambda _
+             (invoke "autoreconf" "-vif")
+             #t)))))
     (inputs
      `(("ncurses" ,ncurses)
        ("perl" ,perl)
@@ -604,7 +710,7 @@ categories.")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/williamh/dotconf.git")
+                    (url "https://github.com/williamh/dotconf")
                     (commit (string-append "v" version))))
               (file-name (git-file-name name version))
               (sha256
@@ -622,6 +728,110 @@ categories.")
      "C library for creating and parsing configuration files.")
     (license (list license:lgpl2.1         ; Main distribution.
                    license:asl1.1))))      ; src/readdir.{c,h}
+
+(define-public drm-tools
+  (package
+    (name "drm-tools")
+    (version "1.1.33")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append "mirror://sourceforge/drmtools/drm_tools-"
+                                  version ".tar.gz"))
+              (sha256
+               (base32
+                "187zbxw21zcg8gpyc13gxlycfw0n05a6rmqq6im5wr9zk1v1wj80"))))
+    (build-system cmake-build-system)
+    (arguments
+     `(#:tests? #f                      ;the test suite fails
+       #:phases (modify-phases %standard-phases
+                  (add-after 'unpack 'set-install-prefixes
+                    (lambda* (#:key outputs #:allow-other-keys)
+                      (let* ((out (assoc-ref outputs "out")))
+                        (substitute* "CMakeLists.txt"
+                          (("tmp/testinstall")
+                           (string-drop out 1))
+                          (("/man/man1")
+                           "/share/man/man1"))
+                        #t)))
+                  (add-after 'unpack 'adjust-test-paths
+                    (lambda _
+                      (substitute* '("test_extract_increment.sh"
+                                     "test_extract_features.sh"
+                                     "test_extract_features2.sh"
+                                     "test_dmath.sh")
+                        (("\\./extract") "extract")
+                        (("\\./dmath") "dmath")
+                        (("/usr/local/bin/") "")
+                        (("/bin/rm") "rm")
+                        (("/bin/cp") "cp"))
+                      #t))
+                  (delete 'check)
+                  ;; The produced binaries are written directly to %output/bin.
+                  (delete 'install)
+                  (add-after 'build 'check
+                    (lambda* (#:key outputs tests? #:allow-other-keys)
+                      (when tests?
+                        (let* ((out (assoc-ref outputs "out"))
+                               (bin (string-append out "/bin")))
+                          (setenv "PATH" (string-append bin ":"
+                                                        (getenv "PATH")))
+                          (with-directory-excursion
+                              (format #f "../drm_tools-~a" ,version)
+                            (invoke "sh" "test_all.sh")))))))))
+    (native-inputs `(("which" ,which))) ;for tests
+    (inputs `(("pcre" ,pcre)))
+    (home-page "http://drmtools.sourceforge.net/")
+    (synopsis "Utilities to manipulate text and binary files")
+    (description "The drm_tools package contains the following commands:
+@table @command
+@item accudate
+An extended version of the \"date\" program that has sub-second accuracy.
+@item binformat
+Format complex binary data into text.
+@item binload
+Load data into a binary file using simple commands from the input.
+@item binorder
+Sort, merge, search, retrieve or generate test data consisting of fixed size
+binary records.
+@item binreplace
+Find or find/replace in binary files.
+@item binsplit
+Split test data consisting of fixed size binary records into one or more
+output streams.
+@item chardiff
+Find changes between two files at the character level.  Unlike \"diff\", it
+lists just the characters that differ, so if the 40,000th character is
+different only that one character will be shown, not the entire line.
+@item columnadd
+Add columns of integers, decimals, and/or times.
+@item datasniffer
+A utility for formatting binary data dumps.
+@item dmath
+Double precision interactive command line math calculator.
+@item extract
+Extract and emit data from text files based on character or token position.
+@item execinput
+A utility that reads from STDIN and executes each line as a command in a
+sub-process.
+@item indexed_text
+A utility for rapid retrieval of text by line numbers, in any order, from a
+text file.
+@item mdump
+Format binary data.
+@item msgqueue
+Create message queues and send/receive messages.
+@item mbin
+@itemx mbout
+Multiple buffer in and out.  Used for buffering a lot of data between a slow
+device and a fast device.  Mostly for buffering streaming tape drives for use
+with slower network connections, so that streaming is maintained as much as
+possible to minimize wear on the tape device.
+@item pockmark
+Corrupt data streams - useful for testing error correction and data recovery.
+@item tarsieve
+Filter, list, or split a tar file.
+@end table")
+    (license license:gpl2+)))
 
 (define-public java-rsyntaxtextarea
   (package
@@ -668,7 +878,7 @@ source code.")
        (origin
          (method git-fetch)
          (uri (git-reference
-               (url "https://github.com/aflc/editdistance.git")
+               (url "https://github.com/aflc/editdistance")
                (commit commit)))
          (file-name (git-file-name name version))
          (sha256
@@ -786,6 +996,44 @@ indentation.
     (home-page "http://docx2txt.sourceforge.net")
     (license license:gpl3+)))
 
+(define-public odt2txt
+  (package
+    (name "odt2txt")
+    (version "0.5")
+    (source
+      (origin
+        (method git-fetch)
+        (uri (git-reference
+               (url "https://github.com/dstosberg/odt2txt/")
+               (commit (string-append "v" version))))
+        (file-name (git-file-name name version))
+        (sha256
+         (base32
+          "0im3kzvhxkjlx57w6h13mc9584c74ma1dyymgvpq2y61av3gc35v"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:tests? #f ; no make check
+       #:make-flags (list "CC=gcc"
+                          (string-append "DESTDIR=" (assoc-ref %outputs "out")))
+       #:phases
+       (modify-phases %standard-phases
+         ;; no configure script
+         (delete 'configure))))
+    (inputs
+     `(("zlib" ,zlib)))
+    (home-page "https://github.com/dstosberg/odt2txt/")
+    (synopsis "Converter from OpenDocument Text to plain text")
+    (description "odt2txt is a command-line tool which extracts the text out
+of OpenDocument Texts, as produced by OpenOffice.org, KOffice, StarOffice and
+others.
+
+odt2txt can also extract text from some file formats similar to OpenDocument
+Text, such as OpenOffice.org XML (*.sxw), which was used by OpenOffice.org
+version 1.x and older StarOffice versions.  To a lesser extent, odt2txt may be
+useful to extract content from OpenDocument spreadsheets (*.ods) and
+OpenDocument presentations (*.odp).")
+    (license license:gpl2)))
+
 (define-public opencc
   (package
     (name "opencc")
@@ -839,7 +1087,7 @@ Mainland China, Taiwan, and Hong-Kong.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/nurse/nkf.git")
+                      (url "https://github.com/nurse/nkf")
                       (commit commit)))
                 (file-name (git-file-name name version))
                 (sha256
@@ -885,3 +1133,33 @@ instance one can add new syntax elements to markdown, etc.
 
 This package provides Python bindings.")
     (license license:bsd-3)))
+
+(define-public aha
+  (package
+    (name "aha")
+    (version "0.5")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/theZiz/aha")
+             (commit version)))
+       (sha256
+        (base32
+         "0byml4rmpiaalwx69jcixl3yvpvwmwiss1jzgsqwshilb2p4qnmz"))
+       (file-name (git-file-name name version))))
+    (build-system gnu-build-system)
+    (arguments
+     '(#:phases
+       (modify-phases %standard-phases
+         (delete 'configure))
+       #:make-flags (list "CC=gcc"
+                          (string-append "PREFIX="
+                                         (assoc-ref %outputs "out")))
+       ;; no check target
+       #:tests? #f))
+    (home-page "https://github.com/theZiz/aha")
+    (synopsis "Converts terminal escape sequences to HTML")
+    (description "@command{aha} (Ansi Html Adapter) converts ANSI escape sequences
+of a Unix terminal to HTML code.")
+    (license (list license:lgpl2.0+ license:mpl1.1))))

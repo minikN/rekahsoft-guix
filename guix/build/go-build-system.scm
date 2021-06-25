@@ -2,6 +2,8 @@
 ;;; Copyright © 2016 Petter <petter@mykolab.ch>
 ;;; Copyright © 2017, 2019 Leo Famulari <leo@famulari.name>
 ;;; Copyright © 2019 Maxim Cournoyer <maxim.cournoyer@gmail.com>
+;;; Copyright © 2020 Jack Hill <jackhill@jackhill.us>
+;;; Copyright © 2020 Jakub Kądziołka <kuba@kadziolka.net>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -141,6 +143,10 @@ dependencies, so it should be self-contained."
   ;; Using the current working directory as GOPATH makes it easier for packagers
   ;; who need to manipulate the unpacked source code.
   (setenv "GOPATH" (getcwd))
+  ;; Go 1.13 uses go modules by default. The go build system does not
+  ;; currently support modules, so turn modules off to continue using the old
+  ;; GOPATH behavior.
+  (setenv "GO111MODULE" "off")
   (setenv "GOBIN" (string-append (assoc-ref outputs "out") "/bin"))
   (let ((tmpdir (tmpnam)))
     (match (go-inputs inputs)
@@ -209,18 +215,18 @@ unpacking."
                 (_ #f))
               inputs))))
 
-(define* (build #:key import-path #:allow-other-keys)
+(define* (build #:key import-path build-flags #:allow-other-keys)
   "Build the package named by IMPORT-PATH."
   (with-throw-handler
     #t
     (lambda _
-      (invoke "go" "install"
+      (apply invoke "go" "install"
               "-v" ; print the name of packages as they are compiled
               "-x" ; print each command as it is invoked
               ;; Respectively, strip the symbol table and debug
               ;; information, and the DWARF symbol table.
               "-ldflags=-s -w"
-              import-path))
+              `(,@build-flags ,import-path)))
     (lambda (key . args)
       (display (string-append "Building '" import-path "' failed.\n"
                               "Here are the results of `go env`:\n"))
@@ -237,7 +243,7 @@ unpacking."
   "Install the source code of IMPORT-PATH to the primary output directory.
 Compiled executable files (Go \"commands\") should have already been installed
 to the store based on $GOBIN in the build phase.
-XXX We can't make us of compiled libraries (Go \"packages\")."
+XXX We can't make use of compiled libraries (Go \"packages\")."
   (when install-source?
     (if (string-null? import-path)
         ((display "WARNING: The Go import path is unset.\n")))

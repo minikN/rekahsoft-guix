@@ -2,6 +2,10 @@
 ;;; Copyright © 2014, 2015, 2016, 2017, 2018 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2016, 2017 David Craven <david@craven.ch>
 ;;; Copyright © 2017 Mathieu Othacehe <m.othacehe@gmail.com>
+;;; Copyright © 2019 Guillaume Le Vaillant <glv@posteo.net>
+;;; Copyright © 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2019 David C. Trudgian <dave@trudgian.net>
+;;; Copyright © 2020 Maxim Cournoyer <maxim.cournoyer@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -93,6 +97,47 @@ takes a bytevector and returns #t when it's a valid superblock."
 
 (define null-terminated-latin1->string
   (cut latin1->string <> zero?))
+
+(define (bytevector-utf16-length bv)
+  "Given a bytevector BV containing a NUL-terminated UTF16-encoded string,
+determine where the NUL terminator is and return its index.  If there's no
+NUL terminator, return the size of the bytevector."
+  (let ((length (bytevector-length bv)))
+    (let loop ((index 0))
+      (if (< index length)
+          (if (zero? (bytevector-u16-ref bv index 'little))
+              index
+              (loop (+ index 2)))
+          length))))
+
+(define* (bytevector->u16-list bv endianness #:optional (index 0))
+  (if (< index (bytevector-length bv))
+      (cons (bytevector-u16-ref bv index endianness)
+            (bytevector->u16-list bv endianness (+ index 2)))
+      '()))
+
+;; The initrd doesn't have iconv data, so do the conversion ourselves.
+(define (utf16->string bv endianness)
+  (list->string
+   (map integer->char
+        (reverse
+         (let loop ((remainder (bytevector->u16-list bv endianness))
+                    (result '()))
+             (match remainder
+              (() result)
+              ((a) (cons a result))
+              ((a b x ...)
+               (if (and (>= a #xD800) (< a #xDC00) ; high surrogate
+                        (>= b #xDC00) (< b #xE000)) ; low surrogate
+                   (loop x (cons (+ #x10000
+                                    (* #x400 (- a #xD800))
+                                    (- b #xDC00))
+                                 result))
+                   (loop (cons b x) (cons a result))))))))))
+
+(define (null-terminated-utf16->string bv endianness)
+  (utf16->string (sub-bytevector bv 0 (bytevector-utf16-length bv))
+                 endianness))
 
 
 ;;;
@@ -295,12 +340,109 @@ string.  Trailing spaces are trimmed."
 
 
 ;;;
+;;; JFS file systems.
+;;;
+
+;; Taken from <linux-libre>/fs/jfs/jfs_superblock.h.
+
+(define-syntax %jfs-endianness
+  ;; Endianness of JFS file systems.
+  (identifier-syntax (endianness little)))
+
+(define (jfs-superblock? sblock)
+  "Return #t when SBLOCK is a JFS superblock."
+  (bytevector=? (sub-bytevector sblock 0 4)
+                (string->utf8 "JFS1")))
+
+(define (read-jfs-superblock device)
+  "Return the raw contents of DEVICE's JFS superblock as a bytevector, or #f
+if DEVICE does not contain a JFS file system."
+  (read-superblock device 32768 184 jfs-superblock?))
+
+(define (jfs-superblock-uuid sblock)
+  "Return the UUID of JFS superblock SBLOCK as a 16-byte bytevector."
+  (sub-bytevector sblock 136 16))
+
+(define (jfs-superblock-volume-name sblock)
+  "Return the volume name of SBLOCK as a string of at most 16 characters, or
+#f if SBLOCK has no volume name."
+  (null-terminated-latin1->string (sub-bytevector sblock 152 16)))
+
+(define (check-jfs-file-system device)
+  "Return the health of a JFS file system on DEVICE."
+  (match (status:exit-val
+          (system* "jfs_fsck" "-p" "-v" device))
+    (0 'pass)
+    (1 'errors-corrected)
+    (2 'reboot-required)
+    (_ 'fatal-error)))
+
+
+;;;
+;;; F2FS (Flash-Friendly File System)
+;;;
+
+;;; https://git.kernel.org/pub/scm/linux/kernel/git/jaegeuk/f2fs.git/tree/include/linux/f2fs_fs.h
+;;; (but using xxd proved to be simpler)
+
+(define-syntax %f2fs-endianness
+  ;; Endianness of F2FS file systems
+  (identifier-syntax (endianness little)))
+
+;; F2FS actually stores two adjacent copies of the superblock.
+;; should we read both?
+(define (f2fs-superblock? sblock)
+  "Return #t when SBLOCK is an F2FS superblock."
+  (let ((magic (bytevector-u32-ref sblock 0 %f2fs-endianness)))
+    (= magic #xF2F52010)))
+
+(define (read-f2fs-superblock device)
+  "Return the raw contents of DEVICE's F2FS superblock as a bytevector, or #f
+if DEVICE does not contain an F2FS file system."
+  (read-superblock device
+                   ;; offset of magic in first copy
+                   #x400
+                   ;; difference between magic of second
+                   ;; and first copies
+                   (- #x1400 #x400)
+                   f2fs-superblock?))
+
+(define (f2fs-superblock-uuid sblock)
+  "Return the UUID of F2FS superblock SBLOCK as a 16-byte bytevector."
+  (sub-bytevector sblock
+                  (- (+ #x460 12)
+                     ;; subtract superblock offset
+                     #x400)
+                  16))
+
+(define (f2fs-superblock-volume-name sblock)
+  "Return the volume name of SBLOCK as a string of at most 512 characters, or
+#f if SBLOCK has no volume name."
+  (null-terminated-utf16->string
+   (sub-bytevector sblock (- (+ #x470 12) #x400) 512)
+   %f2fs-endianness))
+
+(define (check-f2fs-file-system device)
+  "Return the health of a F2FS file system on DEVICE."
+  (match (status:exit-val
+          (system* "fsck.f2fs" "-p" device))
+    ;; 0 and -1 are the only two possibilities
+    ;; (according to the manpage)
+    (0 'pass)
+    (_ 'fatal-error)))
+
+
+;;;
 ;;; LUKS encrypted devices.
 ;;;
 
 ;; The LUKS header format is described in "LUKS On-Disk Format Specification":
 ;; <https://gitlab.com/cryptsetup/cryptsetup/wikis/Specification>.  We follow
 ;; version 1.2.1 of this document.
+
+;; The LUKS2 header format is described in "LUKS2 On-Disk Format Specification":
+;; <https://gitlab.com/cryptsetup/LUKS2-docs/blob/master/luks2_doc_wip.pdf>.
+;; It is a WIP document.
 
 (define-syntax %luks-endianness
   ;; Endianness of LUKS headers.
@@ -315,12 +457,16 @@ string.  Trailing spaces are trimmed."
   (let ((magic   (sub-bytevector sblock 0 6))
         (version (bytevector-u16-ref sblock 6 %luks-endianness)))
     (and (bytevector=? magic %luks-magic)
-         (= version 1))))
+         (or (= version 1) (= version 2)))))
 
 (define (read-luks-header file)
   "Read a LUKS header from FILE.  Return the raw header on success, and #f if
 not valid header was found."
-  ;; Size in bytes of the LUKS header, including key slots.
+  ;; Size in bytes of the LUKS binary header, which includes key slots in
+  ;; LUKS1.  In LUKS2 the binary header is partially backward compatible, so
+  ;; that UUID can be extracted as for LUKS1. Keyslots and other metadata are
+  ;; not part of this header in LUKS2, but are included in the JSON metadata
+  ;; area that follows.
   (read-superblock file 0 592 luks-superblock?))
 
 (define (luks-header-uuid header)
@@ -329,6 +475,42 @@ not valid header was found."
   ;; bytes of its ASCII representation.
   (let ((uuid (sub-bytevector header 168 36)))
     (string->uuid (utf8->string uuid))))
+
+
+;;;
+;;; NTFS file systems.
+;;;
+
+;; Taken from <linux-libre>/fs/ntfs/layout.h
+
+(define-syntax %ntfs-endianness
+  ;; Endianness of NTFS file systems.
+  (identifier-syntax (endianness little)))
+
+(define (ntfs-superblock? sblock)
+  "Return #t when SBLOCK is a NTFS superblock."
+  (bytevector=? (sub-bytevector sblock 3 8)
+                (string->utf8 "NTFS    ")))
+
+(define (read-ntfs-superblock device)
+  "Return the raw contents of DEVICE's NTFS superblock as a bytevector, or #f
+if DEVICE does not contain a NTFS file system."
+  (read-superblock device 0 511 ntfs-superblock?))
+
+(define (ntfs-superblock-uuid sblock)
+  "Return the UUID of NTFS superblock SBLOCK as a 8-byte bytevector."
+  (sub-bytevector sblock 72 8))
+
+;; TODO: Add ntfs-superblock-volume-name.  The partition label is not stored
+;; in the BOOT SECTOR like the UUID, but in the MASTER FILE TABLE, which seems
+;; way harder to access.
+
+(define (check-ntfs-file-system device)
+  "Return the health of a NTFS file system on DEVICE."
+  (match (status:exit-val
+          (system* "ntfsfix" device))
+    (0 'pass)
+    (_ 'fatal-error)))
 
 
 ;;;
@@ -419,7 +601,11 @@ partition field reader that returned a value."
         (partition-field-reader read-fat32-superblock
                                 fat32-superblock-volume-name)
         (partition-field-reader read-fat16-superblock
-                                fat16-superblock-volume-name)))
+                                fat16-superblock-volume-name)
+        (partition-field-reader read-jfs-superblock
+                                jfs-superblock-volume-name)
+        (partition-field-reader read-f2fs-superblock
+                                f2fs-superblock-volume-name)))
 
 (define %partition-uuid-readers
   (list (partition-field-reader read-iso9660-superblock
@@ -431,7 +617,13 @@ partition field reader that returned a value."
         (partition-field-reader read-fat32-superblock
                                 fat32-superblock-uuid)
         (partition-field-reader read-fat16-superblock
-                                fat16-superblock-uuid)))
+                                fat16-superblock-uuid)
+        (partition-field-reader read-jfs-superblock
+                                jfs-superblock-uuid)
+        (partition-field-reader read-f2fs-superblock
+                                f2fs-superblock-uuid)
+        (partition-field-reader read-ntfs-superblock
+                                ntfs-superblock-uuid)))
 
 (define read-partition-label
   (cut read-partition-field <> %partition-label-readers))
@@ -507,8 +699,10 @@ were found."
 
   (match spec
     ((? string?)
-     ;; Nothing to do, but wait until SPEC shows up.
-     (resolve identity spec identity))
+     (if (string-contains spec ":/")
+         spec                  ; do not resolve NFS devices
+         ;; Nothing to do, but wait until SPEC shows up.
+         (resolve identity spec identity)))
     ((? file-system-label?)
      ;; Resolve the label.
      (resolve find-partition-by-label
@@ -526,6 +720,10 @@ were found."
      ((string-prefix? "ext" type) check-ext2-file-system)
      ((string-prefix? "btrfs" type) check-btrfs-file-system)
      ((string-suffix? "fat" type) check-fat-file-system)
+     ((string-prefix? "jfs" type) check-jfs-file-system)
+     ((string-prefix? "f2fs" type) check-f2fs-file-system)
+     ((string-prefix? "ntfs" type) check-ntfs-file-system)
+     ((string-prefix? "nfs" type) (const 'pass))
      (else #f)))
 
   (if check-procedure
@@ -577,15 +775,15 @@ corresponds to the symbols listed in FLAGS."
        (logior MS_NOEXEC (loop rest)))
       (('no-atime rest ...)
        (logior MS_NOATIME (loop rest)))
+      (('strict-atime rest ...)
+       (logior MS_STRICTATIME (loop rest)))
+      (('lazy-time rest ...)
+       (logior MS_LAZYTIME (loop rest)))
       (()
        0))))
 
 (define* (mount-file-system fs #:key (root "/root"))
-  "Mount the file system described by FS, a <file-system> object, under ROOT.
-
-DEVICE, MOUNT-POINT, and TYPE must be strings; OPTIONS can be a string or #f;
-FLAGS must be a list of symbols.  CHECK? is a Boolean indicating whether to
-run a file system check."
+  "Mount the file system described by FS, a <file-system> object, under ROOT."
 
   (define (mount-nfs source mount-point type flags options)
     (let* ((idx (string-rindex source #\:))
@@ -616,26 +814,33 @@ run a file system check."
     (when (file-system-check? fs)
       (check-file-system source type))
 
-    ;; Create the mount point.  Most of the time this is a directory, but
-    ;; in the case of a bind mount, a regular file or socket may be needed.
-    (if (and (= MS_BIND (logand flags MS_BIND))
-             (not (file-is-directory? source)))
-        (unless (file-exists? mount-point)
-          (mkdir-p (dirname mount-point))
-          (call-with-output-file mount-point (const #t)))
-        (mkdir-p mount-point))
+    (catch 'system-error
+      (lambda ()
+        ;; Create the mount point.  Most of the time this is a directory, but
+        ;; in the case of a bind mount, a regular file or socket may be
+        ;; needed.
+        (if (and (= MS_BIND (logand flags MS_BIND))
+                 (not (file-is-directory? source)))
+            (unless (file-exists? mount-point)
+              (mkdir-p (dirname mount-point))
+              (call-with-output-file mount-point (const #t)))
+            (mkdir-p mount-point))
 
-    (cond
-     ((string-prefix? "nfs" type)
-      (mount-nfs source mount-point type flags options))
-     (else
-      (mount source mount-point type flags options)))
+        (cond
+         ((string-prefix? "nfs" type)
+          (mount-nfs source mount-point type flags options))
+         (else
+          (mount source mount-point type flags options)))
 
-    ;; For read-only bind mounts, an extra remount is needed, as per
-    ;; <http://lwn.net/Articles/281157/>, which still applies to Linux 4.0.
-    (when (and (= MS_BIND (logand flags MS_BIND))
-               (= MS_RDONLY (logand flags MS_RDONLY)))
-      (let ((flags (logior MS_BIND MS_REMOUNT MS_RDONLY)))
-        (mount source mount-point type flags #f)))))
+        ;; For read-only bind mounts, an extra remount is needed, as per
+        ;; <http://lwn.net/Articles/281157/>, which still applies to Linux
+        ;; 4.0.
+        (when (and (= MS_BIND (logand flags MS_BIND))
+                   (= MS_RDONLY (logand flags MS_RDONLY)))
+          (let ((flags (logior MS_BIND MS_REMOUNT MS_RDONLY)))
+            (mount source mount-point type flags #f))))
+      (lambda args
+        (or (file-system-mount-may-fail? fs)
+            (apply throw args))))))
 
 ;;; file-systems.scm ends here

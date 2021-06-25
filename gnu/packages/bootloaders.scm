@@ -2,13 +2,17 @@
 ;;; Copyright © 2013, 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2015, 2018 Mark H Weaver <mhw@netris.org>
 ;;; Copyright © 2015 Leo Famulari <leo@famulari.name>
-;;; Copyright © 2016 Jan Nieuwenhuizen <janneke@gnu.org>
+;;; Copyright © 2016, 2020 Jan (janneke) Nieuwenhuizen <janneke@gnu.org>
 ;;; Copyright © 2016, 2017, 2018 Marius Bakke <mbakke@fastmail.com>
 ;;; Copyright © 2016, 2017 Danny Milosavljevic <dannym@scratchpost.org>
 ;;; Copyright © 2016, 2017 David Craven <david@craven.ch>
 ;;; Copyright © 2017, 2018 Efraim Flashner <efraim@flashner.co.il>
-;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2019 nee <nee@cock.li>
+;;; Copyright © 2019 Mathieu Othacehe <m.othacehe@gmail.com>
+;;; Copyright © 2020 Björn Höfling <bjoern.hoefling@bjoernhoefling.de>
+;;; Copyright © 2018, 2019, 2020 Vagrant Cascadian <vagrant@debian.org>
+;;; Copyright © 2020 Pierre Langlois <pierre.langlois@gmx.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -28,7 +32,7 @@
 (define-module (gnu packages bootloaders)
   #:use-module (gnu packages)
   #:use-module (gnu packages admin)
-  #:use-module ((gnu packages algebra) #:select (bc))
+  #:use-module (gnu packages algebra)
   #:use-module (gnu packages assembly)
   #:use-module (gnu packages base)
   #:use-module (gnu packages disk)
@@ -89,7 +93,11 @@
              (sha256
               (base32
                "0zgp5m3hmc9jh8wpjx6czzkh5id2y8n1k823x2mjvm2sk6b28ag5"))
-             (patches (search-patches "grub-efi-fat-serial-number.patch"))))
+             (patches (search-patches
+                       "grub-efi-fat-serial-number.patch"
+                       "grub-setup-root.patch"
+                       "grub-verifiers-Blocklist-fallout-cleanup.patch"
+                       "grub-cross-system-i686.patch"))))
     (build-system gnu-build-system)
     (arguments
      `(#:configure-flags
@@ -99,7 +107,7 @@
        (list "PYTHON=true")
        #:phases (modify-phases %standard-phases
                   (add-after 'unpack 'patch-stuff
-                   (lambda* (#:key inputs #:allow-other-keys)
+                   (lambda* (#:key native-inputs inputs #:allow-other-keys)
                      (substitute* "grub-core/Makefile.in"
                        (("/bin/sh") (which "sh")))
 
@@ -114,7 +122,9 @@
                                        "/sbin/mdadm\"")))
 
                      ;; Make the font visible.
-                     (copy-file (assoc-ref inputs "unifont") "unifont.bdf.gz")
+                     (copy-file (assoc-ref (or native-inputs inputs)
+                                           "unifont")
+                                "unifont.bdf.gz")
                      (system* "gunzip" "unifont.bdf.gz")
 
                      ;; Give the absolute file name of 'ckbcomp'.
@@ -148,11 +158,19 @@
 
        ;; Depend on LVM2 for libdevmapper, used by 'grub-probe' and
        ;; 'grub-install' to recognize mapped devices (LUKS, etc.)
-       ("lvm2" ,lvm2)
+       ,@(if (member (or (%current-target-system)
+                         (%current-system))
+                     (package-supported-systems lvm2))
+             `(("lvm2" ,lvm2))
+             '())
 
        ;; Depend on mdadm, which is invoked by 'grub-probe' and 'grub-install'
        ;; to determine whether the root file system is RAID.
-       ("mdadm" ,mdadm)
+       ,@(if (member (or (%current-target-system)
+                         (%current-system))
+                     (package-supported-systems mdadm))
+             `(("mdadm" ,mdadm))
+             '())
 
        ;; Console-setup's ckbcomp is invoked by grub-kbdcomp.  It is required
        ;; for generating alternative keyboard layouts.
@@ -160,7 +178,11 @@
 
        ;; Needed for ‘grub-mount’, the only reliable way to tell whether a given
        ;; file system will be readable by GRUB without rebooting.
-       ("fuse" ,fuse)
+       ,@(if (member (or (%current-target-system)
+                         (%current-system))
+                     (package-supported-systems fuse))
+             `(("fuse" ,fuse))
+             '())
 
        ("freetype" ,freetype)
        ;; ("libusb" ,libusb)
@@ -169,10 +191,7 @@
      `(("pkg-config" ,pkg-config)
        ("unifont" ,unifont)
        ("bison" ,bison)
-       ;; Due to a bug in flex >= 2.6.2, GRUB must be built with an older flex:
-       ;; <http://lists.gnu.org/archive/html/grub-devel/2017-02/msg00133.html>
-       ;; TODO Try building with flex > 2.6.4.
-       ("flex" ,flex-2.6.1)
+       ("flex" ,flex)
        ("texinfo" ,texinfo)
        ("help2man" ,help2man)
 
@@ -195,7 +214,9 @@
        ;; Dependencies for the test suite.  The "real" QEMU is needed here,
        ;; because several targets are used.
        ("parted" ,parted)
-       ("qemu" ,qemu-minimal-2.10)
+       ,@(if (member (%current-system) (package-supported-systems qemu-minimal))
+             `(("qemu" ,qemu-minimal))
+             '())
        ("xorriso" ,xorriso)))
     (home-page "https://www.gnu.org/software/grub/")
     (synopsis "GRand Unified Boot loader")
@@ -208,6 +229,33 @@ on the same computer; upon booting the computer, the user is presented with a
 menu to select one of the installed operating systems.")
     (license license:gpl3+)
     (properties '((cpe-name . "grub2")))))
+
+(define-public grub-minimal
+  (package
+    (inherit grub)
+    (name "grub-minimal")
+    (inputs
+     (fold alist-delete (package-inputs grub)
+           '("lvm2" "mdadm" "fuse" "console-setup")))
+    (native-inputs
+     (fold alist-delete (package-native-inputs grub)
+           '("help2man" "texinfo" "parted" "qemu" "xorriso")))
+    (arguments
+     `(#:configure-flags (list "PYTHON=true")
+       #:phases (modify-phases %standard-phases
+                  (add-after 'unpack 'patch-stuff
+                   (lambda* (#:key native-inputs inputs #:allow-other-keys)
+                     (substitute* "grub-core/Makefile.in"
+                       (("/bin/sh") (which "sh")))
+
+                     ;; Make the font visible.
+                     (copy-file (assoc-ref (or native-inputs inputs)
+                                           "unifont")
+                                "unifont.bdf.gz")
+                     (system* "gunzip" "unifont.bdf.gz")
+
+                     #t)))
+       #:tests? #f))))
 
 (define-public grub-efi
   (package
@@ -302,7 +350,7 @@ menu to select one of the installed operating systems.")
          ("perl" ,perl)
          ("python-2" ,python-2)))
       (inputs
-       `(("libuuid" ,util-linux)
+       `(("libuuid" ,util-linux "lib")
          ("mtools" ,mtools)))
       (arguments
        `(#:parallel-build? #f
@@ -355,7 +403,7 @@ menu to select one of the installed operating systems.")
 (define-public dtc
   (package
     (name "dtc")
-    (version "1.5.0")
+    (version "1.5.1")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -363,7 +411,7 @@ menu to select one of the installed operating systems.")
                     "dtc-" version ".tar.xz"))
               (sha256
                (base32
-                "0wh10p42hf5403ipvs0dsxddb6kzfyk2sq4fgid9zqzpr51y8wn6"))))
+                "07q3mdsvl4smbiakriq3hnsyyd0q344lsm306q0kgz4hjq1p82v6"))))
     (build-system gnu-build-system)
     (native-inputs
      `(("bison" ,bison)
@@ -373,10 +421,15 @@ menu to select one of the installed operating systems.")
        ("swig" ,swig)
        ("valgrind" ,valgrind)))
     (inputs
-     `(("python-2" ,python-2)))
+     `(("python" ,python)))
     (arguments
      `(#:make-flags
        (list "CC=gcc"
+
+             ;; /bin/fdt{get,overlay,put} need help finding libfdt.so.1.
+             (string-append "LDFLAGS=-Wl,-rpath="
+                            (assoc-ref %outputs "out") "/lib")
+
              (string-append "PREFIX=" (assoc-ref %outputs "out"))
              (string-append "SETUP_PREFIX=" (assoc-ref %outputs "out"))
              "INSTALL=install")
@@ -393,7 +446,7 @@ tree binary files.  These are board description files used by Linux and BSD.")
 (define u-boot
   (package
     (name "u-boot")
-    (version "2019.04")
+    (version "2020.07")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -401,20 +454,18 @@ tree binary files.  These are board description files used by Linux and BSD.")
                     "u-boot-" version ".tar.bz2"))
               (sha256
                (base32
-                "1vwv4bgbl7fjcm073zrphn17hnz5h5h778f88ivdsgbb2lnpgdvn"))
-              (patches
-               (search-patches
-                "u-boot-fix-mkimage-header-verification.patch"))))
+                "0sjzy262x93aaqd6z24ziaq19xjjjk5f577ivf768vmvwsgbzxf1"))))
     (native-inputs
      `(("bc" ,bc)
        ("bison" ,bison)
        ("dtc" ,dtc)
        ("flex" ,flex)
        ("lz4" ,lz4)
-       ("python-2" ,python-2)
-       ("python2-coverage" ,python2-coverage)
-       ("python2-pytest" ,python2-pytest)
-       ("sdl" ,sdl)
+       ("perl" ,perl)
+       ("python" ,python)
+       ("python-coverage" ,python-coverage)
+       ("python-pytest" ,python-pytest)
+       ("sdl2" ,sdl2)
        ("swig" ,swig)))
     (build-system  gnu-build-system)
     (home-page "https://www.denx.de/wiki/U-Boot/")
@@ -440,19 +491,22 @@ also initializes the boards (RAM etc).")
              (substitute* "tools/dtoc/fdt_util.py"
               (("'cc'") "'gcc'"))
              (substitute* "tools/patman/test_util.py"
-              ;; python-coverage is simply called coverage in guix.
-              (("python-coverage") "coverage")
+              ;; python*-coverage is simply called coverage in guix.
+              (("%s-coverage") "coverage")
               ;; XXX Allow for only 99% test coverage.
               ;; TODO: Find out why that is needed.
               (("if coverage != '100%':") "if not int(coverage.rstrip('%')) >= 99:"))
              (substitute* "test/run"
               ;; Make it easier to find test failures.
               (("#!/bin/bash") "#!/bin/bash -x")
-              ;; pytest doesn't find it otherwise.
-              (("test/py/tests/test_ofplatdata.py")
-               "tests/test_ofplatdata.py")
               ;; This test would require git.
               (("\\./tools/patman/patman") (which "true"))
+              ;; FIXME: test fails, needs further investiation
+              (("run_test \"binman\"") ": run_test \"binman\"")
+              ;; FIXME: code coverage not working
+              (("run_test \"binman code coverage\"") ": run_test \"binman code coverage\"")
+              (("run_test \"dtoc code coverage\"") ": run_test \"dtoc code coverage\"")
+              (("run_test \"fdt code coverage\"") ": run_test \"fdt code coverage\"")
               ;; This test would require internet access.
               (("\\./tools/buildman/buildman") (which "true")))
              (substitute* "test/py/tests/test_sandbox_exit.py"
@@ -472,14 +526,11 @@ def test_ctrl_c"))
                                   ;; This test requires a sound system, which is un-used
                                   ;; in u-boot-tools.
                                   (("CONFIG_SOUND=y") "CONFIG_SOUND=n")))
-                              (find-files "configs" "sandbox_.*defconfig$"))
+                              (find-files "configs" "sandbox_.*defconfig$|tools-only_defconfig"))
              #t))
          (replace 'configure
            (lambda* (#:key make-flags #:allow-other-keys)
-             (call-with-output-file "configs/tools_defconfig"
-               (lambda (port)
-                 (display "CONFIG_SYS_TEXT_BASE=0\n" port)))
-             (apply invoke "make" "tools_defconfig" make-flags)))
+             (apply invoke "make" "tools-only_defconfig" make-flags)))
          (replace 'build
            (lambda* (#:key inputs make-flags #:allow-other-keys)
              (apply invoke "make" "tools-all" make-flags)))
@@ -534,9 +585,9 @@ board-independent tools.")))
                                                      "_" "-")))
       (native-inputs
        `(,@(if (not (same-arch?))
-             `(("cross-gcc" ,(cross-gcc triplet #:xgcc gcc-7))
+             `(("cross-gcc" ,(cross-gcc triplet))
                ("cross-binutils" ,(cross-binutils triplet)))
-             `(("gcc-7" ,gcc-7)))
+             `())
          ,@(package-native-inputs u-boot)))
       (arguments
        `(#:modules ((ice-9 ftw)
@@ -641,9 +692,11 @@ it fits within common partitioning schemes.")
           ((#:phases phases)
            `(modify-phases ,phases
               (add-after 'unpack 'set-environment
-                (lambda* (#:key inputs #:allow-other-keys)
-                  (let ((bl31 (string-append (assoc-ref inputs "firmware")
-                                             "/bl31.bin")))
+                (lambda* (#:key native-inputs inputs #:allow-other-keys)
+                  (let ((bl31
+                         (string-append
+                          (assoc-ref (or native-inputs inputs) "firmware")
+                          "/bl31.bin")))
                     (setenv "BL31" bl31)
                     ;; This is necessary when we're using the bundled dtc.
                     ;(setenv "PATH" (string-append (getenv "PATH") ":"
@@ -657,8 +710,24 @@ it fits within common partitioning schemes.")
 (define-public u-boot-pine64-plus
   (make-u-boot-sunxi64-package "pine64_plus" "aarch64-linux-gnu"))
 
+(define-public u-boot-pine64-lts
+  (make-u-boot-sunxi64-package "pine64-lts" "aarch64-linux-gnu"))
+
 (define-public u-boot-pinebook
-  (make-u-boot-sunxi64-package "pinebook" "aarch64-linux-gnu"))
+  (let ((base (make-u-boot-sunxi64-package "pinebook" "aarch64-linux-gnu")))
+    (package
+      (inherit base)
+      (arguments
+       (substitute-keyword-arguments (package-arguments base)
+         ((#:phases phases)
+          `(modify-phases ,phases
+             (add-after 'unpack 'patch-pinebook-config
+               ;; Fix regression with LCD video output introduced in 2020.01
+               ;; https://patchwork.ozlabs.org/patch/1225130/
+               (lambda _
+                 (substitute* "configs/pinebook_defconfig"
+                   (("CONFIG_VIDEO_BRIDGE_ANALOGIX_ANX6345=y") "CONFIG_VIDEO_BRIDGE_ANALOGIX_ANX6345=y\nCONFIG_VIDEO_BPP32=y"))
+                 #t)))))))))
 
 (define-public u-boot-bananapi-m2-ultra
   (make-u-boot-package "Bananapi_M2_Ultra" "arm-linux-gnueabihf"))
@@ -739,6 +808,99 @@ to Novena upstream, does not load u-boot.img from the first partition.")
          ("firmware-m0" ,rk3399-cortex-m0)
          ,@(package-native-inputs base))))))
 
+(define-public u-boot-qemu-riscv64
+  (make-u-boot-package "qemu-riscv64" "riscv64-linux-gnu"))
+
+(define-public u-boot-qemu-riscv64-smode
+  (let ((base (make-u-boot-package "qemu-riscv64_smode" "riscv64-linux-gnu")))
+    (package
+      (inherit base)
+      (source (origin
+                (inherit (package-source u-boot))
+                (patches
+                 (search-patches "u-boot-riscv64-fix-extlinux.patch")))))))
+
+(define-public u-boot-sifive-fu540
+  (make-u-boot-package "sifive_fu540" "riscv64-linux-gnu"))
+
+(define-public u-boot-rock64-rk3328
+  (let ((base (make-u-boot-package "rock64-rk3328" "aarch64-linux-gnu")))
+    (package
+      (inherit base)
+      (arguments
+       (substitute-keyword-arguments (package-arguments base)
+         ((#:phases phases)
+          `(modify-phases ,phases
+             (add-after 'unpack 'set-environment
+               (lambda* (#:key inputs #:allow-other-keys)
+                 (let ((bl31 (string-append (assoc-ref inputs "firmware")
+                                            "/bl31.elf")))
+                   (setenv "BL31" bl31))
+                 #t))))))
+      (native-inputs
+       `(("firmware" ,arm-trusted-firmware-rk3328)
+         ,@(package-native-inputs base))))))
+
+(define-public u-boot-firefly-rk3399
+  (let ((base (make-u-boot-package "firefly-rk3399" "aarch64-linux-gnu")))
+    (package
+      (inherit base)
+      (arguments
+        (substitute-keyword-arguments (package-arguments base)
+          ((#:phases phases)
+           `(modify-phases ,phases
+              (add-after 'unpack 'set-environment
+                (lambda* (#:key inputs #:allow-other-keys)
+                  (setenv "BL31" (string-append (assoc-ref inputs "firmware")
+                                                "/bl31.elf"))
+                  #t))
+              ;; Phases do not succeed on the bl31 ELF.
+              (delete 'strip)
+              (delete 'validate-runpath)))))
+      (native-inputs
+       `(("firmware" ,arm-trusted-firmware-rk3399)
+         ,@(package-native-inputs base))))))
+
+(define-public u-boot-rockpro64-rk3399
+  (let ((base (make-u-boot-package "rockpro64-rk3399" "aarch64-linux-gnu")))
+    (package
+      (inherit base)
+      (arguments
+        (substitute-keyword-arguments (package-arguments base)
+          ((#:phases phases)
+           `(modify-phases ,phases
+              (add-after 'unpack 'set-environment
+                (lambda* (#:key inputs #:allow-other-keys)
+                  (setenv "BL31" (string-append (assoc-ref inputs "firmware")
+                                                "/bl31.elf"))
+                  #t))
+              ;; Phases do not succeed on the bl31 ELF.
+              (delete 'strip)
+              (delete 'validate-runpath)))))
+      (native-inputs
+       `(("firmware" ,arm-trusted-firmware-rk3399)
+         ,@(package-native-inputs base))))))
+
+(define-public u-boot-pinebook-pro-rk3399
+  (let ((base (make-u-boot-package "pinebook-pro-rk3399" "aarch64-linux-gnu")))
+    (package
+     (inherit base)
+      (arguments
+        (substitute-keyword-arguments (package-arguments base)
+          ((#:phases phases)
+           `(modify-phases ,phases
+              (add-after 'unpack 'set-environment
+                (lambda* (#:key inputs #:allow-other-keys)
+                  (setenv "BL31" (string-append (assoc-ref inputs "firmware")
+                                                "/bl31.elf"))
+                  #t))
+              ;; Phases do not succeed on the bl31 ELF.
+              (delete 'strip)
+              (delete 'validate-runpath)))))
+      (native-inputs
+       `(("firmware" ,arm-trusted-firmware-rk3399)
+         ,@(package-native-inputs base))))))
+
 (define-public vboot-utils
   (package
     (name "vboot-utils")
@@ -817,7 +979,7 @@ to Novena upstream, does not load u-boot.img from the first partition.")
        ("libyaml" ,libyaml)
        ("openssl" ,openssl)
        ("openssl:static" ,openssl "static")
-       ("util-linux" ,util-linux)))
+       ("util-linux" ,util-linux "lib")))
     (home-page
      "https://dev.chromium.org/chromium-os/chromiumos-design-docs/verified-boot")
     (synopsis "ChromiumOS verified boot utilities")
@@ -846,7 +1008,8 @@ tools, and more.")
                   (guix build utils)
                   (ice-9 regex)         ; for string-match
                   (srfi srfi-26))       ; for cut
-       #:make-flags (list "CC=gcc")
+       #:make-flags
+       (list ,(string-append "CC=" (cc-for-target)))
        #:tests? #f                      ; no tests
        #:phases
        (modify-phases %standard-phases

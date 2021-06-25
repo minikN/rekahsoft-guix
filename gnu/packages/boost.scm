@@ -9,7 +9,11 @@
 ;;; Copyright © 2018 Arun Isaac <arunisaac@systemreboot.net>
 ;;; Copyright © 2018, 2019 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2018 Maxim Cournoyer <maxim.cournoyer@gmail.com>
-;;; Copyright © 2018 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2018, 2020 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2019 Mathieu Othacehe <m.othacehe@gmail.com>
+;;; Copyright © 2019, 2020 Giacomo Leidi <goodoldpaul@autistici.org>
+;;; Copyright © 2020 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2020 Jonathan Brielmaier <jonathan.brielmaier@web.de>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -39,63 +43,113 @@
   #:use-module (gnu packages icu4c)
   #:use-module (gnu packages perl)
   #:use-module (gnu packages python)
-  #:use-module (gnu packages shells))
+  #:use-module (gnu packages shells)
+  #:use-module (srfi srfi-1))
+
+(define (version-with-underscores version)
+  (string-map (lambda (x) (if (eq? x #\.) #\_ x)) version))
+
+(define (boost-patch name version hash)
+  (origin
+    (method url-fetch)
+    (uri (string-append "https://www.boost.org/patches/"
+                        (version-with-underscores version) "/" name))
+    (file-name (string-append "boost-" name))
+    (sha256 (base32 hash))))
 
 (define-public boost
   (package
     (name "boost")
-    (version "1.69.0")
+    (version "1.72.0")
     (source (origin
               (method url-fetch)
-              (uri (let ((version-with-underscores
-                          (string-map (lambda (x) (if (eq? x #\.) #\_ x)) version)))
-                     (list (string-append "mirror://sourceforge/boost/boost/" version
-                                          "/boost_" version-with-underscores ".tar.bz2")
-                           (string-append "https://dl.bintray.com/boostorg/release/"
-                                          version "/source/boost_"
-                                          version-with-underscores ".tar.bz2"))))
+              (uri (string-append "https://dl.bintray.com/boostorg/release/"
+                                  version "/source/boost_"
+                                  (version-with-underscores version) ".tar.bz2"))
+              (patches
+               (list (boost-patch
+                      ;; 1.72.0 was released with a faulty coroutine submodule:
+                      ;; <https://github.com/boostorg/coroutine/issues/46>.
+                      "0001-revert-cease-dependence-on-range.patch" version
+                      "1zcqxzh56m1s635wqwk15j3zcs2gmjvjy2f0hid7i78s4pgm0yfs")))
               (sha256
                (base32
-                "01j4n142dz20lcgqji8d8hspp04p1nv7m8i6dz8w5lchfdhx8clg"))
-              (patches (search-patches "boost-fix-icu-build.patch"))))
+                "08h7cv61fd0lzb4z50xanfqn0pdgvizjrpd1kcdgj725pisb5jar"))))
     (build-system gnu-build-system)
     (inputs `(("icu4c" ,icu4c)
               ("zlib" ,zlib)))
     (native-inputs
      `(("perl" ,perl)
-       ("python" ,python-2)
+       ,@(if (%current-target-system)
+             '()
+             `(("python" ,python-wrapper)))
        ("tcsh" ,tcsh)))
     (arguments
-     `(#:tests? #f
+     `(#:imported-modules ((guix build python-build-system)
+                           ,@%gnu-build-system-modules)
+       #:modules (((guix build python-build-system) #:select (python-version))
+                  ,@%gnu-build-system-modules)
+       #:tests? #f
        #:make-flags
        (list "threading=multi" "link=shared"
-             "cxxflags=-std=c++14"
 
              ;; Set the RUNPATH to $libdir so that the libs find each other.
              (string-append "linkflags=-Wl,-rpath="
-                            (assoc-ref %outputs "out") "/lib"))
+                            (assoc-ref %outputs "out") "/lib")
+             ,@(if (%current-target-system)
+                   `("--user-config=user-config.jam"
+                     ;; Python is not supported when cross-compiling.
+                     "--without-python"
+                     "binary-format=elf"
+                     "target-os=linux"
+                     ,@(cond
+                        ((string-prefix? "arm" (%current-target-system))
+                         '("abi=aapcs"
+                           "address-model=32"
+                           "architecture=arm"))
+                        ((string-prefix? "aarch64" (%current-target-system))
+                         '("abi=aapcs"
+                           "address-model=64"
+                           "architecture=arm"))
+                        (else '())))
+                   '()))
        #:phases
        (modify-phases %standard-phases
          (delete 'bootstrap)
          (replace 'configure
            (lambda* (#:key inputs outputs #:allow-other-keys)
              (let ((icu (assoc-ref inputs "icu4c"))
+                   (python (assoc-ref inputs "python"))
                    (out (assoc-ref outputs "out")))
                (substitute* '("libs/config/configure"
                               "libs/spirit/classic/phoenix/test/runtest.sh"
-                              "tools/build/src/engine/execunix.c"
-                              "tools/build/src/engine/Jambase"
-                              "tools/build/src/engine/jambase.c")
+                              "tools/build/src/engine/execunix.cpp"
+                              "tools/build/src/engine/Jambase")
                  (("/bin/sh") (which "sh")))
 
                (setenv "SHELL" (which "sh"))
                (setenv "CONFIG_SHELL" (which "sh"))
+
+               ,@(if (%current-target-system)
+                     `((call-with-output-file "user-config.jam"
+                          (lambda (port)
+                            (format port
+                                    "using gcc : cross : ~a-c++ ;"
+                                    ,(%current-target-system)))))
+                     '())
 
                (invoke "./bootstrap.sh"
                        (string-append "--prefix=" out)
                        ;; Auto-detection looks for ICU only in traditional
                        ;; install locations.
                        (string-append "--with-icu=" icu)
+                       ;; Ditto for Python.
+                       ,@(if (%current-target-system)
+                             '()
+                             `((string-append "--with-python-root=" python)
+                               (string-append "--with-python=" python "/bin/python")
+                               (string-append "--with-python-version="
+                                              (python-version python))))
                        "--with-toolset=gcc"))))
          (replace 'build
            (lambda* (#:key make-flags #:allow-other-keys)
@@ -105,17 +159,27 @@
          (replace 'install
            (lambda* (#:key make-flags #:allow-other-keys)
              (apply invoke "./b2" "install" make-flags)))
-         (add-after 'install 'provide-libboost_python
-           (lambda* (#:key outputs #:allow-other-keys)
-             (let ((out (assoc-ref outputs "out")))
-               ;; Boost can build support for both Python 2 and Python 3 since
-               ;; version 1.67.0, and suffixes each library with the Python
-               ;; version.  Many consumers only check for libboost_python
-               ;; however, so we provide it here as suggested in
-               ;; <https://github.com/boostorg/python/issues/203>.
-               (with-directory-excursion (string-append out "/lib")
-                 (symlink "libboost_python27.so" "libboost_python.so"))
-               #t))))))
+         ,@(if (%current-target-system)
+               '()
+               '((add-after 'install 'provide-libboost_python
+                    (lambda* (#:key inputs outputs #:allow-other-keys)
+                      (let* ((out (assoc-ref outputs "out"))
+                             (python-version (python-version
+                                              (assoc-ref inputs "python")))
+                             (libboost_pythonNN.so
+                              (string-append "libboost_python"
+                                             (string-join (string-split
+                                                           python-version #\.)
+                                                          "")
+                                             ".so")))
+                        (with-directory-excursion (string-append out "/lib")
+                          (symlink libboost_pythonNN.so "libboost_python.so")
+                          ;; Some packages only look for the major version.
+                          (symlink libboost_pythonNN.so
+                                   (string-append "libboost_python"
+                                                  (string-take python-version 1)
+                                                  ".so")))
+                        #t))))))))
 
     (home-page "https://www.boost.org")
     (synopsis "Peer-reviewed portable C++ source libraries")
@@ -124,6 +188,42 @@
 across a broad spectrum of applications.")
     (license (license:x11-style "https://www.boost.org/LICENSE_1_0.txt"
                                 "Some components have other similar licences."))))
+
+(define-public boost-with-python2
+  (package
+    (inherit boost)
+    (name "boost-python2")
+    (native-inputs
+     `(("python" ,python-2)
+       ,@(alist-delete "python" (package-native-inputs boost))))))
+
+(define-public boost-with-python3
+  (deprecated-package "boost-with-python3" boost))
+
+(define-public boost-static
+  (package
+    (inherit boost)
+    (name "boost-static")
+    (arguments
+     (substitute-keyword-arguments (package-arguments boost)
+       ((#:make-flags flags)
+        `(cons "link=static" (delete "link=shared" ,flags)))
+       ((#:phases phases)
+        `(modify-phases ,phases
+           (replace 'provide-libboost_python
+             (lambda* (#:key inputs outputs #:allow-other-keys)
+               (let* ((out (assoc-ref outputs "out"))
+                      (python-version (python-version
+                                       (assoc-ref inputs "python")))
+                      (libboost_pythonNN.a
+                       (string-append "libboost_python"
+                                      (string-join (string-split
+                                                    python-version #\.)
+                                                   "")
+                                      ".a")))
+                 (with-directory-excursion (string-append out "/lib")
+                   (symlink libboost_pythonNN.a "libboost_python.a"))
+                 #t)))))))))
 
 (define-public boost-for-mysql
   ;; Older version for MySQL 5.7.23.
@@ -142,12 +242,40 @@ across a broad spectrum of applications.")
     (arguments (substitute-keyword-arguments (package-arguments boost)
       ((#:phases phases)
        `(modify-phases ,phases
-          ;; This was removed after boost-1.67.
-          (add-before 'configure 'more-bin-sh-patching
-            (lambda _
-              (substitute* "tools/build/doc/bjam.qbk"
-                (("/bin/sh") (which "sh")))))
-          (delete 'provide-libboost_python)))))
+          (replace 'configure
+            (lambda* (#:key inputs outputs #:allow-other-keys)
+              (let ((icu (assoc-ref inputs "icu4c"))
+                    (out (assoc-ref outputs "out")))
+                (substitute* (append
+                               (find-files "tools/build/src/engine/" "execunix\\.c.*")
+                               '("libs/config/configure"
+                                 "libs/spirit/classic/phoenix/test/runtest.sh"
+                                 "tools/build/doc/bjam.qbk"
+                                 "tools/build/src/engine/Jambase"))
+                  (("/bin/sh") (which "sh")))
+
+                (setenv "SHELL" (which "sh"))
+                (setenv "CONFIG_SHELL" (which "sh"))
+
+                ,@(if (%current-target-system)
+                    `((call-with-output-file "user-config.jam"
+                        (lambda (port)
+                          (format port
+                                  "using gcc : cross : ~a-c++ ;"
+                                  ,(%current-target-system)))))
+                    '())
+
+                (invoke "./bootstrap.sh"
+                        (string-append "--prefix=" out)
+                        ;; Auto-detection looks for ICU only in traditional
+                        ;; install locations.
+                        (string-append "--with-icu=" icu)
+                        "--with-toolset=gcc"))))
+          (delete 'provide-libboost_python)))
+      ((#:make-flags make-flags)
+       `(cons* "--without-python" ,make-flags))))
+    (native-inputs
+     (alist-delete "python" (package-native-inputs boost)))
     (properties '((hidden? . #t)))))
 
 (define-public boost-sync
@@ -160,7 +288,7 @@ across a broad spectrum of applications.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/boostorg/sync.git")
+                      (url "https://github.com/boostorg/sync")
                       (commit commit)))
                 (file-name (git-file-name name version))
                 (sha256
@@ -189,12 +317,12 @@ Boost.Thread.")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/boostorg/signals2.git")
+                    (url "https://github.com/boostorg/signals2")
                     (commit (string-append "boost-" version))))
               (file-name (git-file-name name version))
               (sha256
                (base32
-                "1nayaqshhzr1n6jj43bpvvay36d5gn075h0b95psii5x8ingszdk"))))
+                "13i5j43nggb46i6qpaf7gk53i7zp7pimphl7sydyfqz2m9yx5cdy"))))
     (build-system trivial-build-system)
     (arguments
      `(#:modules ((guix build utils))
@@ -213,14 +341,14 @@ signals and slots system.")
 (define-public mdds
   (package
     (name "mdds")
-    (version "1.4.3")
+    (version "1.5.0")
     (source (origin
              (method url-fetch)
              (uri (string-append
                    "http://kohei.us/files/mdds/src/mdds-" version ".tar.bz2"))
              (sha256
               (base32
-               "10cw6irdm6d15nxnys2v5akp8yz52qijpcjvw0frwq7nz5d3vki5"))))
+               "03b8i43pw4m767mm0cnbi77x7qhpkzpi9b1f6dpp4cmyszmnsk8l"))))
     (build-system gnu-build-system)
     (propagated-inputs
       `(("boost" ,boost))) ; inclusion of header files

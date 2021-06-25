@@ -3,17 +3,19 @@
 ;;; Copyright © 2016 Danny Milosavljevic <dannym@scratchpost.org>
 ;;; Copyright © 2016 Ben Woodcroft <donttrustben@gmail.com>
 ;;; Copyright © 2016 Ricardo Wurmus <rekado@elephly.net>
-;;; Copyright © 2016 ng0 <ng0@n0.is>
+;;; Copyright © 2016 Nikita <nikita@n0.is>
 ;;; Copyright © 2016, 2017, 2019 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2016, 2017 Alex Sassmannshausen <alex@pompo.co>
 ;;; Copyright © 2016, 2017 Marius Bakke <mbakke@fastmail.com>
 ;;; Copyright © 2017 Leo Famulari <leo@famulari.name>
 ;;; Copyright © 2017 Christopher Baines <mail@cbaines.net>
 ;;; Copyright © 2017 Petter <petter@mykolab.ch>
-;;; Copyright © 2017, 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2017, 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018 Oleg Pykhalov <go.wigust@gmail.com>
 ;;; Copyright © 2018 Pierre Neidhardt <mail@ambrevar.xyz>
 ;;; Copyright © 2018 Kei Kebreau <kkebreau@posteo.net>
+;;; Copyright © 2020 Paul Garlick <pgarlick@tourbillion-technology.com>
+;;; Copyright © 2020 Nicolas Goaziou <mail@nicolasgoaziou.fr>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -66,9 +68,9 @@ implementation as used in cperl.  It does not store the mocked overrides
 lexically, just dynamically.")
     (license artistic2.0)))
 
-(define-public perl-test2-bundle-extended
+(define-public perl-test2-suite
   (package
-    (name "perl-test2-bundle-extended")
+    (name "perl-test2-suite")
     (version "0.000072")
     (source
       (origin
@@ -88,7 +90,7 @@ lexically, just dynamically.")
      `(("perl-importer" ,perl-importer)
        ("perl-term-table" ,perl-term-table)
        ("perl-sub-info" ,perl-sub-info)))
-    (home-page "https://metacpan.org/pod/Test2::Bundle::Extended")
+    (home-page "https://metacpan.org/pod/Test2-Suite")
     (synopsis "Full set of tools for Test2::Suite")
     (description "This package provides a rich set of tools, plugins, bundles,
 etc built upon the Test2 testing library.")
@@ -107,8 +109,10 @@ etc built upon the Test2 testing library.")
          (base32
           "002qk6qsm0l6r2kaxywvc38w0yf0mlavgywq8li076pn6kcw3242"))))
     (build-system perl-build-system)
+    (native-inputs
+     `(("perl-ipc-run3" ,perl-ipc-run3)))
     (propagated-inputs
-     `(("perl-test2-bundle-extended" ,perl-test2-bundle-extended)))
+     `(("perl-test2-suite" ,perl-test2-suite)))
     (home-page "https://metacpan.org/release/Test2-Plugin-NoWarnings")
     (synopsis "Fail if tests warn")
     (description "Loading this plugin causes your tests to fail if there any
@@ -243,7 +247,6 @@ using @code{Test::Class}.")
        ("perl-test-requires" ,perl-test-requires)
        ("perl-test-deep" ,perl-test-deep)
        ("perl-test-warnings" ,perl-test-warnings)
-       ("perl-test-tester" ,perl-test-tester)
        ("perl-test-needs" ,perl-test-needs)))
     (propagated-inputs
      `(("perl-namespace-clean" ,perl-namespace-clean)
@@ -349,8 +352,7 @@ specification.")
                (base32
                 "1kdy06r0yg7zwarqglc9163vbfb0sfc4s6ld4pw5q7i9f7mghzi0"))))
     (build-system perl-build-system)
-    (inputs `(("perl-test-tester" ,perl-test-tester)
-              ("perl-test-nowarnings" ,perl-test-nowarnings)))
+    (inputs `(("perl-test-nowarnings" ,perl-test-nowarnings)))
     (synopsis "Flexible deep comparison for the Test::Builder framework")
     (description
      "Test::Deep compares two structures by going through each level, ensuring
@@ -455,6 +457,40 @@ files, as well as to verify that there are no missing or unknown files.")
     (description
      "@code{Test::DistManifest} provides a simple method of testing that a
 @file{MANIFEST} file matches its distribution.")
+    (license perl-license)))
+
+(define-public perl-test-distribution
+  (package
+    (name "perl-test-distribution")
+    (version "2.00")
+    (source
+     (origin
+      (method url-fetch)
+      (uri (string-append
+            "mirror://cpan/authors/id/S/SR/SRSHAH/Test-Distribution-"
+            version ".tar.gz"))
+      (sha256
+       (base32
+        "0s1bj459qaw2x1fckklv9irpf3mr8gp2cm9vlyrb5dyanrzx1v2h"))))
+    (build-system perl-build-system)
+    (native-inputs
+     `(("perl-module-build" ,perl-module-build)))
+    (propagated-inputs
+     `(("perl-file-find-rule" ,perl-file-find-rule)
+       ("perl-pod-coverage" ,perl-pod-coverage)
+       ("perl-test-pod" ,perl-test-pod)
+       ("perl-test-pod-coverage" ,perl-test-pod-coverage)))
+    (home-page "https://metacpan.org/release/Test-Distribution")
+    (synopsis "Perform tests on all modules of a distribution")
+    (description "When used in a test script @code{Test::Distribution}
+goes through all the modules in your distribution, checks their POD,
+checks that they compile successfully and checks that they all define
+a $VERSION.  In addition, this module performs a number of tests on
+the distribution itself.  It checks that the distributed files match
+the SIGNATURE file, if that file exists.  It checks that the
+distribution is not missing any core description files.  It also
+checks that the complete set of pre-requisite packages are listed in
+the Makefile.PL file.")
     (license perl-license)))
 
 (define-public perl-test-eol
@@ -805,14 +841,14 @@ memory_cycle_ok( $object );
 (define-public perl-test-mockmodule
   (package
     (name "perl-test-mockmodule")
-    (version "0.170.0")
+    (version "0.171.0")
     (source
      (origin
        (method url-fetch)
        (uri (string-append "mirror://cpan/authors/id/G/GF/GFRANKS/"
                            "Test-MockModule-v" version ".tar.gz"))
        (sha256
-        (base32 "0pggwrlqj6k44qayhbpjqkzry1r626iy2vf30zlf2jdhbjbvlycz"))))
+        (base32 "1arqgb1773zym5dqlwm6kz48bfrccjhb5bjfsif0vkalwq2gvm7b"))))
     (build-system perl-build-system)
     (native-inputs
      `(("perl-module-build" ,perl-module-build)
@@ -836,14 +872,14 @@ you @code{unmock()} the subroutine.")
 (define-public perl-test-mockobject
   (package
     (name "perl-test-mockobject")
-    (version "1.20180705")
+    (version "1.20191002")
     (source
      (origin
        (method url-fetch)
        (uri (string-append "mirror://cpan/authors/id/C/CH/CHROMATIC/"
                            "Test-MockObject-" version ".tar.gz"))
        (sha256
-        (base32 "06250ayzzd90vbvkpxwr9d3nlbbngl1b9nk2qk0ma4aibn6ha5j5"))))
+        (base32 "160r36j727hw6syazh6sfq862f95dp1zcga0nil7cjlry77lqsn7"))))
     (build-system perl-build-system)
     (native-inputs
      `(("perl-cgi" ,perl-cgi)
@@ -997,7 +1033,6 @@ code.")
                (base32
                 "0v385ch0hzz9naqwdw2az3zdqi15gka76pmiwlgsy6diiijmg2k3"))))
     (build-system perl-build-system)
-    (inputs `(("perl-test-tester" ,perl-test-tester)))
     (synopsis "Ensure no warnings are produced while testing")
     (description
      "This modules causes any warnings during testing to be captured and
@@ -1031,6 +1066,34 @@ usually called epsilon.  This module provides such a function for use with
 @code{Test::More}.")
     (license asl2.0)))
 
+(define-public perl-test-object
+  (package
+    (name "perl-test-object")
+    (version "0.08")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "mirror://cpan/authors/id/E/ET/ETHER/"
+                           "Test-Object-" version ".tar.gz"))
+       (sha256
+        (base32 "1fyhn558kvla37fb60fzdr6kd2kfcxcmpr8884zk2dvq2ij8j9v5"))))
+    (build-system perl-build-system)
+    (home-page "https://metacpan.org/release/Test-Object")
+    (synopsis "Thoroughly testing objects via registered handlers")
+    (description
+     "In situations where you have deep trees of classes,
+there is a common situation in which you test a module 4 or 5 subclasses down,
+which should follow the correct behaviour of not just the subclass, but of all
+the parent classes.
+
+This should be done to ensure that the implementation of a subclass has not
+somehow ``broken'' the object's behaviour in a more general sense.
+
+Test::Object is a testing package designed to allow you to easily test what
+you believe is a valid object against the expected behaviour of all of the
+classes in its inheritance tree in one single call.")
+    (license perl-license)))
+
 (define-public perl-test-output
   (package
     (name "perl-test-output")
@@ -1045,7 +1108,6 @@ usually called epsilon.  This module provides such a function for use with
     (build-system perl-build-system)
     (propagated-inputs
      `(("perl-capture-tiny" ,perl-capture-tiny)
-       ("perl-test-tester" ,perl-test-tester)
        ("perl-sub-exporter" ,perl-sub-exporter)))
     (synopsis "Utilities to test STDOUT and STDERR messages")
     (description
@@ -1170,7 +1232,7 @@ reported, and the tests skipped.")
 (define-public perl-test-runvalgrind
   (package
     (name "perl-test-runvalgrind")
-    (version "0.2.0")
+    (version "0.2.1")
     (source
      (origin
        (method url-fetch)
@@ -1179,8 +1241,7 @@ reported, and the tests skipped.")
              version
              ".tar.gz"))
        (sha256
-        (base32
-         "0cfndkn2k9pcx290wcblwmrwh1ybs0grxjlsrp8fbqqbmmjpb53h"))))
+        (base32 "175hlycrhgwrp7j4rwx5bk4fd6775242wjdqv107rvgsrszsi915"))))
     (build-system perl-build-system)
     (native-inputs
      `(("perl-module-build" ,perl-module-build)))
@@ -1240,19 +1301,46 @@ makes fork(2) safe to use in test cases.")
 (define-public perl-test-simple
   (package
     (name "perl-test-simple")
-    (version "1.302164")
+    (version "1.302172")
     (source (origin
               (method url-fetch)
               (uri (string-append "mirror://cpan/authors/id/E/EX/EXODIST/"
                                   "Test-Simple-" version ".tar.gz"))
               (sha256
                (base32
-                "05b61ndlf2d6xphq13caps001f0p0p76jb5hhzmm5k897xhpn9sh"))))
+                "1z1l8dgssf0mqbgik33sc5j48iiapppkwmacwah990hj0j7pd23k"))))
     (build-system perl-build-system)
     (synopsis "Basic utilities for writing tests")
     (description
      "Test::Simple contains basic utilities for writing tests.")
     (home-page "https://metacpan.org/release/Test-Simple")
+    (license perl-license)))
+
+(define-public perl-test-subcalls
+  (package
+    (name "perl-test-subcalls")
+    (version "1.10")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "mirror://cpan/authors/id/E/ET/ETHER/"
+                           "Test-SubCalls-" version ".tar.gz"))
+       (sha256
+        (base32 "1hmnv9nkdzyrr6yis0dnkf4lk0hwld3zapiyq7mizrq5barykhfb"))))
+    (build-system perl-build-system)
+    (propagated-inputs
+     `(("perl-hook-lexwrap" ,perl-hook-lexwrap)))
+    (home-page "https://metacpan.org/release/Test-SubCalls")
+    (synopsis "Track the number of times subs are called")
+    (description
+     "There are a number of different situations (like testing caching
+code) where you want to want to do a number of tests, and then verify
+that some underlying subroutine deep within the code was called
+a specific number of times.
+
+Test::SubCalls module provides a number of functions for doing testing
+in this way in association with your normal Test::More (or similar)
+test scripts.")
     (license perl-license)))
 
 (define-public perl-test-taint
@@ -1342,8 +1430,7 @@ cause a test fail unless it is exactly as @code{perltidy} would like it to be.")
      `(("perl-module-build" ,perl-module-build)
        ("perl-test-simple" ,perl-test-simple)))
     (propagated-inputs
-     `(("perl-test-tester" ,perl-test-tester)
-       ("perl-data-dump" ,perl-data-dump)))
+     `(("perl-data-dump" ,perl-data-dump)))
     (home-page "https://metacpan.org/release/Test-Trap")
     (synopsis "Trap exit codes, exceptions, output, and so on")
     (description "This module is primarily (but not exclusively) for use in

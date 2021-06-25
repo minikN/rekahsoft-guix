@@ -1,14 +1,16 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2012 Nikita Karetnikov <nikita@karetnikov.org>
-;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2015 Mathieu Lirzin <mthl@openmailbox.org>
 ;;; Copyright © 2014 Manolis Fragkiskos Ragkousis <manolis837@gmail.com>
 ;;; Copyright © 2015, 2017, 2018 Mark H Weaver <mhw@netris.org>
 ;;; Copyright © 2016 David Thompson <davet@gnu.org>
-;;; Copyright © 2017 ng0 <ng0@n0.is>
+;;; Copyright © 2017 Nikita <nikita@n0.is>
 ;;; Copyright © 2017, 2019 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018 Ricardo Wurmus <rekado@elephly.net>
+;;; Copyright © 2019 Pierre-Moana Levesque <pierre.moana.levesque@gmail.com>
+;;; Copyright © 2020 Jan (janneke) Nieuwenhuizen <janneke@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -54,14 +56,44 @@
        (base32
         "113nlmidxy9kjr45kg9x3ngar4951mvag1js2a3j8nxcz34wxsv4"))))
     (build-system gnu-build-system)
+    (inputs
+     ;; TODO: remove `if' in the next rebuild cycle.
+     (if (%current-target-system)
+         `(("bash" ,bash-minimal)
+           ("perl" ,perl)
+           ("m4" ,m4))
+         '()))
     (native-inputs
      `(("perl" ,perl)
        ("m4" ,m4)))
-    ;; XXX: testsuite: 209 and 279 failed. The latter is an impurity. It
-    ;; should use our own "cpp" instead of "/lib/cpp".
-    (arguments `(#:tests? #f))
-    (home-page
-     "http://www.gnu.org/software/autoconf/")
+    (arguments
+     `(;; XXX: testsuite: 209 and 279 failed.  The latter is an impurity.  It
+       ;; should use our own "cpp" instead of "/lib/cpp".
+       #:tests? #f
+       ,@(if (%current-target-system)
+             `(#:phases
+               (modify-phases %standard-phases
+                 (add-after 'install 'patch-non-shebang-references
+                   (lambda* (#:key build inputs outputs #:allow-other-keys)
+                     ;; `patch-shebangs' patches shebangs only, and the Perl
+                     ;; scripts use a re-exec feature that references the
+                     ;; build hosts' perl.  Also, BASH and M4 store references
+                     ;; hide in the scripts.
+                     (let ((bash (assoc-ref inputs "bash"))
+                           (m4 (assoc-ref inputs "m4"))
+                           (perl (assoc-ref inputs "perl"))
+                           (out  (assoc-ref outputs "out"))
+                           (store-directory (%store-directory)))
+                      (substitute* (find-files (string-append out "/bin"))
+                        (((string-append store-directory "/[^/]*-bash-[^/]*"))
+                         bash)
+                        (((string-append store-directory "/[^/]*-m4-[^/]*"))
+                         m4)
+                        (((string-append store-directory "/[^/]*-perl-[^/]*"))
+                         perl))
+                      #t)))))
+             '())))
+    (home-page "https://www.gnu.org/software/autoconf/")
     (synopsis "Create source code configuration scripts")
     (description
      "Autoconf offers the developer a robust set of M4 macros which expand
@@ -244,23 +276,30 @@ Autobuild generates an HTML summary file, containing links to each build log.
 The summary includes project name, version, build hostname, host type (cross
 compile aware), date of build, and indication of success or failure.  The
 output is indexed in many ways to simplify browsing.")
-    (home-page "http://josefsson.org/autobuild/")
+    (home-page "https://josefsson.org/autobuild/")
     (license gpl3+)))
 
 (define-public automake
   (package
     (name "automake")
-    (version "1.16.1")
+    (version "1.16.2")
     (source (origin
              (method url-fetch)
              (uri (string-append "mirror://gnu/automake/automake-"
                                  version ".tar.xz"))
              (sha256
               (base32
-                "08g979ficj18i1w6w5219bgmns7czr03iadf20mk3lrzl8wbn1ax"))
+                "1l7dkqbsmbf94ax29jj1jf6a0r6ikc8jybg1p5m0c3ki7pg5ki6c"))
              (patches
               (search-patches "automake-skip-amhello-tests.patch"))))
     (build-system gnu-build-system)
+    (inputs
+     ;; TODO: remove `if' in the next rebuild cycle.
+     (if (%current-target-system)
+         `(("autoconf" ,autoconf-wrapper)
+           ("bash" ,bash-minimal)
+           ("perl" ,perl))
+         '()))
     (native-inputs
      `(("autoconf" ,autoconf-wrapper)
        ("perl" ,perl)))
@@ -269,7 +308,7 @@ output is indexed in many ways to simplify browsing.")
             (variable "ACLOCAL_PATH")
             (files '("share/aclocal")))))
     (arguments
-     '(#:modules ((guix build gnu-build-system)
+     `(#:modules ((guix build gnu-build-system)
                   (guix build utils)
                   (srfi srfi-1)
                   (srfi srfi-26)
@@ -288,6 +327,37 @@ output is indexed in many ways to simplify browsing.")
                (setenv "SHELL" sh)
                (setenv "CONFIG_SHELL" sh)
                #t)))
+
+           (add-before 'check 'skip-test
+             (lambda _
+               ;; This test requires 'etags' and fails if it's missing.
+               ;; Skip it.
+               (substitute* "t/tags-lisp-space.sh"
+                 (("^required.*" all)
+                  (string-append "exit 77\n" all "\n")))
+               #t))
+
+           ,@(if (%current-target-system)
+                 `((add-after 'install 'patch-non-shebang-references
+                     (lambda* (#:key build inputs outputs #:allow-other-keys)
+                     ;; `patch-shebangs' patches shebangs only, and the Perl
+                     ;; scripts use a re-exec feature that references the
+                     ;; build hosts' perl.  Also, AUTOCONF and BASH store
+                     ;; references hide in the scripts.
+                       (let ((autoconf (assoc-ref inputs "autoconf"))
+                             (bash (assoc-ref inputs "bash"))
+                             (perl (assoc-ref inputs "perl"))
+                             (out  (assoc-ref outputs "out"))
+                             (store-directory (%store-directory)))
+                         (substitute* (find-files (string-append out "/bin"))
+                           (((string-append store-directory "/[^/]*-autoconf-[^/]*"))
+                            autoconf)
+                           (((string-append store-directory "/[^/]*-bash-[^/]*"))
+                            bash)
+                           (((string-append store-directory "/[^/]*-perl-[^/]*"))
+                            perl))
+                         #t))))
+                 '())
 
          ;; Files like `install-sh', `mdate.sh', etc. must use
          ;; #!/bin/sh, otherwise users could leak erroneous shebangs
@@ -354,21 +424,22 @@ Makefile, simplifying the entire process for the developer.")
 
        ;; XXX: There are test failures on mips64el-linux starting from 2.4.4:
        ;; <http://hydra.gnu.org/build/181662>.
-       #:tests? ,(not (string-prefix? "mips64"
-                                      (or (%current-target-system)
+       ;; Also, do not run tests when cross compiling
+       #:tests? ,(not (or (%current-target-system)
+                          (string-prefix? "mips64"
                                           (%current-system))))
 
        #:phases
        (modify-phases %standard-phases
          (add-before 'check 'pre-check
-           (lambda* (#:key inputs #:allow-other-keys)
+           (lambda* (#:key inputs native-inputs #:allow-other-keys)
              ;; Run the test suite in parallel, if possible.
              (setenv "TESTSUITEFLAGS"
                      (string-append
                       "-j"
                       (number->string (parallel-job-count))))
            ;; Patch references to /bin/sh.
-           (let ((bash (assoc-ref inputs "bash")))
+           (let ((bash (assoc-ref (or native-inputs inputs) "bash")))
              (substitute* "tests/testsuite"
                (("/bin/sh")
                 (string-append bash "/bin/sh")))

@@ -1,13 +1,16 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2017, 2018 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2017 Corentin Bocquillon <corentin@nybble.fr>
-;;; Copyright © 2017, 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2017, 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018 Fis Trivial <ybbs.daans@hotmail.com>
 ;;; Copyright © 2018 Tomáš Čech <sleep_walker@gnu.org>
-;;; Copyright © 2018 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2018, 2020 Marius Bakke <mbakke@fastmail.com>
 ;;; Copyright © 2018 Alex Vong <alexvong1995@gmail.com>
-;;; Copyright © 2019 Brett Gilio <brettg@posteo.net>
+;;; Copyright © 2019 Brett Gilio <brettg@gnu.org>
 ;;; Copyright © 2019 Jonathan Brielmaier <jonathan.brielmaier@web.de>
+;;; Copyright © 2020 Leo Prikler <leo.prikler@student.tugraz.at>
+;;; Copyright © 2020 Yuval Kogman <nothingmuch@woobling.org>
+;;; Copyright © 2020 Jakub Kądziołka <kuba@kadziolka.net>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -32,12 +35,18 @@
   #:use-module (guix git-download)
   #:use-module (guix build-system cmake)
   #:use-module (gnu packages)
+  #:use-module (gnu packages check)
   #:use-module (gnu packages compression)
+  #:use-module (gnu packages linux)
   #:use-module (gnu packages lua)
   #:use-module (gnu packages package-management)
+  #:use-module (gnu packages pcre)
+  #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages python)
   #:use-module (gnu packages python-crypto)
   #:use-module (gnu packages python-web)
+  #:use-module (gnu packages python-xyz)
+  #:use-module (gnu packages sqlite)
   #:use-module (gnu packages ninja)
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system python))
@@ -50,7 +59,7 @@
               ;; do not use auto-generated tarballs
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/matricks/bam.git")
+                    (url "https://github.com/matricks/bam")
                     (commit (string-append "v" version))))
               (file-name (git-file-name name version))
               (sha256
@@ -80,7 +89,7 @@ makes a few sacrifices to acquire fast full and incremental build times.")
 (define-public bear
   (package
     (name "bear")
-    (version "2.3.13")
+    (version "2.4.3")
     (source (origin
               (method git-fetch)
               (uri (git-reference
@@ -89,7 +98,7 @@ makes a few sacrifices to acquire fast full and incremental build times.")
               (file-name (git-file-name name version))
               (sha256
                (base32
-                "0imvvs22gyr1v6ydgp5yn2nq8fb8llmz0ra1m733ikjaczl3jm7z"))))
+                "19fk4flfykbzhb89ppmzqf0zlrkbjm6ajl9fsayndj9km5ys0041"))))
     (build-system cmake-build-system)
     (inputs
      `(("python" ,python-wrapper)))
@@ -102,8 +111,8 @@ generate such a compilation database.")
     (license license:gpl3+)))
 
 (define-public gn
-  (let ((commit "1ab6fa2cab7ec64840db720a56018ca8939329f9")
-        (revision "1530"))          ;as returned by `git describe`, used below
+  (let ((commit "eb997b5ab9c3f1ba6a2c52072785884864a84eae")
+        (revision "1794"))            ;as returned by `git describe`, used below
     (package
       (name "gn")
       (version (git-version "0.0" revision commit))
@@ -113,17 +122,15 @@ generate such a compilation database.")
                 (uri (git-reference (url home-page) (commit commit)))
                 (sha256
                  (base32
-                  "06h974d1lag3wwsz6s5asmpv0njmf671ag4la2fpnbh494m97lfk"))
+                  "1vfkcy34wqhg7wsk7jdzhgnnzwim10wgbxv5bnavxzjcs871i2xa"))
                 (file-name (git-file-name name version))))
       (build-system gnu-build-system)
       (arguments
-       `(#:tests? #f                    ;FIXME: How to run?
-         #:phases (modify-phases %standard-phases
+       `(#:phases (modify-phases %standard-phases
                     (add-before 'configure 'set-build-environment
                       (lambda _
                         (setenv "CC" "gcc") (setenv "CXX" "g++")
                         (setenv "AR" "ar")
-                        (setenv "LDFLAGS" "-pthread")
                         #t))
                     (replace 'configure
                       (lambda _
@@ -136,13 +143,23 @@ generate such a compilation database.")
                         (call-with-output-file "out/last_commit_position.h"
                           (lambda (port)
                             (format port
-                                    "#define LAST_COMMIT_POSITION \"~a (~a)\"\n"
-                                    ,revision ,(string-take commit 8))
+                                    (string-append
+                                     "#define LAST_COMMIT_POSITION_NUM ~a\n"
+                                     "#define LAST_COMMIT_POSITION \"~a (~a)\"\n")
+                                    ,revision ,revision ,(string-take commit 8))
                             #t))))
                     (replace 'build
                       (lambda _
                         (invoke "ninja" "-C" "out" "gn"
                                 "-j" (number->string (parallel-job-count)))))
+                    (replace 'check
+                      (lambda* (#:key (tests? #t) #:allow-other-keys)
+                        (if tests?
+                            (lambda ()
+                              (invoke "ninja" "-C" "out" "gn_unittests"
+                                      "-j" (number->string (parallel-job-count)))
+                              (invoke "./out/gn_unittests"))
+                            (format #t "test suite not run~%"))))
                     (replace 'install
                       (lambda* (#:key outputs #:allow-other-keys)
                         (let ((out (assoc-ref outputs "out")))
@@ -162,7 +179,7 @@ files and generates build instructions for the Ninja build system.")
 (define-public meson
   (package
     (name "meson")
-    (version "0.50.0")
+    (version "0.53.2")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://github.com/mesonbuild/meson/"
@@ -170,7 +187,7 @@ files and generates build instructions for the Ninja build system.")
                                   version ".tar.gz"))
               (sha256
                (base32
-                "07q2wz23wjfk8z66mli1cc9as0ycjp5f39fd4awny82qv8nw86ra"))))
+                "07y2hh9dfn1m9g4bsy49nbn3vdmd0b2iwr8bxg19fhqq6c7q73ry"))))
     (build-system python-build-system)
     (arguments
      `(;; FIXME: Tests require many additional inputs, a fix for the RUNPATH
@@ -239,6 +256,107 @@ other lower-level build files.")
     (home-page "https://premake.github.io")
     (license license:bsd-3)))
 
+(define-public premake5
+  (package
+    (inherit premake4)
+    (version "5.0.0-alpha15")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append "https://github.com/premake/premake-core/"
+                                  "releases/download/v" version
+                                  "/premake-" version "-src.zip"))
+              (sha256
+               (base32
+                "0lyxfyqxyhjqsb3kmx1fyrxinb26i68hb7w7rg8lajczrgkmc3w8"))))
+    (arguments
+     (substitute-keyword-arguments (package-arguments premake4)
+       ((#:phases phases)
+        `(modify-phases ,phases
+           (replace 'enter-source
+             (lambda _ (chdir "build/gmake2.unix") #t))
+           (replace 'install
+             (lambda* (#:key outputs #:allow-other-keys)
+               (install-file "../../bin/release/premake5"
+                             (string-append (assoc-ref outputs "out") "/bin"))
+               #t))))))
+    (description "@code{premake5} is a command line utility that reads a
+scripted definition of a software project and outputs @file{Makefile}s or
+other lower-level build files.")))
+
+(define-public tup
+  (package
+    (name "tup")
+    (version "0.7.9")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append "http://gittup.org/tup/releases/tup-v"
+                                  version ".tar.gz"))
+              (sha256
+               (base32
+                "0gnd2598xqgwihdkfkx7qn0q6p4n7npam1fy83mp7s04zwj99syc"))
+              (patches (search-patches "tup-unbundle-dependencies.patch"))
+              (modules '((guix build utils)))
+              (snippet
+               '(begin
+                  ;; NOTE: Tup uses a slightly modified Lua, so it cannot be
+                  ;; unbundled.  See: src/lula/tup-lua.patch
+                  (delete-file-recursively "src/pcre")
+                  (delete-file-recursively "src/sqlite3")
+                  #t))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         ;; There is a bootstrap script, but it doesn't do what you think - it
+         ;; builds tup.
+         (delete 'bootstrap)
+         (replace 'configure
+           (lambda _
+             (substitute* "src/tup/link.sh"
+               (("`git describe`") ,version))
+             (with-output-to-file "tup.config"
+               (lambda _
+                 (format #t "CONFIG_TUP_USE_SYSTEM_SQLITE=y~%")))
+             #t))
+         (delete 'check)
+         (replace 'build
+           (lambda _
+             ;; Based on bootstrap-nofuse.sh, but with a detour to patch-shebang.
+             (invoke "./build.sh")
+             (invoke "./build/tup" "init")
+             (invoke "./build/tup" "generate" "--verbose" "build-nofuse.sh")
+             (patch-shebang "build-nofuse.sh")
+             (invoke "./build-nofuse.sh")))
+         (replace 'install
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let* ((outdir (assoc-ref outputs "out"))
+                    (ftdetect (string-append outdir
+                                             "/share/vim/vimfiles/ftdetect")))
+               (install-file "tup" (string-append outdir "/bin"))
+               (install-file "tup.1" (string-append outdir "/share/man/man1"))
+               (install-file "contrib/syntax/tup.vim"
+                             (string-append outdir "/share/vim/vimfiles/syntax"))
+               (mkdir-p ftdetect)
+               (with-output-to-file (string-append ftdetect "/tup.vim")
+                 (lambda _
+                   (display "au BufNewFile,BufRead Tupfile,*.tup setf tup")))
+               #t))))))
+    (inputs
+     `(("fuse" ,fuse)
+       ("pcre" ,pcre)
+       ("pcre" ,pcre "bin") ; pcre-config
+       ("sqlite" ,sqlite)))
+    (native-inputs
+     `(("pkg-config" ,pkg-config)))
+    (home-page "http://gittup.org/tup/")
+    (synopsis "Fast build system that's hard to get wrong")
+    (description "Tup is a generic build system based on a directed acyclic
+graphs of commands to be executed.  Tup instruments your build to detect the
+exact dependencies of the commands, allowing you to take advantage of ideal
+parallelism during incremental builds, and detecting any situations where
+a build worked by accident.")
+    (license license:gpl2)))
+
 (define-public osc
   (package
     (name "osc")
@@ -276,3 +394,38 @@ Service.  It allows you to checkout, commit, perform reviews etc.  The vast
 majority of the OBS functionality is available via commands and the rest can
 be reached via direct API calls.")
     (license license:gpl2+)))
+
+(define-public compiledb
+  (package
+    (name "compiledb")
+    (version "0.10.1")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (pypi-uri "compiledb" version))
+        (sha256
+          (base32 "0vlngsdxfakyl8b7rnvn8h3l216lhbrrydr04yhy6kd03zflgfq6"))))
+    (build-system python-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'no-compat-shim-dependency
+           ;; shutilwhich is only needed for python 3.3 and earlier
+           (lambda _
+             (substitute* "setup.py" (("^ *'shutilwhich'\n") ""))
+             (substitute* "compiledb/compiler.py" (("shutilwhich") "shutil")))))))
+    (propagated-inputs
+      `(("python-bashlex" ,python-bashlex)
+        ("python-click" ,python-click)))
+    (native-inputs
+      `(("python-pytest" ,python-pytest)))
+    (home-page
+      "https://github.com/nickdiego/compiledb")
+    (synopsis
+      "Generate Clang JSON Compilation Database files for make-based build systems")
+    (description
+     "@code{compiledb} provides a @code{make} python wrapper script which,
+besides executing the make build command, updates the JSON compilation
+database file corresponding to that build, resulting in a command-line
+interface similar to Bear.")
+    (license license:gpl3)))

@@ -1,12 +1,15 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2013, 2014, 2015 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2014, 2015 Mark H Weaver <mhw@netris.org>
-;;; Copyright © 2016, 2017, 2018 Efraim Flashner <efraim@flashner.co.il>
-;;; Copyright © 2016, 2017 ng0 <ng0@n0.is>
-;;; Copyright © 2017, 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
-;;; Copyright © 2017, 2018 Eric Bavier <bavier@member.fsf.org>
+;;; Copyright © 2016, 2017, 2018, 2020 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2016, 2017 Nikita <nikita@n0.is>
+;;; Copyright © 2017, 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2017, 2018, 2019 Eric Bavier <bavier@member.fsf.org>
 ;;; Copyright © 2017 Rutger Helling <rhelling@mykolab.com>
 ;;; Copyright © 2018 Ricardo Wurmus <rekado@elephly.net>
+;;; Copyright © 2020 Vincent Legoll <vincent.legoll@gmail.com>
+;;; Copyright © 2020 Brice Waegeneire <brice@waegenei.re>
+;;; Copyright © 2020 André Batista <nandre@riseup.net>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -26,6 +29,7 @@
 (define-module (gnu packages tor)
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (guix packages)
+  #:use-module (guix utils)
   #:use-module (guix download)
   #:use-module (guix git-download)
   #:use-module (guix build-system gnu)
@@ -39,6 +43,7 @@
   #:use-module (gnu packages pcre)
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages python)
+  #:use-module (gnu packages python-crypto)
   #:use-module (gnu packages python-web)
   #:use-module (gnu packages python-xyz)
   #:use-module (gnu packages qt)
@@ -49,24 +54,28 @@
 (define-public tor
   (package
     (name "tor")
-    (version "0.4.0.5")
+    (version "0.4.3.6")
     (source (origin
              (method url-fetch)
              (uri (string-append "https://dist.torproject.org/tor-"
                                  version ".tar.gz"))
              (sha256
               (base32
-               "0vk9j3ybz5dwwbmqrdj1bjcsxy76pc8frmfvflkdzwfkvkqcp8mm"))))
+               "0qmcrkjip0ywq77232m73pjwqiaj0q2klwklqlpbw575shvhcbba"))))
     (build-system gnu-build-system)
+    (arguments
+     `(#:configure-flags
+       (list "--enable-lzma"
+             "--enable-zstd")))
     (native-inputs
      `(("pkg-config" ,pkg-config)
-       ("python" ,python-2)))           ; for tests
+       ("python" ,python)))             ; for tests
     (inputs
-     `(("zlib" ,zlib)
-       ("openssl" ,openssl)
-       ("libevent" ,libevent)
+     `(("libevent" ,libevent)
        ("libseccomp" ,libseccomp)
+       ("openssl" ,openssl)
        ("xz" ,xz)
+       ("zlib" ,zlib)
        ("zstd" ,zstd "lib")))
     (home-page "https://www.torproject.org/")
     (synopsis "Anonymous network router to improve privacy on the Internet")
@@ -79,11 +88,37 @@ location.  Tor works with many of your existing applications, including
 web browsers, instant messaging clients, remote login, and other
 applications based on the TCP protocol.
 
+This package is the full featured @code{tor} which is needed for running
+relays, bridges or directory authorities. If you just want to access the Tor
+network or to setup an onion service you may install @code{tor-client}
+instead.")
+    (license license:bsd-3)))
+
+(define-public tor-client
+  (package
+    (inherit tor)
+    (name "tor-client")
+    (arguments
+     (substitute-keyword-arguments (package-arguments tor)
+       ((#:configure-flags flags)
+        (append flags
+                '("--disable-module-relay")))))
+    (synopsis "Client to the anonymous Tor network")
+    (description
+     "Tor protects you by bouncing your communications around a distributed
+network of relays run by volunteers all around the world: it prevents
+somebody watching your Internet connection from learning what sites you
+visit, and it prevents the sites you visit from learning your physical
+location.  Tor works with many of your existing applications, including
+web browsers, instant messaging clients, remote login, and other
+applications based on the TCP protocol.
+
 To @code{torify} applications (to take measures to ensure that an application,
 which has not been designed for use with Tor such as ssh, will use only Tor for
 internet connectivity, and also ensures that there are no leaks from DNS, UDP or
-the application layer) you need to install @code{torsocks}.")
-    (license license:bsd-3)))
+the application layer) you need to install @code{torsocks}.
+
+This package only provides a client to the Tor Network.")))
 
 (define-public torsocks
   (package
@@ -135,13 +170,34 @@ rejects UDP traffic from the application you're using.")
        ;; $out/etc/privoxy.
        #:configure-flags (list (string-append "--sysconfdir="
                                               (assoc-ref %outputs "out")
-                                              "/etc/privoxy"))
-       #:tests? #f))
+                                              "/etc/privoxy")
+                               "--localstatedir=/var")
+       #:tests? #f                      ; no test suite
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'patch-default-logging
+           (lambda _
+             (with-fluids ((%default-port-encoding "ISO-8859-1"))
+               ;; Do not create /var/run nor /var/log/privoxy/logfile.
+               (substitute* "GNUmakefile.in"
+                 (("(logfile \\|\\| exit )1" _ match)
+                  (string-append match "0"))
+                 (("(\\$\\(DESTDIR\\)\\$\\(SHARE_DEST\\)) \\\\" _ match)
+                  match)
+                 ((".*\\$\\(LOG_DEST\\) \\$\\(DESTDIR\\)\\$\\(PID_DEST\\).*")
+                  ""))
+               ;; Disable logging in the default configuration to allow for
+               ;; non-root users using it as is.
+               (substitute* "config"
+                 (("^logdir") "#logdir")
+                 (("^logfile") "#logfile")))
+             #t)))))
     (inputs
      `(("w3m" ,w3m)
        ("pcre" ,pcre)
-       ("zlib" ,zlib)
-       ("autoconf" ,autoconf)
+       ("zlib" ,zlib)))
+    (native-inputs
+     `(("autoconf" ,autoconf)
        ("automake" ,automake)))
     (home-page "https://www.privoxy.org")
     (synopsis "Web proxy with advanced filtering capabilities for enhancing privacy")
@@ -157,16 +213,16 @@ networks.")
 (define-public onionshare
   (package
     (name "onionshare")
-    (version "1.3.2")
+    (version "2.2")
     (source
       (origin
         (method git-fetch)
         (uri (git-reference
-              (url "https://github.com/micahflee/onionshare.git")
+              (url "https://github.com/micahflee/onionshare")
               (commit (string-append "v" version))))
         (file-name (git-file-name name version))
         (sha256
-         (base32 "19zrz9kh7k4pdk4lh3cm0kv02ngdqkrggwma1xdskrrmp2rjkgz7"))))
+         (base32 "0m8ygxcyp3nfzzhxs2dfnpqwh1vx0aws44lszpnnczz4fks3a5j4"))))
     (build-system python-build-system)
     (arguments
      `(#:phases
@@ -180,37 +236,38 @@ networks.")
                (substitute* "setup.py"
                  ;; For the nautilus plugin.
                  (("/usr/share/nautilus") "share/nautilus"))
-               (substitute* "install/onionshare.desktop"
+               (substitute* "install/org.onionshare.OnionShare.desktop"
                  (("/usr") out))
                #t)))
          (delete 'check)
-         (add-before 'strip 'tests
+         (add-before 'strip 'check
            ;; After all the patching we run the tests after installing.
-           ;; This is also a known issue:
-           ;; https://github.com/micahflee/onionshare/issues/284
            (lambda _
-             (invoke "pytest" "test")
+             (setenv "HOME" "/tmp")     ; Some tests need a writable homedir
+             (invoke "pytest" "tests/")
              #t)))))
     (native-inputs
      `(("python-pytest" ,python-pytest)))
     (inputs
-     `(("python-flask" ,python-flask)
+     `(("python-pycrypto" ,python-pycrypto)
+       ("python-flask" ,python-flask)
+       ("python-flask-httpauth" ,python-flask-httpauth)
        ("python-nautilus" ,python-nautilus)
        ("python-sip" ,python-sip)
        ("python-stem" ,python-stem)
+       ("python-pysocks" ,python-pysocks)
        ("python-pyqt" ,python-pyqt)))
     (home-page "https://onionshare.org/")
     (synopsis "Securely and anonymously share files")
-    (description "OnionShare lets you securely and anonymously share files of
-any size.  It works by starting a web server, making it accessible as a Tor
-hidden service, and generating an unguessable URL to access and download the
-files.  It doesn't require setting up a server on the internet somewhere or
-using a third party filesharing service.  You host the file on your own computer
-and use a Tor hidden service to make it temporarily accessible over the
-internet.  The other user just needs to use Tor Browser to download the file
-from you.")
-    (license (list license:gpl3+
-                   license:bsd-3))))    ; onionshare/socks.py
+    (description "OnionShare is a tool for securely and anonymously sending
+and receiving files using Tor onion services.  It works by starting a web
+server directly on your computer and making it accessible as an unguessable
+Tor web address that others can load in a Tor-enabled web browser to download
+files from you, or upload files to you.  It doesn't require setting up a
+separate server, using a third party file-sharing service, or even logging
+into an account.")
+    ;; Bundled, minified jquery is expat licensed.
+    (license (list license:gpl3+ license:expat))))
 
 (define-public nyx
   (package

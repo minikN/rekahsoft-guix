@@ -4,8 +4,8 @@
 ;;; Copyright © 2016 Mike Gerwitz <mtg@gnu.org>
 ;;; Copyright © 2016 Marius Bakke <mbakke@fastmail.com>
 ;;; Copyright © 2017 Thomas Danckaert <post@thomasdanckaert.be>
-;;; Copyright © 2017, 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
-;;; Copyright © 2017 Ricardo Wurmus <rekado@elephly.net>
+;;; Copyright © 2017, 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2017, 2019 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2018, 2019 Chris Marusich <cmmarusich@gmail.com>
 ;;; Copyright © 2018 Arun Isaac <arunisaac@systemreboot.net>
 ;;;
@@ -35,6 +35,7 @@
   #:use-module (guix build-system glib-or-gtk)
   #:use-module (guix build-system python)
   #:use-module (gnu packages autotools)
+  #:use-module (gnu packages base)
   #:use-module (gnu packages curl)
   #:use-module (gnu packages check)
   #:use-module (gnu packages docbook)
@@ -64,15 +65,14 @@
 (define-public ccid
   (package
     (name "ccid")
-    (version "1.4.30")
+    (version "1.4.33")
     (source (origin
               (method url-fetch)
-              (uri (string-append
-                    "https://ccid.apdu.fr/files/"
-                    name "-" version ".tar.bz2"))
+              (uri (string-append "https://ccid.apdu.fr/files/ccid-"
+                                  version ".tar.bz2"))
               (sha256
                (base32
-                "0z7zafdg75fr1adlv2x0zz34s07gljcjg2lsz76s1048w1xhh5xc"))))
+                "0974h2v9wq0j0ajw3c7yckaw8wqcppb2npfhfhmv9phijy9xlmjj"))))
     (build-system gnu-build-system)
     (arguments
      `(#:configure-flags (list (string-append "--enable-usbdropdir=" %output
@@ -102,7 +102,7 @@ readers and is needed to communicate with such devices through the
 (define-public eid-mw
   (package
     (name "eid-mw")
-    (version "4.4.16")
+    (version "4.4.27")
     (source
      (origin
        (method git-fetch)
@@ -111,12 +111,12 @@ readers and is needed to communicate with such devices through the
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "1q82fw63xzrnrgh1wyh457hal6vfdl6swqfq7l6kviywiwlzx7kd"))))
+        (base32 "17lw8iwp7h5cs3db80sysr84ffi333cf2vrhncs9l6hy6glfl2v1"))))
     (build-system glib-or-gtk-build-system)
     (native-inputs
      `(("autoconf" ,autoconf)
        ("automake" ,automake)
-       ("gettext" ,gnu-gettext)
+       ("gettext" ,gettext-minimal)
        ("libtool" ,libtool)
        ("pkg-config" ,pkg-config)
        ("perl" ,perl)))
@@ -138,7 +138,7 @@ readers and is needed to communicate with such devices through the
              ;; Patch it to just return the real version number directly.
              (substitute* "scripts/build-aux/genver.sh"
                (("/bin/sh") (which "sh"))
-               (("^(GITDESC=).*" match) (string-append match ,version "\n")))
+               (("^(GITDESC=).*" _ match) (string-append match ,version "\n")))
              (invoke "sh" "./bootstrap.sh"))))))
     (synopsis "Belgian eID Middleware")
     (description "The Belgian eID Middleware is required to authenticate with
@@ -166,18 +166,45 @@ the low-level development kit for the Yubico YubiKey authentication device.")
     (home-page "https://developers.yubico.com/yubico-c/")
     (license license:bsd-2)))
 
-(define-public pcsc-lite
+(define-public softhsm
   (package
-    (name "pcsc-lite")
-    (version "1.8.25")
+    (name "softhsm")
+    (version "2.6.1")
     (source (origin
               (method url-fetch)
               (uri (string-append
-                    "https://pcsclite.apdu.fr/files/"
-                    name "-" version ".tar.bz2"))
+                    "https://dist.opendnssec.org/source/"
+                    "softhsm-" version ".tar.gz"))
               (sha256
                (base32
-                "14l7irs1nsh8b036ag4cfy8wryyysch78scz5dw6xxqwqgnpjvfp"))))
+                "1wkmyi6n3z2pak1cj5yk6v6bv9w0m24skycya48iikab0mrr8931"))))
+    (build-system gnu-build-system)
+    (arguments
+     '(#:configure-flags '("--disable-gost"))) ; TODO Missing the OpenSSL
+                                               ; engine for GOST
+    (inputs
+     `(("openssl" ,openssl)))
+    (native-inputs
+     `(("pkg-config" ,pkg-config)
+       ("cppunit" ,cppunit)))
+    (synopsis "Software implementation of a generic cryptographic device")
+    (description
+     "SoftHSM 2 is a software implementation of a generic cryptographic device
+with a PKCS #11 Cryptographic Token Interface.")
+    (home-page "https://www.opendnssec.org/softhsm/")
+    (license license:bsd-2)))
+
+(define-public pcsc-lite
+  (package
+    (name "pcsc-lite")
+    (version "1.8.26")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append "https://pcsclite.apdu.fr/files/"
+                                  "pcsc-lite-" version ".tar.bz2"))
+              (sha256
+               (base32
+                "1ndvvz0fgqwz70pijymsxmx25mzryb0zav1i8jjc067ndryvxdry"))))
     (build-system gnu-build-system)
     (arguments
      `(#:configure-flags '("--enable-usbdropdir=/var/lib/pcsc/drivers"
@@ -229,7 +256,7 @@ website for more information about Yubico and the YubiKey.")
 (define-public opensc
   (package
     (name "opensc")
-    (version "0.19.0")
+    (version "0.20.0")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -237,7 +264,7 @@ website for more information about Yubico and the YubiKey.")
                     version "/opensc-" version ".tar.gz"))
               (sha256
                (base32
-                "09jqzl18z5qfrf4vf2nvbpdm3mphpgfkl3ww1clkaxh2z56hwnic"))))
+                "0qs8pabkrpj1z52bkdsk59s2z6q5m0hfh9d5j1f68qs4lksb9x5v"))))
     (build-system gnu-build-system)
     (arguments
      `(#:phases
@@ -254,13 +281,7 @@ website for more information about Yubico and the YubiKey.")
                  (("DEFAULT_PCSC_PROVIDER=\"libpcsclite\\.so\\.1\"")
                   (string-append
                    "DEFAULT_PCSC_PROVIDER=\"" libpcsclite "\"")))
-               #t)))
-         (add-before 'check 'disable-broken-test
-           (lambda _
-             ;; XXX: This test is fixed in git, remove this phase for >= 0.19.
-             (substitute* "doc/tools/Makefile"
-               (("TESTS = test-manpage.sh") "TESTS = "))
-             #t)))))
+               #t))))))
     (inputs
      `(("readline" ,readline)
        ("openssl" ,openssl)
@@ -335,7 +356,7 @@ and other operations.  It includes a library and a command-line tool.")
                                               (assoc-ref %outputs "out")
                                               "/lib/udev/rules.d"))))
     (inputs
-     `(("json-c" ,json-c)
+     `(("json-c" ,json-c-0.13)
        ("libusb" ,libusb)
        ;; The library "libyubikey" is also known as "yubico-c".
        ("libyubikey" ,libyubikey)))
@@ -353,7 +374,7 @@ retrieve a YubiKey's serial number, and so forth.")
 (define-public python-pyscard
   (package
     (name "python-pyscard")
-    (version "1.9.8")
+    (version "1.9.9")
     (source (origin
               (method url-fetch)
               ;; The maintainer publishes releases on various sites, but
@@ -363,7 +384,7 @@ retrieve a YubiKey's serial number, and so forth.")
                     version "/pyscard-" version ".tar.gz"))
               (sha256
                (base32
-                "15fh00z1an6r5j7hrz3jlq0rb3jygwf3x4jcwsa008bv8vpcg7gm"))))
+                "082cjkbxadaz2jb4rbhr0mkrirzlqyqhcf3r823qb0q1k50ybgg6"))))
     (build-system python-build-system)
     (arguments
      `(#:phases
@@ -435,7 +456,7 @@ PCSC API Python wrapper module.")
                                "/xml/dtd/docbook/docbookx.dtd")))
              #t)))))
     (inputs
-     `(("json-c" ,json-c)
+     `(("json-c" ,json-c-0.13)
        ("hidapi" ,hidapi)))
     (native-inputs
      `(("help2man" ,help2man)
@@ -454,6 +475,86 @@ talk to a U2F device and perform the U2F Register and U2F Authenticate
 operations.")
     ;; Most files are LGPLv2.1+, but some files are GPLv3+.
     (license (list license:lgpl2.1+ license:gpl3+))))
+
+(define-public libu2f-server
+  (package
+    (name "libu2f-server")
+    (version "1.1.0")
+    (source (origin
+              (method git-fetch)
+              (uri
+               (git-reference
+                (url "https://github.com/Yubico/libu2f-server")
+                (commit (string-append "libu2f-server-" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "1nmsfq372zza5y6j13ydincjf324bwfcjg950vykh166xkp6wiic"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:configure-flags
+       (list "--enable-gtk-doc"
+             "--enable-tests")))
+    (inputs
+     `(("json-c" ,json-c-0.13)
+       ("libressl" ,libressl)))
+    (native-inputs
+     `(("autoconf" ,autoconf)
+       ("automake" ,automake)
+       ("libtool" ,libtool)
+       ("check" ,check)
+       ("gengetopt" ,gengetopt)
+       ("help2man" ,help2man)
+       ("pkg-config" ,pkg-config)
+       ("gtk-doc" ,gtk-doc)
+       ("which" ,which)))
+    (home-page "https://developers.yubico.com/libu2f-server/")
+    ;; TRANSLATORS: The U2F protocol has a "server side" and a "host side".
+    (synopsis "U2F server-side C library")
+    (description
+     "This is a C library that implements the server-side of the
+@dfn{Universal 2nd Factor} (U2F) protocol.  More precisely, it provides an API
+for generating the JSON blobs required by U2F devices to perform the U2F
+Registration and U2F Authentication operations, and functionality for
+verifying the cryptographic operations.")
+    (license license:bsd-2)))
+
+(define-public pam-u2f
+  (package
+    (name "pam-u2f")
+    (version "1.0.8")
+    (source (origin
+              (method git-fetch)
+              (uri
+               (git-reference
+                (url "https://github.com/Yubico/pam-u2f")
+                (commit (string-append "pam_u2f-" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "04d9davyi33gqbvga1rvh9fijp6f16mx2xmnn4n61rnhcn2jac98"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:configure-flags
+       (list (string-append "--with-pam-dir="
+                            (assoc-ref %outputs "out") "/lib/security"))))
+    (inputs
+     `(("libu2f-host" ,libu2f-host)
+       ("libu2f-server" ,libu2f-server)
+       ("linux-pam" ,linux-pam)))
+    (native-inputs
+     `(("autoconf" ,autoconf)
+       ("automake" ,automake)
+       ("libtool" ,libtool)
+       ("asciidoc" ,asciidoc)
+       ("pkg-config" ,pkg-config)))
+    (home-page "https://developers.yubico.com/pam-u2f/")
+    (synopsis "PAM module for U2F authentication")
+    (description
+     "This package provides a module implementing PAM over U2F, providing an
+easy way to integrate the YubiKey (or other U2F compliant authenticators) into
+your existing infrastructure.")
+    (license license:bsd-2)))
 
 (define-public python-fido2
   (package

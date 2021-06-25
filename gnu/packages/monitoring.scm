@@ -1,10 +1,12 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2016 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2018 Sou Bunnbu <iyzsong@member.fsf.org>
-;;; Copyright © 2017, 2018, 2019 Ricardo Wurmus <rekado@elephly.net>
-;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2017, 2018, 2019, 2020 Ricardo Wurmus <rekado@elephly.net>
+;;; Copyright © 2018, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018 Gábor Boskovits <boskovits@gmail.com>
-;;; Copyright © 2018, 2019 Oleg Pykhalov <go.wigust@gmail.com>
+;;; Copyright © 2018, 2019, 2020 Oleg Pykhalov <go.wigust@gmail.com>
+;;; Copyright © 2020 Alex ter Weele <alex.ter.weele@gmail.com>
+;;; Copyright © 2020 Lars-Dominik Braun <ldb@leibniz-psychology.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -31,6 +33,7 @@
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system go)
   #:use-module (guix utils)
+  #:use-module (gnu packages)
   #:use-module (gnu packages admin)
   #:use-module (gnu packages autotools)
   #:use-module (gnu packages base)
@@ -47,16 +50,19 @@
   #:use-module (gnu packages libevent)
   #:use-module (gnu packages pcre)
   #:use-module (gnu packages perl)
+  #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages python)
   #:use-module (gnu packages python-web)
   #:use-module (gnu packages python-xyz)
+  #:use-module (gnu packages rrdtool)
   #:use-module (gnu packages time)
-  #:use-module (gnu packages tls))
+  #:use-module (gnu packages tls)
+  #:use-module (gnu packages web))
 
 (define-public nagios
   (package
     (name "nagios")
-    (version "4.3.4")
+    (version "4.4.6")
     ;; XXX: Nagios 4.2.x and later bundle a copy of AngularJS.
     (source (origin
               (method url-fetch)
@@ -65,7 +71,7 @@
                     version "/nagios-" version ".tar.gz"))
               (sha256
                (base32
-                "1wa4m952sb23dqi5w759adimsp21bkhp598rpq9dnhz3v497h2y9"))
+                "1x5hb97zbvkm73q53ydp1gwj8nnznm72q9c4rm6ny7phr995l3db"))
               (modules '((guix build utils)))
               (snippet
                ;; Ensure reproducibility.
@@ -152,16 +158,15 @@ etc. via a Web interface.  Features include:
 (define-public zabbix-agentd
   (package
     (name "zabbix-agentd")
-    (version "4.2.0")
+    (version "5.0.2")
     (source
      (origin
        (method url-fetch)
        (uri (string-append
-             "mirror://sourceforge/zabbix/ZABBIX%20Latest%20Stable/" version
-             "/zabbix-" version ".tar.gz"))
+             "https://cdn.zabbix.com/zabbix/sources/stable/"
+             (version-major+minor version) "/zabbix-" version ".tar.gz"))
        (sha256
-        (base32
-         "1b9wx6z15jfg8yakb7mlaqqri1ia9i12rgk58c3nparzsjdd9p2c"))))
+        (base32 "1cnns7ixqi7ank3cbvcs7d8rb5zh9qiqbmgivazr83jnz81qg46w"))))
     (build-system gnu-build-system)
     (arguments
      `(#:configure-flags
@@ -195,7 +200,7 @@ solution (client-side agent)")
                         (front-end-conf (string-append php "/conf"))
                         (etc (string-append php "/etc")))
                    (mkdir-p php)
-                   (copy-recursively "frontends/php" php)
+                   (copy-recursively "ui" php)
                    ;; Make front-end write config to ‘/etc/zabbix’ directory.
                    (rename-file front-end-conf
                                 (string-append front-end-conf "-example"))
@@ -371,14 +376,13 @@ demand.")
 (define-public python-prometheus-client
   (package
     (name "python-prometheus-client")
-    (version "0.5.0")
+    (version "0.7.1")
     (source
      (origin
        (method url-fetch)
        (uri (pypi-uri "prometheus_client" version))
        (sha256
-        (base32
-         "0g7rpv1pq2lab1nfqdx98z9d3bqwc400alg1j4ynrpjkrbsizhg8"))))
+        (base32 "1ni2yv4ixwz32nz39ckia76lvggi7m19y5f702w5qczbnfi29kbi"))))
     (build-system python-build-system)
     (arguments
      '(;; No included tests.
@@ -401,42 +405,40 @@ WSGI and the node exporter textfile collector.")
   (package-with-python2 python-prometheus-client))
 
 (define-public go-github-com-prometheus-node-exporter
-  (let ((commit "55c32fcf02492fe4946f7ab563547cc5df7fc61e")
-        (revision "0"))
-    (package
-      (name "go-github-com-prometheus-node-exporter")
-      (version (git-version "0.0.0" revision commit))
-      (source (origin
-                (method git-fetch)
-                (uri (git-reference
-                      (url "https://github.com/prometheus/node_exporter.git")
-                      (commit commit)))
-                (file-name (git-file-name name version))
-                (sha256
-                 (base32
-                  "041b87a0sid23c29swqmi5hw6cxbxvkfj3415jg73cm2pi8wh5s6"))))
-      (build-system go-build-system)
-      (arguments
-       '(#:import-path "github.com/prometheus/node_exporter"))
-      (synopsis "Prometheus exporter for hardware and OS metrics")
-      (description "Prometheus exporter for metrics exposed by *NIX kernels,
+  (package
+    (name "go-github-com-prometheus-node-exporter")
+    (version "0.18.1")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/prometheus/node_exporter")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0s3sp1gj86p7npxl38hkgs6ymd3wjjmc5hydyg1b5wh0x3yvpx07"))))
+    (build-system go-build-system)
+    (arguments
+     '(#:import-path "github.com/prometheus/node_exporter"))
+    (synopsis "Prometheus exporter for hardware and OS metrics")
+    (description "Prometheus exporter for metrics exposed by *NIX kernels,
 written in Go with pluggable metric collectors.")
-      (home-page "https://github.com/prometheus/node_exporter")
-      (license license:asl2.0))))
+    (home-page "https://github.com/prometheus/node_exporter")
+    (license license:asl2.0)))
 
 (define-public fswatch
   (package
     (name "fswatch")
-    (version "1.14.0")
+    (version "1.15.0")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                      (url "https://github.com/emcrisostomo/fswatch.git")
+                      (url "https://github.com/emcrisostomo/fswatch")
                       (commit version)))
               (file-name (git-file-name name version))
               (sha256
                (base32
-                "1ihn7wp3y7ml2lm8drz2hc6fmgj8kygbygnw8mz7gjax88f9dbx7"))))
+                "1yz65jsbgdx4cmy16x24wz5di352lvyi7fp6jm90bhgl1vpzxlsx"))))
     (build-system gnu-build-system)
     (native-inputs
      `(("autoconf" ,autoconf)
@@ -447,3 +449,47 @@ written in Go with pluggable metric collectors.")
     (description "This package provides a file system monitor.")
     (home-page "https://github.com/emcrisostomo/fswatch")
     (license license:gpl3+)))
+
+(define-public collectd
+  (package
+    (name "collectd")
+    (version "5.11.0")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append
+                    "https://storage.googleapis.com/collectd-tarballs/collectd-"
+                    version
+                    ".tar.bz2"))
+              (sha256
+               (base32
+                "1cjxksxdqcqdccz1nbnc2fp6yy84qq361ynaq5q8bailds00mc9p"))
+              (patches (search-patches "collectd-5.11.0-noinstallvar.patch"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:configure-flags (list "--localstatedir=/var" "--sysconfdir=/etc")
+       #:phases (modify-phases %standard-phases
+                  (add-before 'configure 'autoreconf
+                    (lambda _
+                      ;; Required because of patched sources.
+                      (invoke "autoreconf" "-vfi"))))))
+    (inputs
+     `(("rrdtool" ,rrdtool)
+       ("curl" ,curl)
+       ("libyajl" ,libyajl)))
+    (native-inputs
+     `(("autoconf" ,autoconf)
+       ("automake" ,automake)
+       ("libtool" ,libtool)
+       ("pkg-config" ,pkg-config)))
+    (home-page "https://collectd.org/")
+    (synopsis "Collect system and application performance metrics periodically")
+    (description
+     "collectd gathers metrics from various sources such as the operating system,
+applications, log files and external devices, and stores this information or
+makes it available over the network.  Those statistics can be used to monitor
+systems, find performance bottlenecks (i.e., performance analysis) and predict
+future system load (i.e., capacity planning).")
+    ;; license:expat for the daemon in src/daemon/ and some plugins,
+    ;; license:gpl2 for other plugins
+    (license (list license:expat license:gpl2))))
+

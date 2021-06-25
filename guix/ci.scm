@@ -1,5 +1,6 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2018 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2020 Mathieu Othacehe <othacehe@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -18,15 +19,23 @@
 
 (define-module (guix ci)
   #:use-module (guix http-client)
-  #:autoload   (json parser) (json->scm)
+  #:use-module (guix json)
+  #:use-module (json)
   #:use-module (srfi srfi-1)
-  #:use-module (srfi srfi-9)
-  #:export (build?
+  #:use-module (ice-9 match)
+  #:export (build-product?
+            build-product-id
+            build-product-type
+            build-product-file-size
+            build-product-path
+
+            build?
             build-id
             build-derivation
             build-system
             build-status
             build-timestamp
+            build-products
 
             checkout?
             checkout-commit
@@ -42,7 +51,7 @@
             queued-builds
             latest-builds
             latest-evaluations
-            evaluation-for-commit))
+            evaluations-for-commit))
 
 ;;; Commentary:
 ;;;
@@ -51,28 +60,46 @@
 ;;;
 ;;; Code:
 
-(define-record-type <build>
-  (make-build id derivation system status timestamp)
-  build?
-  (id          build-id)                          ;integer
+(define-json-mapping <build-product> make-build-product
+  build-product?
+  json->build-product
+  (id          build-product-id)                  ;integer
+  (type        build-product-type)                ;string
+  (file-size   build-product-file-size)           ;integer
+  (path        build-product-path))               ;string
+
+(define-json-mapping <build> make-build build?
+  json->build
+  (id          build-id "id")                     ;integer
   (derivation  build-derivation)                  ;string | #f
   (system      build-system)                      ;string
-  (status      build-status)                      ;integer
-  (timestamp   build-timestamp))                  ;integer
+  (status      build-status "buildstatus" )       ;integer
+  (timestamp   build-timestamp)                   ;integer
+  (products    build-products "buildproducts"     ;<build-product>*
+               (lambda (products)
+                 (map json->build-product
+                      ;; Before Cuirass 3db603c1, #f is always returned.
+                      (if (vector? products)
+                          (vector->list products)
+                          '())))))
 
-(define-record-type <checkout>
-  (make-checkout commit input)
-  checkout?
+(define-json-mapping <checkout> make-checkout checkout?
+  json->checkout
   (commit      checkout-commit)                   ;string (SHA1)
   (input       checkout-input))                   ;string (name)
 
-(define-record-type <evaluation>
-  (make-evaluation id spec complete? checkouts)
-  evaluation?
+(define-json-mapping <evaluation> make-evaluation evaluation?
+  json->evaluation
   (id          evaluation-id)                     ;integer
-  (spec        evaluation-spec)                   ;string
-  (complete?   evaluation-complete?)              ;Boolean
-  (checkouts   evaluation-checkouts))             ;<checkout>*
+  (spec        evaluation-spec "specification")   ;string
+  (complete?   evaluation-complete? "in-progress"
+               (match-lambda
+                 (0 #t)
+                 (_ #f)))                         ;Boolean
+  (checkouts   evaluation-checkouts "checkouts"   ;<checkout>*
+               (lambda (checkouts)
+                 (map json->checkout
+                      (vector->list checkouts)))))
 
 (define %query-limit
   ;; Max number of builds requested in queries.
@@ -84,21 +111,14 @@
     (close-port port)
     json))
 
-(define (json->build json)
-  (make-build (hash-ref json "id")
-              (hash-ref json "derivation")
-              (hash-ref json "system")
-              (hash-ref json "buildstatus")
-              (hash-ref json "timestamp")))
-
 (define* (queued-builds url #:optional (limit %query-limit))
   "Return the list of queued derivations on URL."
   (let ((queue (json-fetch (string-append url "/api/queue?nr="
                                           (number->string limit)))))
-    (map json->build queue)))
+    (map json->build (vector->list queue))))
 
 (define* (latest-builds url #:optional (limit %query-limit)
-                        #:key evaluation system)
+                        #:key evaluation system job status)
   "Return the latest builds performed by the CI server at URL.  If EVALUATION
 is an integer, restrict to builds of EVALUATION.  If SYSTEM is true (a system
 string such as \"x86_64-linux\"), restrict to builds for SYSTEM."
@@ -111,29 +131,21 @@ string such as \"x86_64-linux\"), restrict to builds for SYSTEM."
                                            (number->string limit)
                                            (option "evaluation" evaluation
                                                    number->string)
-                                           (option "system" system)))))
+                                           (option "system" system)
+                                           (option "job" job)
+                                           (option "status" status
+                                                   number->string)))))
     ;; Note: Hydra does not provide a "derivation" field for entries in
     ;; 'latestbuilds', but Cuirass does.
-    (map json->build latest)))
-
-(define (json->checkout json)
-  (make-checkout (hash-ref json "commit")
-                 (hash-ref json "input")))
-
-(define (json->evaluation json)
-  (make-evaluation (hash-ref json "id")
-                   (hash-ref json "specification")
-                   (case (hash-ref json "in-progress")
-                     ((0) #t)
-                     (else #f))
-                   (map json->checkout (hash-ref json "checkouts"))))
+    (map json->build (vector->list latest))))
 
 (define* (latest-evaluations url #:optional (limit %query-limit))
   "Return the latest evaluations performed by the CI server at URL."
   (map json->evaluation
-       (json->scm
-        (http-fetch (string-append url "/api/evaluations?nr="
-                                   (number->string limit))))))
+       (vector->list
+        (json->scm
+         (http-fetch (string-append url "/api/evaluations?nr="
+                                    (number->string limit)))))))
 
 
 (define* (evaluations-for-commit url commit #:optional (limit %query-limit))

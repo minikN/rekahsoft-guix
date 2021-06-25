@@ -1,7 +1,8 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2013, 2014, 2015, 2016, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2013, 2014, 2015, 2016, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2017 Clément Lassieur <clement@lassieur.org>
 ;;; Copyright © 2018 Carlo Zancanaro <carlo@zancanaro.id.au>
+;;; Copyright © 2020 Jan (janneke) Nieuwenhuizen <janneke@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -25,6 +26,7 @@
   #:use-module (guix store)
   #:use-module (guix records)
   #:use-module (guix derivations)                 ;imported-modules, etc.
+  #:use-module (guix utils)
   #:use-module (gnu services)
   #:use-module (gnu services herd)
   #:use-module (gnu packages admin)
@@ -63,7 +65,9 @@
 
             shepherd-service-lookup-procedure
             shepherd-service-back-edges
-            shepherd-service-upgrade))
+            shepherd-service-upgrade
+
+            user-processes-service-type))
 
 ;;; Commentary:
 ;;;
@@ -103,7 +107,11 @@
    (extensions (list (service-extension boot-service-type
                                         shepherd-boot-gexp)
                      (service-extension profile-service-type
-                                        (const (list shepherd)))))))
+                                        (const (list shepherd)))))
+   (description
+    "Run the GNU Shepherd as PID 1---i.e., the operating system's first
+process.  The Shepherd takes care of managing services such as daemons by
+ensuring they are started and stopped in the right order.")))
 
 (define %shepherd-root-service
   ;; The root shepherd service, aka. PID 1.  Its parameter is a list of
@@ -138,7 +146,7 @@ DEFAULT is given, use it as the service's default value."
   ;; Default set of modules visible in a service's file.
   `((shepherd service)
     (oop goops)
-    (guix build utils)
+    ((guix build utils) #:hide (delete))
     (guix build syscalls)))
 
 (define-record-type* <shepherd-service>
@@ -255,6 +263,30 @@ stored."
                                    #~(#$name #$doc #$proc)))
                                 (shepherd-service-actions service))))))))
 
+(define (scm->go file)
+  "Compile FILE, which contains code to be loaded by shepherd's config file,
+and return the resulting '.go' file."
+  (let-system (system target)
+    (with-extensions (list shepherd)
+      (computed-file (string-append (basename (scheme-file-name file) ".scm")
+                                    ".go")
+                     #~(begin
+                         (use-modules (system base compile)
+                                      (system base target))
+
+                         ;; Do the same as the Shepherd's 'load-in-user-module'.
+                         (let ((env (make-fresh-user-module)))
+                           (module-use! env (resolve-interface '(oop goops)))
+                           (module-use! env (resolve-interface '(shepherd service)))
+                           (with-target #$(or target #~%host-type)
+                             (lambda _
+                               (compile-file #$file #:output-file #$output
+                                             #:env env)))))
+
+                     ;; It's faster to build locally than to download.
+                     #:options '(#:local-build? #t
+                                 #:substitutable? #f)))))
+
 (define (shepherd-configuration-file services)
   "Return the shepherd configuration file for SERVICES."
   (assert-valid-graph services)
@@ -265,40 +297,51 @@ stored."
           (use-modules (srfi srfi-34)
                        (system repl error-handling))
 
+          ;; Specify the default environment visible to all the services.
+          ;; Without this statement, all the environment variables of PID 1
+          ;; are inherited by child services.
+          (default-environment-variables
+            '("PATH=/run/current-system/profile/bin"))
+
+          ;; Booting off a DVD, especially on a slow machine, can make
+          ;; everything slow.  Thus, increase the timeout compared to the
+          ;; default 5s in the Shepherd 0.7.0.  See
+          ;; <https://bugs.gnu.org/40572>.
+          (default-pid-file-timeout 30)
+
           ;; Arrange to spawn a REPL if something goes wrong.  This is better
           ;; than a kernel panic.
           (call-with-error-handling
             (lambda ()
-              (apply register-services (map primitive-load '#$files))
+              (apply register-services
+                     (parameterize ((current-warning-port
+                                     (%make-void-port "w")))
+                       (map load-compiled '#$(map scm->go files))))))
 
-              ;; guix-daemon 0.6 aborts if 'PATH' is undefined, so work around
-              ;; it.
-              (setenv "PATH" "/run/current-system/profile/bin")
+          (format #t "starting services...~%")
+          (for-each (lambda (service)
+                      ;; In the Shepherd 0.3 the 'start' method can raise
+                      ;; '&action-runtime-error' if it fails, so protect
+                      ;; against it.  (XXX: 'action-runtime-error?' is not
+                      ;; exported is 0.3, hence 'service-error?'.)
+                      (guard (c ((service-error? c)
+                                 (format (current-error-port)
+                                         "failed to start service '~a'~%"
+                                         service)))
+                        (start service)))
+                    '#$(append-map shepherd-service-provision
+                                   (filter shepherd-service-auto-start?
+                                           services)))
 
-              (format #t "starting services...~%")
-              (for-each (lambda (service)
-                          ;; In the Shepherd 0.3 the 'start' method can raise
-                          ;; '&action-runtime-error' if it fails, so protect
-                          ;; against it.  (XXX: 'action-runtime-error?' is not
-                          ;; exported is 0.3, hence 'service-error?'.)
-                          (guard (c ((service-error? c)
-                                     (format (current-error-port)
-                                             "failed to start service '~a'~%"
-                                             service)))
-                            (start service)))
-                        '#$(append-map shepherd-service-provision
-                                       (filter shepherd-service-auto-start?
-                                               services)))
-
-              ;; Hang up stdin.  At this point, we assume that 'start' methods
-              ;; that required user interaction on the console (e.g.,
-              ;; 'cryptsetup open' invocations, post-fsck emergency REPL) have
-              ;; completed.  User interaction becomes impossible after this
-              ;; call; this avoids situations where services wrongfully lead
-              ;; PID 1 to read from stdin (the console), which users may not
-              ;; have access to (see <https://bugs.gnu.org/23697>).
-              (redirect-port (open-input-file "/dev/null")
-                             (current-input-port))))))
+          ;; Hang up stdin.  At this point, we assume that 'start' methods
+          ;; that required user interaction on the console (e.g.,
+          ;; 'cryptsetup open' invocations, post-fsck emergency REPL) have
+          ;; completed.  User interaction becomes impossible after this
+          ;; call; this avoids situations where services wrongfully lead
+          ;; PID 1 to read from stdin (the console), which users may not
+          ;; have access to (see <https://bugs.gnu.org/23697>).
+          (redirect-port (open-input-file "/dev/null")
+                         (current-input-port))))
 
     (scheme-file "shepherd.conf" config)))
 
@@ -384,5 +427,127 @@ need to be restarted to complete their upgrade."
     (remove essential? (filter obsolete? live)))
 
   (values to-unload to-restart))
+
+
+;;;
+;;; User processes.
+;;;
+
+(define %do-not-kill-file
+  ;; Name of the file listing PIDs of processes that must survive when halting
+  ;; the system.  Typical example is user-space file systems.
+  "/etc/shepherd/do-not-kill")
+
+(define (user-processes-shepherd-service requirements)
+  "Return the 'user-processes' Shepherd service with dependencies on
+REQUIREMENTS (a list of service names).
+
+This is a synchronization point used to make sure user processes and daemons
+get started only after crucial initial services have been started---file
+system mounts, etc.  This is similar to the 'sysvinit' target in systemd."
+  (define grace-delay
+    ;; Delay after sending SIGTERM and before sending SIGKILL.
+    4)
+
+  (list (shepherd-service
+         (documentation "When stopped, terminate all user processes.")
+         (provision '(user-processes))
+         (requirement requirements)
+         (start #~(const #t))
+         (stop #~(lambda _
+                   (define (kill-except omit signal)
+                     ;; Kill all the processes with SIGNAL except those listed
+                     ;; in OMIT and the current process.
+                     (let ((omit (cons (getpid) omit)))
+                       (for-each (lambda (pid)
+                                   (unless (memv pid omit)
+                                     (false-if-exception
+                                      (kill pid signal))))
+                                 (processes))))
+
+                   (define omitted-pids
+                     ;; List of PIDs that must not be killed.
+                     (if (file-exists? #$%do-not-kill-file)
+                         (map string->number
+                              (call-with-input-file #$%do-not-kill-file
+                                (compose string-tokenize
+                                         (@ (ice-9 rdelim) read-string))))
+                         '()))
+
+                   (define (now)
+                     (car (gettimeofday)))
+
+                   (define (sleep* n)
+                     ;; Really sleep N seconds.
+                     ;; Work around <http://bugs.gnu.org/19581>.
+                     (define start (now))
+                     (let loop ((elapsed 0))
+                       (when (> n elapsed)
+                         (sleep (- n elapsed))
+                         (loop (- (now) start)))))
+
+                   (define lset= (@ (srfi srfi-1) lset=))
+
+                   (display "sending all processes the TERM signal\n")
+
+                   (if (null? omitted-pids)
+                       (begin
+                         ;; Easy: terminate all of them.
+                         (kill -1 SIGTERM)
+                         (sleep* #$grace-delay)
+                         (kill -1 SIGKILL))
+                       (begin
+                         ;; Kill them all except OMITTED-PIDS.  XXX: We would
+                         ;; like to (kill -1 SIGSTOP) to get a fixed list of
+                         ;; processes, like 'killall5' does, but that seems
+                         ;; unreliable.
+                         (kill-except omitted-pids SIGTERM)
+                         (sleep* #$grace-delay)
+                         (kill-except omitted-pids SIGKILL)
+                         (delete-file #$%do-not-kill-file)))
+
+                   (let wait ()
+                     ;; Reap children, if any, so that we don't end up with
+                     ;; zombies and enter an infinite loop.
+                     (let reap-children ()
+                       (define result
+                         (false-if-exception
+                          (waitpid WAIT_ANY (if (null? omitted-pids)
+                                                0
+                                                WNOHANG))))
+
+                       (when (and (pair? result)
+                                  (not (zero? (car result))))
+                         (reap-children)))
+
+                     (let ((pids (processes)))
+                       (unless (lset= = pids (cons 1 omitted-pids))
+                         (format #t "waiting for process termination\
+ (processes left: ~s)~%"
+                                 pids)
+                         (sleep* 2)
+                         (wait))))
+
+                   (display "all processes have been terminated\n")
+                   #f))
+         (respawn? #f))))
+
+(define user-processes-service-type
+  (service-type
+   (name 'user-processes)
+   (extensions (list (service-extension shepherd-root-service-type
+                                        user-processes-shepherd-service)))
+   (compose concatenate)
+   (extend append)
+
+   ;; The value is the list of Shepherd services 'user-processes' depends on.
+   ;; Extensions can add new services to this list.
+   (default-value '())
+
+   (description "The @code{user-processes} service is responsible for
+terminating all the processes so that the root file system can be re-mounted
+read-only, just before rebooting/halting.  Processes still running after a few
+seconds after @code{SIGTERM} has been sent are terminated with
+@code{SIGKILL}.")))
 
 ;;; shepherd.scm ends here

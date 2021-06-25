@@ -1,8 +1,9 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2016 Ben Woodcroft <donttrustben@gmail.com>
-;;; Copyright © 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2018 Eric Bavier <bavier@member.fsf.org>
 ;;; Copyright © 2019 Arun Isaac <arunisaac@systemreboot.net>
+;;; Copyright © 2019 Efraim Flashner <efraim@flashner.co.il>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -25,10 +26,13 @@
   #:use-module (srfi srfi-26)
   #:use-module (srfi srfi-34)
   #:use-module (guix utils)
+  #:use-module (guix i18n)
+  #:use-module (guix diagnostics)
   #:use-module ((guix download) #:prefix download:)
   #:use-module ((guix git-download) #:prefix download:)
   #:use-module (guix import utils)
   #:use-module (guix import json)
+  #:use-module (json)
   #:use-module (guix packages)
   #:use-module (guix upstream)
   #:use-module (guix http-client)
@@ -49,7 +53,7 @@ false if none is recognized"
   (define (updated-url url)
     (if (string-prefix? "https://github.com/" url)
         (let ((ext     (or (find-extension url) ""))
-              (name    (package-name old-package))
+              (name    (package-upstream-name old-package))
               (version (package-version old-package))
               (prefix  (string-append "https://github.com/"
                                       (github-user-slash-repository url)))
@@ -89,20 +93,23 @@ false if none is recognized"
            (#t #f))) ; Some URLs are not recognised.
         #f))
 
-  (let ((source-uri (and=> (package-source old-package) origin-uri))
-        (fetch-method (and=> (package-source old-package) origin-method)))
-    (cond
-     ((eq? fetch-method download:url-fetch)
-      (match source-uri
-             ((? string?)
-              (updated-url source-uri))
-             ((source-uri ...)
-              (find updated-url source-uri))))
-     ((and (eq? fetch-method download:git-fetch)
-           (string-prefix? "https://github.com/"
-                           (download:git-reference-url source-uri)))
-      (download:git-reference-url source-uri))
-     (else #f))))
+  (match (package-source old-package)
+    ((? origin? origin)
+     (let ((source-uri   (origin-uri origin))
+           (fetch-method (origin-method origin)))
+       (cond
+        ((eq? fetch-method download:url-fetch)
+         (match source-uri
+           ((? string?)
+            (updated-url source-uri))
+           ((source-uri ...)
+            (find updated-url source-uri))))
+        ((and (eq? fetch-method download:git-fetch)
+              (string-prefix? "https://github.com/"
+                              (download:git-reference-url source-uri)))
+         (download:git-reference-url source-uri))
+        (else #f))))
+    (_ #f)))
 
 (define (github-package? package)
   "Return true if PACKAGE is a package from GitHub, else false."
@@ -153,19 +160,25 @@ empty list."
     ;; Ask for version 3 of the API as suggested at
     ;; <https://developer.github.com/v3/>.
     `((Accept . "application/vnd.github.v3+json")
-      (user-agent . "GNU Guile")))
+      (user-agent . "GNU Guile")
+      ,@(if (%github-token)
+            `((Authorization . ,(string-append "token " (%github-token))))
+            '())))
 
-  (define (decorate url)
-    (if (%github-token)
-        (string-append url "?access_token=" (%github-token))
-        url))
-
-  (match (json-fetch (decorate release-url) #:headers headers)
-    (()
-     ;; We got the empty list, presumably because the user didn't use GitHub's
-     ;; "release" mechanism, but hopefully they did use Git tags.
-     (json-fetch (decorate tag-url) #:headers headers))
-    (x x)))
+  (guard (c ((and (http-get-error? c)
+                  (= 404 (http-get-error-code c)))
+             (warning (G_ "~a is unreachable (~a)~%")
+                      release-url (http-get-error-code c))
+             '#()))                               ;return an empty release set
+    (let* ((port   (http-fetch release-url #:headers headers))
+           (result (json->scm port)))
+      (close-port port)
+      (match result
+        (#()
+         ;; We got the empty list, presumably because the user didn't use GitHub's
+         ;; "release" mechanism, but hopefully they did use Git tags.
+         (json-fetch tag-url #:headers headers))
+        (x x)))))
 
 (define (latest-released-version url package-name)
   "Return a string of the newest released version name given a string URL like
@@ -186,7 +199,12 @@ the package e.g. 'bedtools2'.  Return #f if there is no releases"
                        (substring tag 0 (+ name-length 1))))
         (substring tag (+ name-length 1)))
        ;; some tags start with a "v" e.g. "v0.25.0"
+       ;; or with the word "version" e.g. "version.2.1"
        ;; where some are just the version number
+       ((string-prefix? "version" tag)
+        (if (char-set-contains? char-set:digit (string-ref tag 7))
+            (substring tag 7)
+            (substring tag 8)))
        ((string-prefix? "v" tag)
         (substring tag 1))
        ;; Finally, reject tags that don't start with a digit:

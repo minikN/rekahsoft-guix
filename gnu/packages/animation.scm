@@ -112,7 +112,7 @@ C++ @dfn{Standard Template Library} (STL).")
      `(("boost" ,boost)
        ("ffmpeg" ,ffmpeg)
        ("libdv" ,libdv)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libpng" ,libpng)
        ("libmng" ,libmng)
        ("zlib" ,zlib)))
@@ -201,7 +201,7 @@ contains the graphical user interface for synfig.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/LostMoho/Papagayo.git")
+                      (url "https://github.com/LostMoho/Papagayo")
                       (commit commit)))
                 (file-name (git-file-name name version))
                 (sha256

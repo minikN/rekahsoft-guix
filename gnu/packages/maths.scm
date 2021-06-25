@@ -1,36 +1,45 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2013, 2014, 2015, 2016, 2019 Andreas Enge <andreas@enge.fr>
+;;; Copyright © 2013, 2014, 2015, 2016, 2019, 2020 Andreas Enge <andreas@enge.fr>
 ;;; Copyright © 2013 Nikita Karetnikov <nikita@karetnikov.org>
 ;;; Copyright © 2014, 2016, 2017 John Darrington <jmd@gnu.org>
-;;; Copyright © 2014, 2015, 2016, 2017, 2018, 2019 Eric Bavier <bavier@member.fsf.org>
+;;; Copyright © 2014, 2015, 2016, 2017, 2018, 2019, 2020 Eric Bavier <bavier@posteo.net>
 ;;; Copyright © 2014 Federico Beffa <beffa@fbengineering.ch>
 ;;; Copyright © 2014 Mathieu Lirzin <mathieu.lirzin@openmailbox.org>
-;;; Copyright © 2015, 2016, 2017, 2018, 2019 Ricardo Wurmus <rekado@elephly.net>
+;;; Copyright © 2015, 2016, 2017, 2018, 2019, 2020 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2015 Sou Bunnbu <iyzsong@gmail.com>
 ;;; Copyright © 2015, 2018 Mark H Weaver <mhw@netris.org>
-;;; Copyright © 2015, 2016, 2017, 2018, 2019 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2015, 2016, 2017, 2018, 2019, 2020 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2015 Fabian Harfert <fhmgufs@web.de>
 ;;; Copyright © 2016 Roel Janssen <roel@gnu.org>
-;;; Copyright © 2016, 2018 Kei Kebreau <kkebreau@posteo.net>
-;;; Copyright © 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2016, 2018, 2020 Kei Kebreau <kkebreau@posteo.net>
+;;; Copyright © 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2016 Leo Famulari <leo@famulari.name>
 ;;; Copyright © 2016, 2017 Thomas Danckaert <post@thomasdanckaert.be>
-;;; Copyright © 2017, 2018, 2019 Paul Garlick <pgarlick@tourbillion-technology.com>
-;;; Copyright © 2017 ng0 <ng0@n0.is>
+;;; Copyright © 2017, 2018, 2019, 2020 Paul Garlick <pgarlick@tourbillion-technology.com>
+;;; Copyright © 2017 Nikita <nikita@n0.is>
 ;;; Copyright © 2017 Ben Woodcroft <donttrustben@gmail.com>
 ;;; Copyright © 2017 Theodoros Foradis <theodoros@foradis.org>
 ;;; Copyright © 2017, 2019 Arun Isaac <arunisaac@systemreboot.net>
-;;; Copyright © 2017, 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2017, 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2017 Dave Love <me@fx@gnu.org>
-;;; Copyright © 2018 Jan Nieuwenhuizen <janneke@gnu.org>
+;;; Copyright © 2018, 2019 Jan Nieuwenhuizen <janneke@gnu.org>
 ;;; Copyright © 2018 Joshua Sierles, Nextjournal <joshua@nextjournal.com>
 ;;; Copyright © 2018 Nadya Voronova <voronovank@gmail.com>
 ;;; Copyright © 2018 Adam Massmann <massmannak@gmail.com>
-;;; Copyright © 2018 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2018, 2020 Marius Bakke <mbakke@fastmail.com>
 ;;; Copyright © 2018 Eric Brown <brown@fastmail.com>
 ;;; Copyright © 2018 Julien Lepiller <julien@lepiller.eu>
 ;;; Copyright © 2018 Amin Bandali <bandali@gnu.org>
 ;;; Copyright © 2019 Nicolas Goaziou <mail@nicolasgoaziou.fr>
+;;; Copyright © 2019 Steve Sprang <scs@stevesprang.com>
+;;; Copyright © 2019 Robert Smith <robertsmith@posteo.net>
+;;; Copyright © 2020 Jakub Kądziołka <kuba@kadziolka.net>
+;;; Copyright © 2020 Felix Gruber <felgru@posteo.net>
+;;; Copyright © 2020 R Veera Kumar <vkor@vkten.in>
+;;; Copyright © 2020 Vincent Legoll <vincent.legoll@gmail.com>
+;;; Copyright © 2020 Nicolò Balzarotti <nicolo@nixo.xyz>
+;;; Copyright © 2020 B. Wilson <elaexuotee@wilsonb.com>
+;;; Copyright © 2020 Vinicius Monego <monego@posteo.net>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -58,9 +67,9 @@
   #:use-module (guix utils)
   #:use-module ((guix build utils) #:select (alist-replace))
   #:use-module (guix build-system cmake)
+  #:use-module (guix build-system glib-or-gtk)
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system python)
-  #:use-module (guix build-system r)
   #:use-module (guix build-system ruby)
   #:use-module (gnu packages algebra)
   #:use-module (gnu packages audio)
@@ -73,8 +82,10 @@
   #:use-module (gnu packages compression)
   #:use-module (gnu packages curl)
   #:use-module (gnu packages cyrus-sasl)
+  #:use-module (gnu packages dbm)
   #:use-module (gnu packages documentation)
   #:use-module (gnu packages elf)
+  #:use-module (gnu packages file)
   #:use-module (gnu packages flex)
   #:use-module (gnu packages fltk)
   #:use-module (gnu packages fontutils)
@@ -82,8 +93,10 @@
   #:use-module (gnu packages gcc)
   #:use-module (gnu packages gd)
   #:use-module (gnu packages ghostscript)
+  #:use-module (gnu packages glib)
   #:use-module (gnu packages graphviz)
   #:use-module (gnu packages gtk)
+  #:use-module (gnu packages icu4c)
   #:use-module (gnu packages image)
   #:use-module (gnu packages java)
   #:use-module (gnu packages less)
@@ -100,6 +113,7 @@
   #:use-module (gnu packages mpi)
   #:use-module (gnu packages multiprecision)
   #:use-module (gnu packages netpbm)
+  #:use-module (gnu packages onc-rpc)
   #:use-module (gnu packages pcre)
   #:use-module (gnu packages popt)
   #:use-module (gnu packages perl)
@@ -215,15 +229,15 @@ programming languages.")
 (define-public qhull
   (package
     (name "qhull")
-    (version "2015.2")
+    (version "2019.1")
     (source (origin
               (method url-fetch)
               (uri (string-append "http://www.qhull.org/download/qhull-"
                                   (car (string-split version #\.))
-                                  "-src-7.2.0.tgz"))
+                                  "-src-7.3.2.tgz"))
               (sha256
                (base32
-                "0dm4b2xr3asy6w74khq2zg4gf26zsy3qf9sq7pf7lmrvbj911c3q"))))
+                "1ys3vh3qq0v9lh452xb932vp63advds1pxk42lk7cc1niiar0y9b"))))
     (build-system cmake-build-system)
     (synopsis "Calculate convex hulls and related structures")
     (description
@@ -246,16 +260,16 @@ triangulations.")
 (define-public python-cvxopt
   (package
     (name "python-cvxopt")
-    (version "1.2.1")
+    (version "1.2.3")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/cvxopt/cvxopt.git")
+                    (url "https://github.com/cvxopt/cvxopt")
                     (commit version)))
               (file-name (git-file-name name version))
               (sha256
                (base32
-                "05mnjil9palaa48xafdfh4f5pr4z7aqjr995rwl08qfyxs8y0crf"))))
+                "1kiy2m62xgs2d5id6dnnwy4vap85cd70p7pgkb9nh23qf9xnak7b"))))
     (build-system python-build-system)
     (arguments
      `(#:phases
@@ -325,7 +339,7 @@ enough to be used effectively as a scientific calculator.")
 (define-public double-conversion
   (package
     (name "double-conversion")
-    (version "3.1.4")
+    (version "3.1.5")
     (home-page "https://github.com/google/double-conversion")
     (source (origin
               (method git-fetch)
@@ -334,7 +348,7 @@ enough to be used effectively as a scientific calculator.")
               (file-name (git-file-name name version))
               (sha256
                (base32
-                "13xwcqk2c0q8c1siw566clxcpvp0xrxvb72mra42wa3nvq9wlsv6"))))
+                "0csy4pjw1p8rp6g5qxi2h0ychhhp1fldv7gb761627fs2mclw9gv"))))
     (build-system cmake-build-system)
     (arguments
      '(#:test-target "test"
@@ -370,26 +384,124 @@ semiconductors.")
     (license license:gpl3+)
     (home-page "https://www.gnu.org/software/dionysus/")))
 
+(define-public dsfmt
+  (package
+    (name "dsfmt")
+    (version "2.2.3")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+         (string-append
+           "http://www.math.sci.hiroshima-u.ac.jp/~m-mat/MT/SFMT/"
+           "dSFMT-src-" version ".tar.gz"))
+       (sha256
+        (base32
+         "03kaqbjbi6viz0n33dk5jlf6ayxqlsq4804n7kwkndiga9s4hd42"))
+       (modules '((guix build utils)))
+       ;; Don't distribute html documentation with bundled jquery.
+       (snippet
+        '(begin
+           (delete-file-recursively "html") #t))
+       ;; Add patches borrowed from Julia.
+       (patches
+         (list
+           (origin
+             (method url-fetch)
+             (uri (string-append
+                    "https://raw.githubusercontent.com/JuliaLang/julia/"
+                    "v1.3.0/deps/patches/dSFMT.c.patch"))
+             (sha256 (base32
+                      "09mhv11bms8jsmkmdqvlcgljwhzw3b6n9nncpi2b6dla9798hw2y"))
+             (file-name "dSFMT.c.patch"))
+           (origin
+             (method url-fetch)
+             (uri (string-append
+                    "https://raw.githubusercontent.com/JuliaLang/julia/"
+                    "v1.3.0/deps/patches/dSFMT.h.patch"))
+             (sha256 (base32
+                      "1py5rd0yxic335lzka23f6x2dhncrpizpyrk57gi2f28c0p98y5n"))
+             (file-name "dSFMT.h.patch"))))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (delete 'configure)            ; no configure script
+         (replace 'build
+           ;; Upstream Makefile does not build a shared library. Borrow from Julia
+           ;; https://github.com/JuliaLang/julia/blob/v1.3.0/deps/dsfmt.mk
+           (lambda _
+             (invoke
+               "gcc" "-DNDEBUG" "-DDSFMT_MEXP=19937"
+               "-fPIC" "-DDSFMT_DO_NOT_USE_OLD_NAMES"
+               "-O3" "-finline-functions" "-fomit-frame-pointer"
+               "-fno-strict-aliasing" "--param" "max-inline-insns-single=1800"
+               "-Wmissing-prototypes" "-Wall" "-std=c99" "-shared" "dSFMT.c"
+               "-o" "libdSFMT.so")))
+         (replace 'install              ; no "install" target
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (lib (string-append out "/lib"))
+                    (inc (string-append out "/include"))
+                    (doc (string-append out "/share/doc/" ,name "-" ,version)))
+               (install-file "libdSFMT.so" lib)
+               (install-file "dSFMT.h" inc)
+               (install-file "LICENSE.txt" doc)
+               #t))))))
+    (synopsis "Double precision SIMD-oriented Fast Mersenne Twister")
+    (description
+     "The dSMFT package speeds up Fast Mersenne Twister generation by avoiding
+the expensive conversion of integer to double (floating point).  dSFMT directly
+generates double precision floating point pseudorandom numbers which have the
+IEEE Standard for Binary Floating-Point Arithmetic (ANSI/IEEE Std 754-1985)
+format.  dSFMT is only available on the CPUs which use IEEE 754 format double
+precision floating point numbers.")
+    (home-page "http://www.math.sci.hiroshima-u.ac.jp/~m-mat/MT/SFMT/")
+    (license license:bsd-3)))
+
 (define-public gsl
   (package
     (name "gsl")
-    (version "2.5")
+    (version "2.6")
     (source (origin
               (method url-fetch)
               (uri (string-append "mirror://gnu/gsl/gsl-"
                                   version ".tar.gz"))
               (sha256
                (base32
-                "1395y9hlhqadn5g9j8q22224fds5sd92jxi9czfavjj24myasq04"))
-              (patches (search-patches "gsl-test-i686.patch"))))
+                "1a460zj9xmbgvcymkdhqh313c4l29mn9cffbi5vf33x3qygk70mp"))))
     (build-system gnu-build-system)
     (arguments
-     `(;; Currently there are numerous tests that fail on "exotic"
-       ;; architectures such as aarch64 and ppc64le.
-       ,@(if (string-prefix? "aarch64-linux"
-                             (or (%current-target-system) (%current-system)))
-           '(#:tests? #f)
-           '())))
+     (let ((system (%current-system)))
+       (cond
+        ((or (string-prefix? "aarch64" system)
+             (string-prefix? "powerpc" system))
+         ;; Some sparse matrix tests are failing on AArch64 and PowerPC:
+         ;; https://lists.gnu.org/archive/html/bug-gsl/2020-04/msg00001.html
+         '(#:phases (modify-phases %standard-phases
+                      (add-before 'check 'disable-failing-tests
+                        (lambda _
+                          (substitute* "spmatrix/test.c"
+                            ((".*test_complex.*") "\n"))
+                          #t)))))
+        ((string-prefix? "i686" system)
+         ;; There are rounding issues with these tests on i686:
+         ;; https://lists.gnu.org/archive/html/bug-gsl/2016-10/msg00000.html
+         ;; https://lists.gnu.org/archive/html/bug-gsl/2020-04/msg00000.html
+         '(#:phases (modify-phases %standard-phases
+                      (add-before 'check 'disable-failing-tests
+                        (lambda _
+                          (substitute* "linalg/test.c"
+                            ((".*gsl_test\\(test_LU_decomp.*") "\n")
+                            ((".*gsl_test\\(test_LUc_decomp.*") "\n")
+                            ((".*gsl_test\\(test_cholesky_decomp.*") "\n")
+                            ((".*gsl_test\\(test_COD_lssolve2.*") "\n"))
+                          (substitute* "spmatrix/test.c"
+                            ((".*test_all.*") "\n")
+                            ((".*test_float.*") "\n")
+                            ((".*test_complex.*") "\n"))
+                          #t)))))
+        (else '()))))
     (home-page "https://www.gnu.org/software/gsl/")
     (synopsis "Numerical library for C and C++")
     (description
@@ -399,6 +511,50 @@ functions in total.  Subject areas covered by the library include:
 differential equations, linear algebra, Fast Fourier Transforms and random
 numbers.")
     (license license:gpl3+)))
+
+(define-public sleef
+  (package
+    (name "sleef")
+    (version "3.4.1")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/shibatch/sleef")
+             (commit version)))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "1gvf7cfvszmgjrsqivwmyy1jnp3hy80dmszxx827lhjz8yqq5019"))))
+    (build-system cmake-build-system)
+    (arguments
+     '(#:configure-flags (list "-DCMAKE_BUILD_TYPE=Release"
+                               (string-append "-DCMAKE_INSTALL_LIBDIR="
+                                              (assoc-ref %outputs "out")
+                                              "/lib")
+                               (string-append "-DCMAKE_INSTALL_PREFIX="
+                                              (assoc-ref %outputs "out")))
+       #:phases
+       (modify-phases %standard-phases
+         ;; SLEEF generates a header library during the build process and writes
+         ;; to it via shell redirection.  Make the checkout writable so the
+         ;; build can succeed.
+         (add-after 'unpack 'make-git-checkout-writable
+           (lambda _
+             (for-each make-file-writable (find-files "."))
+             #t)))))
+    (inputs
+     `(("fftw" ,fftw)
+       ("gmp" ,gmp)
+       ("mpfr" ,mpfr)
+       ("openssl" ,openssl)))
+    (home-page "https://sleef.org/")
+    (synopsis "SIMD library for evaluating elementary functions and DFT")
+    (description
+     "SLEEF (SIMD Library for Evaluating Elementary Functions) is a library that
+implements vectorized versions of all C99 real floating point math functions.
+It can utilize SIMD instructions that are available on modern processors.")
+    (license (list license:boost1.0       ;sleef
+                   license:cc-by4.0))))   ;simplex algorithm
 
 (define-public glpk
   (package
@@ -481,6 +637,90 @@ in arbitrary dimension.  It can also be used for the converse operation of
 computing convex hulls.")
     (license license:gpl2+)))
 
+(define-public lrslib
+  (package
+    (name "lrslib")
+    (version "7.0a")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "http://cgm.cs.mcgill.ca/~avis/C/lrslib/archive/"
+                           "lrslib-0"
+                           (string-delete #\. version) ".tar.gz"))
+       (sha256
+        (base32
+         "034fa45r9hwx6ljmgpxk2872q34nklkalpdkc6s9hqw57rivi36k"))))
+    (build-system gnu-build-system)
+    (inputs
+     `(("gmp" ,gmp)))
+    (arguments
+     `(#:tests? #f                      ; no check phase
+       #:make-flags `("CC=gcc"
+                      ,(string-append "prefix=" (assoc-ref %outputs "out"))
+                      "all-shared")
+       #:phases
+       (modify-phases %standard-phases
+         (replace 'configure
+           (lambda _
+             (substitute* "makefile"
+               (("-L \\.") "-L . -Wl,-rpath='$$ORIGIN/../lib'"))
+             #t)))))
+    (home-page "http://cgm.cs.mcgill.ca/~avis/C/lrs.html")
+    (synopsis "Convex hulls of polyhedra with exact arithmetic")
+    (description
+     "The C code of lrslib implements the reverse search algorithm for
+vertex enumeration and convex hull problems.  Its input file format is
+compatible with cddlib.  All computations are done exactly in either
+multiple precision or fixed integer arithmetic.  Output is not stored
+in memory, so even problems with very large output sizes can sometimes
+be solved.")
+    (license license:gpl2+)))
+
+(define-public vinci
+  (package
+    (name "vinci")
+    (version "1.0.5")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "https://www.math.u-bordeaux.fr/~aenge/software/"
+                           "vinci/vinci-" version ".tar.gz"))
+       (sha256
+        (base32
+         "1aq0qc1y27iw9grhgnyji3290wwfznsrk3sg6ynqpxwjdda53h4m"))))
+    (build-system gnu-build-system)
+    (inputs
+     `(("lrslib" ,lrslib)))
+    (arguments
+     `(#:tests? #f                      ; no check phase
+       #:phases
+       (modify-phases %standard-phases
+         (replace 'configure
+           ;; register the lrs location in the config file
+           (lambda* (#:key inputs #:allow-other-keys)
+             (let* ((lrs (assoc-ref inputs "lrslib"))
+                    (lrsexec (string-append lrs "/bin/lrs")))
+               (substitute* "vinci.h"
+                 (("#define LRS_EXEC      \"lrs\"")
+                  (string-append "#define LRS_EXEC \"" lrsexec "\""))))
+             #t))
+         (replace 'install
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (bin (string-append out "/bin")))
+               (install-file "vinci" bin))
+             #t)))))
+    (home-page
+     "https://www.math.u-bordeaux.fr/~aenge/?category=software&page=vinci")
+    (synopsis "Volume computation for polytopes")
+    (description
+     "Vinci implements a number of volume computation algorithms for convex
+polytopes in arbitrary dimension.  The polytopes can be given by their
+V-representation (as the convex hull of a finite number of vertices), by
+their H-representation (as the bounded intersection of a finite number of
+halfspaces) or by their double description with both representations.")
+    (license license:gpl2+)))
+
 (define-public arpack-ng
   (package
     (name "arpack-ng")
@@ -542,7 +782,7 @@ large scale eigenvalue problems.")
 (define-public lapack
   (package
     (name "lapack")
-    (version "3.7.1")
+    (version "3.9.0")
     (source
      (origin
       (method url-fetch)
@@ -550,26 +790,18 @@ large scale eigenvalue problems.")
                           version ".tgz"))
       (sha256
        (base32
-        "1j51r7n5w4k7r3lrvy7710xrpkg40wf4rqnmngfz6ck9ypckzign"))))
+        "1155qixp26c12yrxc76z9mlfw2h3xxymxxv5znpgzh5gaykpndgj"))))
     (build-system cmake-build-system)
     (home-page "http://www.netlib.org/lapack/")
     (inputs `(("fortran" ,gfortran)
-              ("python" ,python-2)))
+              ("python" ,python-wrapper)))
     (arguments
      `(#:configure-flags (list
                           "-DBUILD_SHARED_LIBS:BOOL=YES"
                           "-DLAPACKE=ON"
-
                           ;; Build the 'LAPACKE_clatms' functions.
-                          "-DLAPACKE_WITH_TMG=ON")
-       #:phases
-       (modify-phases %standard-phases
-         (add-before 'check 'patch-python
-           (lambda* (#:key inputs #:allow-other-keys)
-             (let ((python (assoc-ref inputs "python")))
-               (substitute* "lapack_testing.py"
-                 (("/usr/bin/env python") python)))
-             #t)))))
+                          "-DLAPACKE_WITH_TMG=ON"
+                          "-DBUILD_TESTING=ON")))
     (synopsis "Library for numerical linear algebra")
     (description
      "LAPACK is a Fortran 90 library for solving the most commonly occurring
@@ -653,7 +885,7 @@ plotting engine by third-party applications like Octave.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/OkoSanto/GCTP.git")
+             (url "https://github.com/OkoSanto/GCTP")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
@@ -674,17 +906,18 @@ computations.")
 (define-public hdf4
   (package
     (name "hdf4")
-    (version "4.2.13")
+    (version "4.2.14")
     (source
      (origin
        (method url-fetch)
        (uri (string-append "https://support.hdfgroup.org/ftp/HDF/releases/HDF"
                            version "/src/hdf-" version ".tar.bz2"))
        (sha256
-        (base32 "1wz0586zh91pqb95wvr0pbh71a8rz358fdj6n2ksp85x2cis9lsm"))
+        (base32 "0n29klrrbwan9307np0d9hr128dlpc4nnlf57a140080ll3jmp8l"))
        (patches (search-patches "hdf4-architectures.patch"
                                 "hdf4-reproducibility.patch"
-                                "hdf4-shared-fortran.patch"))))
+                                "hdf4-shared-fortran.patch"
+                                "hdf4-tirpc.patch"))))
     (build-system gnu-build-system)
     (native-inputs
      `(("gfortran" ,gfortran)
@@ -692,10 +925,14 @@ computations.")
        ("flex" ,flex)))
     (inputs
      `(("zlib" ,zlib)
-       ("libjpeg" ,libjpeg)))
+       ("libjpeg" ,libjpeg-turbo)
+       ("libtirpc" ,libtirpc)))
     (arguments
      `(#:parallel-tests? #f
-       #:configure-flags '("--enable-shared")
+       #:configure-flags (list "--enable-shared"
+                               (string-append "CPPFLAGS=-I"
+                                              (assoc-ref %build-inputs "libtirpc")
+                                              "/include/tirpc"))
        #:phases
        (modify-phases %standard-phases
          ;; This is inspired by two of Debian's patches.
@@ -729,7 +966,17 @@ computations.")
                (("(/gnu/store/)([a-Z0-9]*)" all prefix hash)
                 (string-append prefix (string-take hash 10) "...")))
              #t))
-         )))
+         (add-after 'install 'provide-absolute-libjpeg-reference
+           (lambda* (#:key inputs outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out"))
+                   (libjpeg (assoc-ref inputs "libjpeg")))
+               ;; libjpeg-turbo does not provide a .la file, so libtool is
+               ;; unable to add an absolute reference for -ljpeg in the .la
+               ;; files.  Fix it manually to avoid having to propagate it.
+               (substitute* (find-files (string-append out "/lib") "\\.la$")
+                 (("-ljpeg")
+                  (string-append "-L" libjpeg "/lib -ljpeg")))
+               #t))))))
     (home-page "https://www.hdfgroup.org/products/hdf4/")
     (synopsis
      "Library and multi-object file format for storing and managing data")
@@ -870,16 +1117,16 @@ incompatible with HDF5.")
                           (find-files ex ".*"))
                 (delete-file-recursively ex))
               #t)))))
-    (home-page "http://www.hdfgroup.org")
+    (home-page "https://www.hdfgroup.org")
     (synopsis "Management suite for extremely large and complex data")
     (description "HDF5 is a suite that makes possible the management of
 extremely large and complex data collections.")
     (license (license:x11-style
-              "http://www.hdfgroup.org/ftp/HDF5/current/src/unpacked/COPYING"))))
+              "https://www.hdfgroup.org/ftp/HDF5/current/src/unpacked/COPYING"))))
 
 (define-public hdf5-1.10
   (package (inherit hdf5)
-    (version "1.10.4")
+    (version "1.10.6")
     (source
      (origin
       (method url-fetch)
@@ -893,9 +1140,8 @@ extremely large and complex data collections.")
                                        (take (string-split version #\.) 2))
                                 "/src/hdf5-" version ".tar.bz2")))
       (sha256
-       (base32 "1pr85fa1sh2ky6ai2hs3f21lp252grl2cq3wbyi4rh7dm83gyrqj"))
-      (patches (search-patches "hdf5-config-date.patch"
-                               "hdf5-mpi-deprecations.patch"))))))
+       (base32 "1gf38x51128hn00744358w27xgzjk0ff4wra4yxh2lk804ck1mh9"))
+      (patches (search-patches "hdf5-config-date.patch"))))))
 
 (define-public hdf-java
   (package
@@ -905,7 +1151,7 @@ extremely large and complex data collections.")
      (origin
        (method url-fetch)
        (uri (string-append
-             "http://www.hdfgroup.org/ftp/HDF5/releases/HDF-JAVA/hdfjni-"
+             "https://www.hdfgroup.org/ftp/HDF5/releases/HDF-JAVA/hdfjni-"
              version "/src/CMake-hdfjava-" version ".tar.gz"))
        (sha256
         (base32 "0m1gp2aspcblqzmpqbdpfp6giskws85ds6p5gz8sx7asyp7wznpr"))
@@ -929,7 +1175,7 @@ extremely large and complex data collections.")
      `(("hdf4" ,hdf4)
        ("hdf5" ,hdf5)
        ("zlib" ,zlib)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("slf4j-api" ,java-slf4j-api)))
     (arguments
      `(#:configure-flags
@@ -986,10 +1232,15 @@ extremely large and complex data collections.")
                     (jhdf (string-append lib "/jhdf.jar"))
                     (jhdf5 (string-append lib "/jhdf5.jar"))
                     (testjars
-                     (map (lambda (i)
-                            (string-append (assoc-ref inputs i)
-                                           "/share/java/" i ".jar"))
-                          '("junit" "hamcrest-core" "slf4j-api" "slf4j-simple")))
+                     (append
+                       (map (lambda (i)
+                              (string-append (assoc-ref inputs i)
+                                             "/share/java/" i ".jar"))
+                            '("slf4j-api" "slf4j-simple"))
+                       (list
+                         (car (find-files (assoc-ref inputs "junit") "jar$"))
+                         (car (find-files (assoc-ref inputs "hamcrest-core")
+                                          "jar$")))))
                     (class-path
                      (string-join `("." ,build-dir ,jhdf ,jhdf5 ,@testjars) ":")))
 
@@ -1044,14 +1295,17 @@ implemented in C.")
      `(("gfortran" ,gfortran)))
     (inputs
      `(("hdf4" ,hdf4-alt) ; assume most HDF-EOS2 users won't use the HDF4 netCDF API
+       ;; XXX: These inputs are really dependencies of hdf4.
        ("zlib" ,zlib)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
+       ("libtirpc" ,libtirpc)
+
        ("gctp" ,gctp)))
     (arguments
      `( #:configure-flags '("--enable-install-include" "--enable-shared"
                             "CC=h4cc -Df2cFortran" "LIBS=-lgctp")
         #:parallel-tests? #f))
-    (home-page "http://hdfeos.org/software/library.php#HDF-EOS2")
+    (home-page "https://hdfeos.org/software/library.php#HDF-EOS2")
     (synopsis "HDF4-based data format for NASA's Earth Observing System")
     (description "HDF-EOS2 is a software library built on HDF4 which supports
 the construction of data structures used in NASA's Earth Observing
@@ -1128,6 +1382,45 @@ Swath).")
                #t))))))
     (synopsis "Management suite for data with parallel IO support")))
 
+(define-public hdf5-blosc
+  (package
+    (name "hdf5-blosc")
+    (version "1.0.0")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/Blosc/hdf5-blosc")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "1nj2bm1v6ymm3fmyvhbn6ih5fgdiapavlfghh1pvbmhw71cysyqs"))))
+    (build-system cmake-build-system)
+    (arguments
+     `(#:configure-flags
+       (list (string-append "-DBLOSC_INSTALL_DIR="
+                            (assoc-ref %build-inputs "c-blosc"))
+             (string-append "-DPLUGIN_INSTALL_PATH="
+                            (assoc-ref %outputs "out")
+                            "/hdf5/lib/plugin"))
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'do-not-build-blosc
+           (lambda _
+             (substitute* "CMakeLists.txt"
+               (("set\\(BLOSC_INSTALL_DIR.*") "")
+               (("ExternalProject_Add\\(project_blosc") "message("))
+             #t)))))
+    (inputs
+     `(("c-blosc" ,c-blosc)
+       ("hdf5" ,hdf5-1.10)))
+    (home-page "https://github.com/Blosc/hdf5-blosc")
+    (synopsis "Filter for HDF5 using the Blosc compressor")
+    (description "This is a filter for HDF5 that uses the Blosc compressor; by
+installing this filter, you can read and write HDF5 files with
+Blosc-compressed datasets.")
+    (license license:expat)))
+
 (define-public h5check
   (package
     (name "h5check")
@@ -1135,7 +1428,7 @@ Swath).")
     (source
      (origin
        (method url-fetch)
-       (uri (string-append "http://www.hdfgroup.org/ftp/HDF5/tools/"
+       (uri (string-append "https://www.hdfgroup.org/ftp/HDF5/tools/"
                            "h5check/src/h5check-" version ".tar.gz"))
        (sha256
         (base32
@@ -1203,7 +1496,7 @@ similar to MATLAB, GNU Octave or SciPy.")
      `(("hdf4" ,hdf4-alt)
        ("hdf5" ,hdf5)
        ("zlib" ,zlib)
-       ("libjpeg" ,libjpeg)))
+       ("libjpeg" ,libjpeg-turbo)))
     (arguments
      `(#:configure-flags '("--enable-doxygen" "--enable-dot" "--enable-hdf4")
 
@@ -1230,7 +1523,7 @@ similar to MATLAB, GNU Octave or SciPy.")
              #t)))
 
        #:parallel-tests? #f))           ;various race conditions
-    (home-page "http://www.unidata.ucar.edu/software/netcdf/")
+    (home-page "https://www.unidata.ucar.edu/software/netcdf/")
     (synopsis "Library for scientific data")
     (description "NetCDF is an interface for scientific data access and a
 software library that provides an implementation of the interface.  The netCDF
@@ -1325,7 +1618,7 @@ online as well as original implementations of various other algorithms.")
     (source (origin
               (method url-fetch)
               (uri (string-append
-                    "http://www.coin-or.org/download/source/Ipopt/Ipopt-"
+                    "https://www.coin-or.org/download/source/Ipopt/Ipopt-"
                     version".tgz"))
               (sha256
                (base32
@@ -1359,7 +1652,7 @@ online as well as original implementations of various other algorithms.")
     (inputs
      ;; TODO: Maybe add dependency on COIN-MUMPS, ASL, and HSL.
      `(("lapack" ,lapack)))                    ;for both libblas and liblapack
-    (home-page "http://www.coin-or.org")
+    (home-page "https://www.coin-or.org")
     (synopsis "Large-scale nonlinear optimizer")
     (description
      "The Interior Point Optimizer (IPOPT) is a software package for
@@ -1370,14 +1663,14 @@ interfaces.")
 (define-public clp
   (package
     (name "clp")
-    (version "1.17.1")
+    (version "1.17.6")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://www.coin-or.org/download/source/"
                                   "Clp/Clp-" version ".tgz"))
               (sha256
                (base32
-                "1wdg820g3iikf9344ijwsc8sy6c0m6im42bzzizm6rlmkvnmxhk9"))
+                "0ap1f0lxppa6pnbc4bg7ih7a96avwaki482nig8w5fr3vg9wvkzr"))
               (modules '((guix build utils)))
               (snippet
                ;; Make sure we don't use the bundled software.
@@ -1452,7 +1745,7 @@ can solve two kinds of problems:
 (define-public octave-cli
   (package
     (name "octave-cli")
-    (version "5.1.0")
+    (version "5.2.0")
     (source
      (origin
       (method url-fetch)
@@ -1460,11 +1753,12 @@ can solve two kinds of problems:
                           version ".tar.lz"))
       (sha256
        (base32
-        "11wwxpy2q1bhxs2v41bqn05i2sb0905cj1xil6mg8l4k2kka4cq6"))))
+        "1848dq6nxzal8gwjrcp6xhi5gq96w89nss9d9rz75q408gb3mbl6"))))
     (build-system gnu-build-system)
     (inputs
      `(("alsa-lib" ,alsa-lib)
        ("arpack" ,arpack-ng)
+       ("bdb" ,bdb)
        ("curl" ,curl)
        ("fftw" ,fftw)
        ("fftwf" ,fftwf)
@@ -1475,6 +1769,12 @@ can solve two kinds of problems:
        ("glpk" ,glpk)
        ("glu" ,glu)
        ("graphicsmagick" ,graphicsmagick)
+
+       ;; TODO: libjpeg-turbo is indirectly required through libtiff.  In
+       ;; the next rebuild cycle, add an absolute reference for -ljpeg in
+       ;; libtiff.la instead of having to provide it here.
+       ("libjpeg" ,libjpeg-turbo)
+
        ("hdf5" ,hdf5)
        ("lapack" ,lapack)
        ("libsndfile" ,libsndfile)
@@ -1513,7 +1813,12 @@ can solve two kinds of problems:
      `(#:configure-flags
        (list (string-append "--with-shell="
                             (assoc-ref %build-inputs "bash")
-                            "/bin/sh"))
+                            "/bin/sh")
+
+             ;; XXX: Without this flag, linking octave-cli fails with
+             ;; undefined references to 'logf@GLIBCXX_3.4' et.al. due to
+             ;; not pulling in liboctinterp.la for -lstdc++.
+             "--enable-link-all-dependencies")
        #:phases
        (modify-phases %standard-phases
          (add-after 'configure 'configure-makeinfo
@@ -1543,7 +1848,7 @@ script files.")
        ,@(package-inputs octave-cli)))
     (native-inputs
      `(("qttools" , qttools) ;for lrelease
-       ("texlive" ,texlive) ;for texi2dvi
+       ("texlive" ,(texlive-union (list texlive-epsf))) ; for texi2dvi
        ,@(package-native-inputs octave-cli)))
     (arguments
      (substitute-keyword-arguments (package-arguments octave-cli)
@@ -1560,9 +1865,6 @@ script files.")
                   "qscintilla2_qt5"))
                #t))))))))
 
-(define-public qtoctave
-  (deprecated-package "qtoctave" octave))
-
 (define-public opencascade-oce
   (package
     (name "opencascade-oce")
@@ -1571,7 +1873,7 @@ script files.")
       (origin
         (method git-fetch)
         (uri (git-reference
-              (url "https://github.com/tpaviot/oce.git")
+              (url "https://github.com/tpaviot/oce")
               (commit (string-append "OCE-" version))))
         (file-name (git-file-name name version))
         (patches (search-patches "opencascade-oce-glibc-2.26.patch"))
@@ -1716,11 +2018,16 @@ This is the certified version of the Open Cascade Technology (OCCT) library.")
     (version "2.16.0")
     (source
      (origin
-      (method url-fetch)
-      (uri (string-append "http://gmsh.info/src/gmsh-"
-                          version "-source.tgz"))
+      (method git-fetch)
+      (uri (git-reference
+            (url "https://gitlab.onelab.info/gmsh/gmsh.git")
+            (commit
+             (string-append "gmsh_"
+                            (string-map (lambda (x) (if (eq? x #\.) #\_ x))
+                                        version)))))
+      (file-name (git-file-name name version))
       (sha256
-       (base32 "1slf0bfkwrcgn6296wb4qhbk4ahz6i4wfb10hnim08x05vrylag8"))
+       (base32 "08rq4jajwmlpivnm9yifz2jhaivnz065lnk0h2zv773nwl9wf162"))
       (modules '((guix build utils)))
       (snippet
        ;; Remove non-free METIS code
@@ -1746,7 +2053,7 @@ This is the certified version of the Open Cascade Technology (OCCT) library.")
      `(#:configure-flags `("-DENABLE_METIS:BOOL=OFF"
                            "-DENABLE_BUILD_SHARED:BOOL=ON"
                            "-DENABLE_BUILD_DYNAMIC:BOOL=ON")))
-    (home-page "http://www.geuz.org/gmsh/")
+    (home-page "http://gmsh.info/")
     (synopsis "3D finite element grid generator")
     (description "Gmsh is a 3D finite element grid generator with a built-in
 CAD engine and post-processor.  Its design goal is to provide a fast, light
@@ -1760,18 +2067,20 @@ ASCII text files using Gmsh's own scripting language.")
 (define-public maxflow
   (package
     (name "maxflow")
-    (version "3.04")
+    ;; Versioning is ambiguous: the git tag matching this commit is ‘3.0.5’,
+    ;; which matches CMakeLists.txt, but README.md and CHANGES say ‘3.04’.
+    (version "3.0.5")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/gerddie/maxflow.git")
-                    (commit "42401fa54823d16b9da47716f04e5d9ef1605875")))
-              (file-name (string-append name "-" version "-checkout"))
+                    (url "https://github.com/gerddie/maxflow")
+                    (commit version)))
+              (file-name (git-file-name name version))
               (sha256
                (base32
                 "0rll38whw55h0vcjrrwdnh9ascvxby0ph7n1l0d12z17cg215kkb"))))
     (build-system cmake-build-system)
-    (home-page "http://pub.ist.ac.at/~vnk/software.html")
+    (home-page "https://pub.ist.ac.at/~vnk/software.html")
     (synopsis "Library implementing Maxflow algorithm")
     (description "An implementation of the maxflow algorithm described in
 @cite{An Experimental Comparison of Min-Cut/Max-Flow Algorithms for
@@ -1874,13 +2183,13 @@ September 2004}")
               (copy-recursively exdir exdir')
               (delete-file-recursively exdir)
               #t))))))
-    (home-page "http://www.mcs.anl.gov/petsc")
+    (home-page "https://www.mcs.anl.gov/petsc")
     (synopsis "Library to solve PDEs")
     (description "PETSc, pronounced PET-see (the S is silent), is a suite of
 data structures and routines for the scalable (parallel) solution of
 scientific applications modeled by partial differential equations.")
     (license (license:non-copyleft
-              "http://www.mcs.anl.gov/petsc/documentation/copyright.html"))))
+              "https://www.mcs.anl.gov/petsc/documentation/copyright.html"))))
 
 (define-public petsc-complex
   (package (inherit petsc)
@@ -1947,14 +2256,14 @@ scientific applications modeled by partial differential equations.")
 (define-public python-petsc4py
   (package
     (name "python-petsc4py")
-    (version "3.10.1")
+    (version "3.11.0")
     (source
       (origin
         (method url-fetch)
         (uri (pypi-uri "petsc4py" version))
         (sha256
           (base32
-            "094hcnran0r2z1wlvmjswsz3ski1m9kqrl5l0ax8jjhnk55x0flh"))))
+            "1rm1qj5wlkhxl39by9n78lh3gbmii31wsnb8j1rr5hvfr5xgbx2q"))))
     (build-system python-build-system)
     (arguments
      `(#:phases
@@ -2117,14 +2426,14 @@ arising after the discretization of partial differential equations.")
 (define-public python-slepc4py
   (package
     (name "python-slepc4py")
-    (version "3.10.0")
+    (version "3.11.0")
     (source
       (origin
         (method url-fetch)
         (uri (pypi-uri "slepc4py" version))
         (sha256
           (base32
-            "0x049dyc8frgh79fvvavf4vlbqp4mgm61nsaivzdav4316vvlv1j"))))
+            "1ksp08kxf4wg408b9nn39z3qfhy643j22d4rfbl30vzxk2rxh4lq"))))
     (build-system python-build-system)
     (arguments
      `(#:phases
@@ -2151,10 +2460,40 @@ message-passing communication.  @code{slepc4py} provides Python
 bindings to almost all functions of SLEPc.")
     (license license:bsd-3)))
 
+(define-public metamath
+  (package
+    (name "metamath")
+    (version "0.183")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/metamath/metamath-exe")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "1jjf4fy6j53i40dh0yv0f9sngnw4gs24cig99vsg3q0303pwrhg7"))))
+    (build-system gnu-build-system)
+    (native-inputs
+     `(("autoconf" ,autoconf)
+       ("automake" ,automake)))
+    (home-page "http://us.metamath.org/")
+    (synopsis "Proof verifier based on a minimalistic formalism")
+    (description
+     "Metamath is a tiny formal language and that can express theorems in
+abstract mathematics, with an accompyaning @command{metamath} executable that
+verifies databases of these proofs.  There is a public database,
+@url{https://github.com/metamath/set.mm, set.mm}, implementing first-order
+logic and Zermelo-Frenkel set theory with Choice, along with a large swath of
+associated, high-level theorems, e.g.@: the fundamental theorem of arithmetic,
+the Cauchy-Schwarz inequality, Stirling's formula, etc.  See the Metamath
+book.")
+    (license license:gpl2+)))
+
 (define-public mumps
   (package
     (name "mumps")
-    (version "5.1.2")
+    (version "5.2.1")
     (source
      (origin
        (method url-fetch)
@@ -2162,8 +2501,11 @@ bindings to almost all functions of SLEPc.")
                            version ".tar.gz"))
        (sha256
         (base32
-         "1s9asin08zqzmh08257sdghhivvy9vjif7c53fhaxaax2kd5qd7b"))
-       (patches (search-patches "mumps-build-parallelism.patch"))))
+         "0jklh54x4y3ik1zkw6db7766kakjm5910diyaghfxxf8vwsgr26r"))
+       (patches (search-patches "mumps-build-parallelism.patch"
+                                "mumps-shared-libseq.patch"
+                                "mumps-shared-mumps.patch"
+                                "mumps-shared-pord.patch"))))
     (build-system gnu-build-system)
     (inputs
      `(("fortran" ,gfortran)
@@ -2193,15 +2535,17 @@ CC           = gcc
 FC           = gfortran
 FL           = gfortran
 INCSEQ       = -I$(topdir)/libseq
-LIBSEQ       = -L$(topdir)/libseq -lmpiseq
+LIBSEQ       = $(topdir)/libseq/libmpiseq.a
 LIBSEQNEEDED = libseqneeded~;
 CC           = mpicc
 FC           = mpifort
 FL           = mpifort~]
 AR           = ar vr # rules require trailing space, ugh...
 RANLIB       = ranlib
-LIBBLAS      = -L~a -lopenblas~@[
-SCALAP       = -L~a -lscalapack~]
+BLASDIR      = ~a
+LIBBLAS      = -Wl,-rpath=$(BLASDIR) -Wl,-rpath='$$ORIGIN' -L$(BLASDIR) -lopenblas~@[
+SCALAPDIR    = ~a
+SCALAP       = -Wl,-rpath=$(SCALAPDIR) -Wl,-rpath='$$ORIGIN' -L$(SCALAPDIR) -lscalapack~]
 LIBOTHERS    = -pthread
 CDEFS        = -DAdd_
 PIC          = -fPIC
@@ -2212,18 +2556,18 @@ INCS         = $(INCSEQ)
 LIBS         = $(SCALAP) $(LIBSEQ)
 LPORDDIR     = $(topdir)/PORD/lib
 IPORD        = -I$(topdir)/PORD/include
-LPORD        = -L$(LPORDDIR) -lpord
+LPORD        = $(LPORDDIR)/libpord.a
 ORDERINGSF   = -Dpord~@[
 METISDIR     = ~a
 IMETIS       = -I$(METISDIR)/include
-LMETIS       = -L$(METISDIR)/lib -lmetis
+LMETIS       = -Wl,-rpath $(METISDIR)/lib -L$(METISDIR)/lib -lmetis
 ORDERINGSF  += -Dmetis~]~@[~:{
 SCOTCHDIR    = ~a
 ISCOTCH      = -I$(SCOTCHDIR)/include
-LSCOTCH      = -L$(SCOTCHDIR)/lib ~a-lesmumps -lscotch -lscotcherr
+LSCOTCH      = -Wl,-rpath $(SCOTCHDIR)/lib -L$(SCOTCHDIR)/lib ~a-lesmumps -lscotch -lscotcherr
 ORDERINGSF  += ~a~}~]
 ORDERINGSC   = $(ORDERINGSF)
-LORDERINGS   = $(LPORD) $(LMETIS) $(LSCOTCH)
+LORDERINGS   = $(LPORD) $(LMETIS) $(LSCOTCH) $(LIBSEQ)
 IORDERINGSF  = $(ISCOTCH)
 IORDERINGSC  = $(IPORD) $(IMETIS) $(ISCOTCH)"
                         (assoc-ref inputs "mpi")
@@ -2277,6 +2621,8 @@ IORDERINGSC  = $(IPORD) $(IMETIS) $(ISCOTCH)"
                (copy-recursively "include" (string-append out "/include"))
                (when (file-exists? "libseq/libmpiseq.a")
                  (install-file "libseq/libmpiseq.a" libdir))
+               (when (file-exists? "libseq/libmpiseq.so")
+                 (install-file "libseq/libmpiseq.so" libdir))
                #t))))))
     (home-page "http://mumps.enseeiht.fr")
     (synopsis "Multifrontal sparse direct solver")
@@ -2317,70 +2663,20 @@ sparse system of linear equations A x = b using Gaussian elimination.")
     (inputs
      (alist-delete "pt-scotch" (package-inputs mumps-openmpi)))))
 
-(define-public r-quadprog
-  (package
-    (name "r-quadprog")
-    (version "1.5-7")
-    (source
-     (origin
-       (method url-fetch)
-       (uri (cran-uri "quadprog" version))
-       (sha256
-        (base32
-         "0vg7i9p241bwvfdspjbydjrsvgipl6nsb8bjigp0hbbgvxbixx0s"))))
-    (build-system r-build-system)
-    (native-inputs
-     `(("gfortran" ,gfortran)))
-    (home-page "https://cran.r-project.org/web/packages/quadprog")
-    (synopsis "Functions to solve quadratic programming problems")
-    (description
-     "This package contains routines and documentation for solving quadratic
-programming problems.")
-    (license license:gpl3+)))
-
-(define-public r-pracma
-  (package
-    (name "r-pracma")
-    (version "2.2.5")
-    (source (origin
-      (method url-fetch)
-      (uri (cran-uri "pracma" version))
-      (sha256
-        (base32 "0isd3s0i4mzmva8lkh0j76hwjy1w50q7d1n9lhxsnnkgalx3xs1g"))))
-    (build-system r-build-system)
-    (home-page "https://cran.r-project.org/web/packages/pracma/")
-    (synopsis "Practical numerical math functions")
-    (description "This package provides functions for numerical analysis and
-linear algebra, numerical optimization, differential equations, plus some
-special functions.  It uses Matlab function names where appropriate to simplify
-porting.")
-    (license license:gpl3+)))
-
 (define-public ruby-asciimath
   (package
     (name "ruby-asciimath")
-    (version "1.0.4")
+    (version "2.0.1")
     (source
      (origin
        (method url-fetch)
        (uri (rubygems-uri "asciimath" version))
        (sha256
         (base32
-         "1d80kiph5mc78zps7si1hv48kv4k12mzaq8jk5kb3pqpjdr72qmc"))))
+         "1aapydwwkydbwgz07n7ma3a5jy9n3v0shy6q6j8mi4wr3crhx45a"))))
     (build-system ruby-build-system)
-    (arguments
-     '(#:phases
-       (modify-phases %standard-phases
-         ;; Apply this patch
-         ;; https://github.com/asciidoctor/asciimath/commit/1c06fdc8086077f4785479f78b0823a4a72d7948
-         (add-after 'unpack 'patch-remove-spurious-backslashes
-           (lambda _
-             (substitute* "spec/parser_spec.rb"
-               (("\\\\\"")
-                "\""))
-             #t)))))
     (native-inputs
-     `(("bundler" ,bundler)
+     `(("ruby-nokogiri" ,ruby-nokogiri)
        ("ruby-rspec" ,ruby-rspec)))
     (synopsis "AsciiMath parsing and conversion library")
     (description
@@ -2396,7 +2692,7 @@ easy-to-write markup language for mathematics.")
     (source
      (origin
        (method url-fetch)
-       (uri (string-append "http://crd-legacy.lbl.gov/~xiaoye/SuperLU/"
+       (uri (string-append "https://portal.nersc.gov/project/sparse/superlu/"
                            "superlu_" version ".tar.gz"))
        (sha256
         (base32 "0qzlb7cd608q62kyppd0a8c65l03vrwqql6gsm465rky23b6dyr8"))
@@ -2442,7 +2738,7 @@ void mc64ad_ (int *a, int *b, int *c, int *d, int *e, double *f, int *g,
      `(#:configure-flags '("-Denable_blaslib:BOOL=NO" ;do not use internal cblas
                            "-DTPL_BLAS_LIBRARIES=openblas"
                            "-DBUILD_SHARED_LIBS:BOOL=YES")))
-    (home-page "http://crd-legacy.lbl.gov/~xiaoye/SuperLU/")
+    (home-page "https://portal.nersc.gov/project/sparse/superlu/")
     (synopsis "Supernodal direct solver for sparse linear systems")
     (description
      "SuperLU is a general purpose library for the direct solution of large,
@@ -2458,14 +2754,14 @@ also provides threshold-based ILU factorization preconditioners.")
 (define-public superlu-dist
   (package
     (name "superlu-dist")
-    (version "6.1.0")
+    (version "6.2.0")
     (source
      (origin
        (method url-fetch)
-       (uri (string-append "http://crd-legacy.lbl.gov/~xiaoye/SuperLU/"
+       (uri (string-append "https://portal.nersc.gov/project/sparse/superlu/"
                            "superlu_dist_" version ".tar.gz"))
        (sha256
-        (base32 "0pqgcgh1yxhfzs99fas3mggajzd5wca3nbyp878rziy74gfk03dl"))
+        (base32 "1ynmwqajc9sc3my2hssa5k9s58ggvizqv9rdss0j7w99pbh5mnvw"))
        (modules '((guix build utils)))
        (snippet
         ;; Replace the non-free implementation of MC64 with a stub
@@ -2491,8 +2787,7 @@ void mc64ad_dist (int *a, int *b, int *c, int *d, int *e, double *f, int *g,
               "RowPerm = NOROWPERM;"))
            #t))
        (patches (search-patches "superlu-dist-scotchmetis.patch"
-                                "superlu-dist-awpm-grid.patch"
-                                "superlu-dist-fix-mpi-deprecations.patch"))))
+                                "superlu-dist-awpm-grid.patch"))))
     (build-system cmake-build-system)
     (native-inputs
      `(("tcsh" ,tcsh)))
@@ -2560,8 +2855,9 @@ implemented in ANSI C, and MPI for communications.")
                                "scotch-integer-declarations.patch"))))
     (build-system gnu-build-system)
     (inputs
-     `(("zlib" ,zlib)
-       ("flex" ,flex)
+     `(("zlib" ,zlib)))
+    (native-inputs
+     `(("flex" ,flex)
        ("bison" ,bison)))
     (outputs '("out" "metis"))
     (arguments
@@ -2629,7 +2925,7 @@ YACC = bison -pscotchyy -y -b y
                            (install-file f (string-append out "/lib")))
                          (find-files "../lib/" ".*metis\\..*"))
                #t))))))
-    (home-page "http://www.labri.fr/perso/pelegrin/scotch/")
+    (home-page "https://www.labri.fr/perso/pelegrin/scotch/")
     (synopsis "Programs and libraries for graph algorithms")
     (description "SCOTCH is a set of programs and libraries which implement
 the static mapping and sparse matrix reordering algorithms developed within
@@ -2852,7 +3148,7 @@ to BMP, JPEG or PNG image formats.")
 (define-public maxima
   (package
     (name "maxima")
-    (version "5.43.0")
+    (version "5.44.0")
     (source
      (origin
        (method url-fetch)
@@ -2860,7 +3156,7 @@ to BMP, JPEG or PNG image formats.")
                            version "-source/" name "-" version ".tar.gz"))
        (sha256
         (base32
-         "0xyahp4c6509haxh4n1swiqm3421gplkdisa0zypclh3252sbzfw"))
+         "1v6jr5s6hhj6r18gfk6hgxk2qd6z1dxkrjq9ss2z1y6sqi45wgyr"))
        (patches (search-patches "maxima-defsystem-mkdir.patch"))))
     (build-system gnu-build-system)
     (inputs
@@ -2967,20 +3263,22 @@ point numbers.")
 (define-public wxmaxima
   (package
     (name "wxmaxima")
-    (version "19.05.7")
+    (version "20.04.0")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/wxMaxima-developers/wxmaxima.git")
+             (url "https://github.com/wxMaxima-developers/wxmaxima")
              (commit (string-append "Version-" version))))
        (file-name (git-file-name name version))
        (sha256
-        (base32
-         "0zaz71fh156b9inrxf86scnix247al5pl9v18cxhjxcm0lanqxdp"))))
+        (base32 "0vrjxzfgmjdzm1rgl0crz4b4badl14jwh032y3xkcdvjl5j67lp3"))))
     (build-system cmake-build-system)
     (native-inputs
-     `(("gettext" ,gettext-minimal)))
+     `(("gettext" ,gettext-minimal)
+       ("xorg-server" ,xorg-server-for-tests)))
+    ;; TODO: Add libomp for multithreading support.
+    ;; As of right now, enabling libomp causes the imageCells.wxm test to fail.
     (inputs
      `(("wxwidgets" ,wxwidgets)
        ("maxima" ,maxima)
@@ -2989,9 +3287,16 @@ point numbers.")
        ("gtk+" ,gtk+)
        ("shared-mime-info" ,shared-mime-info)))
     (arguments
-     `(#:tests? #f ; no check target
+     `(#:test-target "test"
        #:phases
        (modify-phases %standard-phases
+         (add-before 'check 'pre-check
+           (lambda _
+             ;; Tests require a running X server.
+             (system "Xvfb :1 &")
+             (setenv "DISPLAY" ":1")
+             (setenv "HOME" (getcwd))
+             #t))
          (add-after 'install 'wrap-program
            (lambda* (#:key inputs outputs #:allow-other-keys)
              (wrap-program (string-append (assoc-ref outputs "out")
@@ -3011,7 +3316,7 @@ point numbers.")
                   ,(string-append
                     (assoc-ref inputs "adwaita-icon-theme") "/share"))))
              #t)))))
-    (home-page "https://andrejv.github.io/wxmaxima/")
+    (home-page "https://wxmaxima-developers.github.io/wxmaxima/")
     (synopsis "Graphical user interface for the Maxima computer algebra system")
     (description
      "wxMaxima is a graphical user interface for the Maxima computer algebra
@@ -3053,7 +3358,7 @@ directly in C++, or quick conversion of research code into production
 environments.  It can be used for machine learning, pattern recognition,
 signal processing, bioinformatics, statistics, econometrics, etc.  The library
 provides efficient classes for vectors, matrices and cubes, as well as 150+
-associated functions (eg. contiguous and non-contiguous submatrix views).")
+associated functions (e.g., contiguous and non-contiguous submatrix views).")
     (license license:asl2.0)))
 
 (define-public muparser
@@ -3071,7 +3376,7 @@ associated functions (eg. contiguous and non-contiguous submatrix views).")
        (origin
          (method git-fetch)
          (uri (git-reference
-               (url "https://github.com/beltoforion/muparser.git")
+               (url "https://github.com/beltoforion/muparser")
                (commit (string-append "v" upstream-version))))
          (file-name (git-file-name name version))
          (sha256
@@ -3091,7 +3396,7 @@ parts of it.")
 (define-public openblas
   (package
     (name "openblas")
-    (version "0.3.5")
+    (version "0.3.9")
     (source
      (origin
        (method url-fetch)
@@ -3100,7 +3405,7 @@ parts of it.")
        (file-name (string-append name "-" version ".tar.gz"))
        (sha256
         (base32
-         "062kg4ny1ywz7k5grpb4pbf0hba0w6manbajwkmv4f477a31sxpl"))))
+         "14iz9xnrb9xiwgj84j94mc74gg0zn2vsy9fmsijxxma1n7dck4w3"))))
     (build-system gnu-build-system)
     (arguments
      `(#:test-target "test"
@@ -3117,6 +3422,13 @@ parts of it.")
        (list (string-append "PREFIX=" (assoc-ref %outputs "out"))
              "SHELL=bash"
              "MAKE_NB_JOBS=0"           ;use jobserver for submakes
+
+             ;; This is the maximum number of threads OpenBLAS will ever use (that
+             ;; is, if $OPENBLAS_NUM_THREADS is greater than that, then NUM_THREADS
+             ;; is used.)  If we don't set it, the makefile sets it to the number
+             ;; of cores of the build machine, which is obviously wrong.
+             "NUM_THREADS=128"
+
              ;; Build the library for all supported CPUs.  This allows
              ;; switching CPU targets at runtime with the environment variable
              ;; OPENBLAS_CORETYPE=<type>, where "type" is a supported CPU type.
@@ -3153,14 +3465,14 @@ parts of it.")
      `(("cunit" ,cunit)
        ("fortran" ,gfortran)
        ("perl" ,perl)))
-    (home-page "http://www.openblas.net/")
+    (home-page "https://www.openblas.net/")
     (synopsis "Optimized BLAS library based on GotoBLAS")
     (description
      "OpenBLAS is a BLAS library forked from the GotoBLAS2-1.13 BSD version.")
     (license license:bsd-3)))
 
 (define-public openblas-ilp64
-  (package (inherit openblas)
+  (package/inherit openblas
     (name "openblas-ilp64")
     (supported-systems '("x86_64-linux" "aarch64-linux" "mips64el-linux"))
     (arguments
@@ -3265,7 +3577,7 @@ access to BLIS implementations via traditional BLAS routine calls.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/JuliaLang/openlibm.git")
+             (url "https://github.com/JuliaLang/openlibm")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
@@ -3278,7 +3590,7 @@ access to BLIS implementations via traditional BLAS routine calls.")
        ;; no configure script
        (modify-phases %standard-phases (delete 'configure))
        #:tests? #f)) ;the tests are part of the default target
-    (home-page "http://openlibm.org/")
+    (home-page "https://openlibm.org/")
     (synopsis "Portable C mathematical library (libm)")
     (description
      "OpenLibm is an effort to have a high quality, portable, standalone C
@@ -3304,7 +3616,7 @@ environments.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/JuliaLang/openspecfun.git")
+             (url "https://github.com/JuliaLang/openspecfun")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
@@ -3337,16 +3649,18 @@ Fresnel integrals, and similar related functions as well.")
 (define-public suitesparse
   (package
     (name "suitesparse")
-    (version "4.5.5")
+    (version "5.7.1")
     (source
      (origin
-       (method url-fetch)
-       (uri (string-append
-             "http://faculty.cse.tamu.edu/davis/SuiteSparse/SuiteSparse-"
-             version ".tar.gz"))
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/DrTimothyAldenDavis/SuiteSparse")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
        (sha256
         (base32
-         "1dnr6pmjzc2qmbkmb4shigx1l74ilf6abn7svyd6brxgvph8vadr"))
+         "174p3l78kv9gaa0i5hflyai2ydwnjzh34k9938sl4aa3li0543s8"))
+       (patches (search-patches "suitesparse-mongoose-cmake.patch"))
        (modules '((guix build utils)))
        (snippet
         ;; Remove bundled metis source
@@ -3361,6 +3675,14 @@ Fresnel integrals, and similar related functions as well.")
              "BLAS=-lblas"
              "TBB=-ltbb"
              "MY_METIS_LIB=-lmetis"
+             ;; Flags for cmake (required to build GraphBLAS and Mongoose)
+             (string-append "CMAKE_OPTIONS=-DCMAKE_INSTALL_PREFIX="
+                            (assoc-ref %outputs "out")
+                            " -DCMAKE_VERBOSE_MAKEFILE=ON"
+                            " -DCMAKE_C_FLAGS_RELEASE=\"$(CFLAGS) $(CPPFLAGS)\""
+                            " -DCMAKE_CXX_FLAGS_RELEASE=\"$(CXXFLAGS) $(CPPFLAGS)\""
+                            " -DCMAKE_SKIP_RPATH=TRUE"
+                            " -DCMAKE_BUILD_TYPE=Release")
              (string-append "INSTALL_LIB="
                             (assoc-ref %outputs "out") "/lib")
              (string-append "INSTALL_INCLUDE="
@@ -3373,6 +3695,9 @@ Fresnel integrals, and similar related functions as well.")
      `(("tbb" ,tbb)
        ("lapack" ,lapack)
        ("metis" ,metis)))
+    (native-inputs
+     `(("cmake" ,cmake-minimal)
+       ("m4" ,m4)))
     (home-page "http://faculty.cse.tamu.edu/davis/suitesparse.html")
     (synopsis "Suite of sparse matrix software")
     (description
@@ -3516,16 +3841,43 @@ Failure to do so will result in a library with poor performance.")
 (define-public glm
   (package
     (name "glm")
-    (version "0.9.9.5")
+    (version "0.9.9.8")
     (source
      (origin
        (method url-fetch)
        (uri (string-append "https://github.com/g-truc/glm/releases/download/"
                            version  "/glm-" version ".zip"))
        (sha256
-        (base32
-         "1vmg7hb4xvsa77zpbwiw6lqc7pyaj56dihx6xriny5b9rrh4iqsg"))))
+        (base32 "0k6yk9v46h690rshdx49x98y5qspkzibld1wb51jwcm35vba7qip"))))
     (build-system cmake-build-system)
+    (arguments
+     `(#:phases (modify-phases %standard-phases
+                  (replace 'install
+                    (lambda* (#:key outputs #:allow-other-keys)
+                      ;; Since version 0.9.9.6, 'make install' is not supported
+                      ;; and we have to do it "manually".  Upstream discussion:
+                      ;; <https://github.com/g-truc/glm/pull/968>.
+                      (let* ((source (string-append "../glm"))
+                             (out (assoc-ref outputs "out"))
+                             (inc (string-append out "/include"))
+                             (lib (string-append out "/lib"))
+                             (pkgconfig (string-append lib "/pkgconfig")))
+                        (with-directory-excursion source
+                          (mkdir-p inc)
+                          (mkdir-p pkgconfig)
+                          (copy-recursively "glm" (string-append inc "/glm"))
+                          (copy-recursively "cmake" (string-append lib "/cmake"))
+                          (call-with-output-file (string-append pkgconfig "/glm.pc")
+                            (lambda (port)
+                              (format port
+                                      "prefix=~a
+includedir=${prefix}/include
+
+Name: GLM
+Description: OpenGL Mathematics
+Version: ~a
+Cflags: -I${includedir}~%" out ,(version-prefix version 3)))))
+                        #t))))))
     (native-inputs
      `(("unzip" ,unzip)))
     (home-page "https://glm.g-truc.net/")
@@ -3609,7 +3961,7 @@ revised simplex and the branch-and-bound methods.")
 (define-public dealii
   (package
     (name "dealii")
-    (version "9.0.1")
+    (version "9.1.1")
     (source
      (origin
        (method url-fetch)
@@ -3617,8 +3969,7 @@ revised simplex and the branch-and-bound methods.")
                            "download/v" version "/dealii-" version ".tar.gz"))
        (sha256
         (base32
-         "0r7f8rhl3xr94imd372plizdcbqk0a70w73lwc3vw912dxk0sbyz"))
-       (patches (search-patches "dealii-mpi-deprecations.patch"))
+         "0xhjv0gzswpjbc43xbrpwfc5848g508l01855nszx3g5gwzlhnzw"))
        (modules '((guix build utils)))
        (snippet
         ;; Remove bundled sources: UMFPACK, TBB, muParser, and boost
@@ -3683,26 +4034,28 @@ in finite element programs.")
 (define-public flann
   (package
     (name "flann")
-    (version "1.8.4")
+    (version "1.9.1")
+    (home-page "https://github.com/mariusmuja/flann/")
     (source
       (origin
-        (method url-fetch)
-        (uri
-          (string-append
-            "http://www.cs.ubc.ca/research/flann/uploads/FLANN/flann-"
-            version "-src.zip"))
+        (method git-fetch)
+        (uri (git-reference (url home-page) (commit version)))
+        (file-name (git-file-name name version))
         (sha256
           (base32
-            "022w8hph7bli5zbpnk3z1qh1c2sl5hm8fw2ccim651ynn0hr7fyz"))
+           "0p56fl2yx1r86ds1mgjq40926jdcgq3hka7p3l1hv2acv9jxp15x"))
         (patches (search-patches "flann-cmake-3.11.patch"))))
     (build-system cmake-build-system)
-    (outputs '("out"
-               "octave"))                  ;46 MiB .mex file that pulls Octave
+    (outputs '("out"))
     (native-inputs
      `(("unzip" ,unzip)))
     (inputs
      `(("hdf5" ,hdf5)
-       ("octave" ,octave-cli)
+       ;; FIXME: 'mkoctfile' fails with a linker error:
+       ;;  ld: cannot find -loctinterp
+       ;;  ld: cannot find -loctave
+       ;; Disable it for now.
+       ;;("octave" ,octave-cli)
        ("python" ,python-2) ; print syntax
        ;; ("python2-numpy" ,python2-numpy) ; only required for the tests
        ("zlib" ,zlib)))
@@ -3715,14 +4068,6 @@ in finite element programs.")
        ;; Save 12 MiB by not installing .a files.  Passing
        ;; '-DBUILD_STATIC_LIBS=OFF' has no effect.
        #:phases (modify-phases %standard-phases
-                  (add-before 'configure 'set-octave-directory
-                    (lambda* (#:key outputs #:allow-other-keys)
-                      ;; Install the .mex file in the "octave" output.
-                      (let ((out (assoc-ref outputs "octave")))
-                        (substitute* "src/matlab/CMakeLists.txt"
-                          (("share/flann/octave")
-                           (string-append out "/share/flann/octave")))
-                        #t)))
                   (add-after 'install 'remove-static-libraries
                     (lambda* (#:key outputs #:allow-other-keys)
                       (let* ((out (assoc-ref outputs "out"))
@@ -3732,7 +4077,6 @@ in finite element programs.")
                         #t))))
 
        #:tests? #f)) ; The test data are downloaded from the Internet.
-    (home-page "http://www.cs.ubc.ca/research/flann/")
     (synopsis "Library for approximate nearest neighbors computation")
     (description "FLANN is a library for performing fast approximate
 nearest neighbor searches in high dimensional spaces.  It implements a
@@ -3772,30 +4116,70 @@ evaluates expressions using the standard order of operations.")
 (define-public xaos
   (package
     (name "xaos")
-    (version "3.6")
+    (version "4.0")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "mirror://sourceforge/xaos/XaoS/" version
-                                  "/xaos-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/xaos-project/XaoS")
+                    (commit (string-append "release-" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "15cd1cx1dyygw6g2nhjqq3bsfdj8sj8m4va9n75i0f3ryww3x7wq"))))
+                "00110p5xscjsmn7avfqgydn656zbmdj3l3y2fpv9b4ihzpid8n7a"))))
     (build-system gnu-build-system)
-    (native-inputs `(("gettext" ,gettext-minimal)))
+    (native-inputs `(("gettext" ,gettext-minimal)
+                     ("qtbase" ,qtbase)
+                     ("qttools" ,qttools)))
     (inputs `(("libx11" ,libx11)
               ("zlib" ,zlib)
               ("libpng" ,libpng)
               ("gsl" ,gsl)))
+    ;; The upstream project file ("XaoS.pro") and the Makefile it generates are
+    ;; not enough for this package to install properly.  These phases fix that.
     (arguments
      `(#:tests? #f ;no "check" target
-       #:make-flags '("LOCALEDIR=$DATAROOTDIR/locale")))
+       #:phases
+       (modify-phases %standard-phases
+         (add-before 'configure 'make-qt-deterministic
+           (lambda _
+             ;; Make Qt deterministic.
+             (setenv "QT_RCC_SOURCE_DATE_OVERRIDE" "1")
+             #t))
+         (replace 'configure
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out")))
+               ;; The DESTDIR is originally set to install the xaos binary to
+               ;; the "bin" folder inside the build directory.  Setting make
+               ;; flags doesn't seem to change this.
+               (substitute* "XaoS.pro"
+                 (("DESTDIR.*$")
+                  (string-append "DESTDIR=" out "/bin")))
+               (substitute* "src/include/config.h"
+                 (("/usr/share/XaoS")
+                  (string-append out "/share/XaoS")))
+               (invoke "qmake"))))
+         (add-after 'install 'install-data
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (share (string-append out "/share")))
+               (mkdir-p share)
+               (for-each
+                (lambda (folder)
+                  (copy-recursively folder
+                                    (string-append share "/XaoS/" folder)))
+                '("catalogs" "examples" "tutorial"))
+               (install-file "xdg/xaos.png"
+                             (string-append share "/pixmaps"))
+               (install-file "xdg/xaos.desktop"
+                             (string-append share "/applications")))
+             #t)))))
     (synopsis "Real-time fractal zoomer")
     (description "GNU XaoS is a graphical program that generates fractal
 patterns and allows you to zoom in and out of them infinitely in a fluid,
 continuous manner.  It also includes tutorials that help to explain how fractals
 are built.  It can generate many different fractal types such as the Mandelbrot
 set.")
-    (home-page "https://www.gnu.org/software/xaos/")
+    (home-page "https://xaos-project.github.io/")
     (license license:gpl2+)))
 
 (define-public hypre
@@ -3806,7 +4190,7 @@ set.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/LLNL/hypre.git")
+             (url "https://github.com/LLNL/hypre")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
@@ -3827,8 +4211,8 @@ set.")
      `(("doc++" ,doc++)
        ("netpbm" ,netpbm)
        ("perl" ,perl)                   ; needed to run 'ppmquant' during tests
-       ("texlive" ,(texlive-union (list texlive-generic-xypic
-                                        texlive-fonts-xypic
+       ("texlive" ,(texlive-union (list texlive-xypic
+                                        texlive-cm
                                         texlive-latex-hyperref
                                         texlive-bibtex)))
        ("ghostscript" ,ghostscript)))
@@ -3948,14 +4332,14 @@ supports compressed MAT files, as well as newer (version 7.3) MAT files.")
 (define-public vc
   (package
     (name "vc")
-    (version "1.3.3")
+    (version "1.4.1")
     (source
       (origin (method url-fetch)
               (uri (string-append "https://github.com/VcDevel/Vc/releases/"
                                   "download/" version "/Vc-" version ".tar.gz"))
               (sha256
                (base32
-                "1zmlpn32jzb38smp3j834llmbix3whsrbw0h397qxysbw792kih8"))))
+                "17qili8bf8r78cng65yf4qmgna8kiqjqbgcqbric6v9j6nkhkrk8"))))
     (build-system cmake-build-system)
     (arguments
      '(#:configure-flags
@@ -3963,7 +4347,30 @@ supports compressed MAT files, as well as newer (version 7.3) MAT files.")
          ;; By default, Vc will optimize for the CPU of the build machine.
          ;; Setting this to "none" makes it create portable binaries.  See
          ;; "cmake/OptimizeForArchitecture.cmake".
-         "-DTARGET_ARCHITECTURE=none")))
+         "-DTARGET_ARCHITECTURE=none")
+       #:phases (modify-phases %standard-phases
+                  (add-after 'unpack 'copy-testdata
+                    (lambda* (#:key inputs native-inputs #:allow-other-keys)
+                      (let ((testdata (assoc-ref (or native-inputs inputs)
+                                                 "testdata")))
+                        (copy-recursively testdata "tests/testdata")
+                        #t))))))
+    (native-inputs
+     `(("virtest" ,virtest)
+
+       ;; This is a submodule in the git project, but not part of the
+       ;; released sources.  See the git branch for the commit to take.
+       ("testdata" ,(let ((commit "9ada1f34d6a41f1b5553d6223f277eae72c039d3"))
+                      (origin
+                        (method git-fetch)
+                        (uri (git-reference
+                              (url "https://github.com/VcDevel/vc-testdata")
+                              (commit "9ada1f34d6a41f1b5553d6223f277eae72c039d3")))
+                        (file-name (git-file-name "vc-testdata"
+                                                  (string-take commit 7)))
+                        (sha256
+                         (base32
+                          "1hkhqib03qlcq412ym2dciynfxcdr2ygqhnplz4l1vissr1wnqn2")))))))
     (synopsis "SIMD vector classes for C++")
     (description "Vc provides portable, zero-overhead C++ types for explicitly
 data-parallel programming.  It is a library designed to ease explicit
@@ -4080,7 +4487,7 @@ as equations, scalars, vectors, and matrices.")
 (define-public z3
   (package
     (name "z3")
-    (version "4.8.4")
+    (version "4.8.8")
     (home-page "https://github.com/Z3Prover/z3")
     (source (origin
               (method git-fetch)
@@ -4089,11 +4496,20 @@ as equations, scalars, vectors, and matrices.")
               (file-name (git-file-name name version))
               (sha256
                (base32
-                "014igqm5vwswz0yhz0cdxsj3a6dh7i79hvhgc3jmmmz3z0xm1gyn"))))
+                "1rn538ghqwxq0v8i6578j8mflk6fyv0cp4hjfqynzvinjbps56da"))))
     (build-system gnu-build-system)
     (arguments
-     `(#:phases
+     `(#:imported-modules ((guix build python-build-system)
+                           ,@%gnu-build-system-modules)
+       #:modules (((guix build python-build-system) #:select (site-packages))
+                  (guix build gnu-build-system)
+                  (guix build utils))
+       #:phases
        (modify-phases %standard-phases
+         (add-after 'unpack 'enable-bytecode-determinism
+           (lambda _
+             (setenv "PYTHONHASHSEED" "0")
+             #t))
          (add-after 'unpack 'fix-compatability
            ;; Versions after 4.8.3 have immintrin.h IFDEFed for Windows only.
            (lambda _
@@ -4109,7 +4525,9 @@ as equations, scalars, vectors, and matrices.")
          (replace 'configure
            (lambda* (#:key inputs outputs #:allow-other-keys)
              (invoke "./configure"
-                     (string-append "--prefix=" (assoc-ref outputs "out")))))
+                     "--python"
+                     (string-append "--prefix=" (assoc-ref outputs "out"))
+                     (string-append "--pypkgdir=" (site-packages inputs outputs)))))
          (add-after 'configure 'change-directory
            (lambda _
              (chdir "build")
@@ -4228,14 +4646,14 @@ symmetric matrices.")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                     (url "https://github.com/elemental/Elemental.git")
+                     (url "https://github.com/elemental/Elemental")
                      (commit (string-append "v" version))))
               (file-name (git-file-name name version))
               (sha256
                (base32
                 "1687xpjjzig27y2pnqv7hv09smpijyfdpz7qjgmcxf4shfajlfkc"))))
     (build-system cmake-build-system)
-    (home-page "http://libelemental.org")
+    (home-page "https://github.com/elemental/Elemental")
     (native-inputs
      `(("gfortran" ,gfortran)))
     (inputs
@@ -4280,17 +4698,15 @@ reduction.")
 (define-public mcrl2
   (package
     (name "mcrl2")
-    (version "201707.1.15162")
+    (version "201908.0")
     (source (origin
               (method url-fetch)
-              (uri (string-append "http://www.mcrl2.org/download/devel/mcrl2-"
-                                  version
-                                  ".tar.gz"))
+              (uri (string-append
+                    "https://www.mcrl2.org/download/release/mcrl2-"
+                    version ".tar.gz"))
               (sha256
                (base32
-                "1ziww2fchsklm25hl9p2mngssxfh9w07nc114cncqaxfibqp2p8f"))))
-    (native-inputs
-     `(("subversion" ,subversion)))
+                "1i4xgl2d5fgiz1mwi50cyfkrrcpm8nxfayfjgmhq7chs58wlhfsz"))))
     (inputs
      `(("boost" ,boost)
        ("glu" ,glu)
@@ -4308,56 +4724,14 @@ analysed.")
     (home-page "https://mcrl2.org")
     (license license:boost1.0)))
 
-(define-public r-subplex
+(define-public mcrl2-minimal
   (package
-    (name "r-subplex")
-    (version "1.5-4")
-    (source
-    (origin
-      (method url-fetch)
-      (uri (cran-uri "subplex" version))
-      (sha256
-       (base32
-        "10cbgbx1bgsax5z7gz6716g360xpq4mvq19cf4qqrxv02mmwz57z"))))
-    (build-system r-build-system)
-    (native-inputs
-     `(("gfortran" ,gfortran)))
-    (home-page "https://cran.r-project.org/web/packages/subplex")
-    (synopsis "Unconstrained optimization using the subplex algorithm")
-    (description "This package implements the Subplex optimization algorithm.
-It solves unconstrained optimization problems using a simplex method on
-subspaces.  The method is well suited for optimizing objective functions that
-are noisy or are discontinuous at the solution.")
-    (license license:gpl3+)))
-
-(define-public r-desolve
-  (package
-    (name "r-desolve")
-    (version "1.21")
-    (source
-      (origin
-        (method url-fetch)
-        (uri (cran-uri "deSolve" version))
-        (sha256
-         (base32
-          "0qqc4mknw1jblzcmph1dg3k1p6w42yal0k1xjh8pqk7yb3a75hs5"))))
-    (properties `((upstream-name . "deSolve")))
-    (build-system r-build-system)
-    (native-inputs
-     `(("gfortran" ,gfortran)))
-    (home-page "https://desolve.r-forge.r-project.org/")
-    (synopsis "Solvers for initial value problems of differential equations")
-    (description "This package provides functions that solve initial
-value problems of a system of first-order ordinary differential equations (ODE),
-of partial differential equations (PDE), of differential algebraic equations
-(DAE), and of delay differential equations.  The functions provide an interface
-to the FORTRAN functions lsoda, lsodar, lsode, lsodes of the ODEPACK collection,
-to the FORTRAN functions dvode and daspk and a C-implementation of solvers of
-the Runge-Kutta family with fixed or variable time steps.  The package contains
-routines designed for solving ODEs resulting from 1-D, 2-D and 3-D partial
-differential equations (PDE) that have been converted to ODEs by numerical
-differencing.")
-    (license license:gpl2+)))
+    (inherit mcrl2)
+    (name "mcrl2-minimal")
+    (inputs
+     `(("boost" ,boost)))
+    (arguments
+     '(#:configure-flags '("-DMCRL2_ENABLE_GUI_TOOLS=OFF")))))
 
 (define-public tcalc
   (package
@@ -4500,7 +4874,7 @@ linear algebra primitives specifically targeting graph analytics.")
 (define-public dune-common
   (package
     (name "dune-common")
-    (version "2.6.0")
+    (version "2.7.0")
     (source
      (origin
        (method url-fetch)
@@ -4508,48 +4882,17 @@ linear algebra primitives specifically targeting graph analytics.")
                            version "/dune-common-" version ".tar.gz"))
        (sha256
         (base32
-         "019wcr1qf7jwyxx1y5y290wdlglylskvbb2m01ljkzcza2xnlmhw"))))
+         "140q1zh44cr5yrjwg4b5ga803rkqv55vk30l2cqm29aklj1wb0rw"))))
     (build-system cmake-build-system)
     (arguments
      `(#:phases
        (modify-phases %standard-phases
          (add-after 'build 'build-tests
            (lambda* (#:key make-flags #:allow-other-keys)
-             (apply invoke "make" "build_tests" make-flags)))
-         ;; These tests fail because they require a fully functional MPI
-         ;; environment.
-         (add-after 'unpack 'disable-failing-tests
-           (lambda _
-             (setenv "ARGS"
-                     (string-append "--exclude-regex '("
-                                    (string-join
-                                     (list
-                                      "remoteindicestest"
-                                      "remoteindicestest-mpi-2"
-                                      "syncertest"
-                                      "syncertest-mpi-2"
-                                      "variablesizecommunicatortest"
-                                      "variablesizecommunicatortest-mpi-2"
-                                      "arithmetictestsuitetest"
-                                      "assertandreturntest"
-                                      "assertandreturntest_ndebug"
-                                      "concept"
-                                      "debugaligntest"
-                                      "mpicollectivecommunication"
-                                      "mpicollectivecommunication-mpi-2"
-                                      "mpiguardtest"
-                                      "mpiguardtest-mpi-2"
-                                      "mpihelpertest"
-                                      "mpihelpertest-mpi-2"
-                                      "mpihelpertest2"
-                                      "mpihelpertest2-mpi-2")
-                                     "|")
-                                    ")'"))
-             #t)))))
+             (apply invoke "make" "build_tests" make-flags))))))
     (inputs
      `(("gmp" ,gmp)
        ("metis" ,metis)
-       ("openmpi" ,openmpi)
        ("openblas" ,openblas)
        ("python" ,python)
        ("superlu" ,superlu)))
@@ -4569,7 +4912,7 @@ Differences} (FD).")
 (define-public dune-geometry
   (package
     (name "dune-geometry")
-    (version "2.6.0")
+    (version "2.7.0")
     (source
      (origin
        (method url-fetch)
@@ -4577,7 +4920,7 @@ Differences} (FD).")
                            version "/dune-geometry-" version ".tar.gz"))
        (sha256
         (base32
-         "0hlaaxjyv9j05blasvb67sy02hd0w4g9znf68gdh3l731dd1aqbn"))))
+         "1cicvlwbyyw76npicnblxckyvhbfn3ip8isydiv3hlrlz8zcg5nr"))))
     (build-system cmake-build-system)
     (arguments
      `(#:phases
@@ -4587,7 +4930,6 @@ Differences} (FD).")
              (apply invoke "make" "build_tests" make-flags))))))
     (inputs
      `(("dune-common" ,dune-common)
-       ("openmpi" ,openmpi)
        ;; Optional
        ("openblas" ,openblas)
        ("gmp" ,gmp)
@@ -4607,10 +4949,47 @@ This package contains the basic DUNE geometry classes.")
     ;; GPL version 2 with "runtime exception"
     (license license:gpl2)))
 
+(define-public dune-uggrid
+  (package
+    (name "dune-uggrid")
+    (version "2.7.0")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+         (url "https://gitlab.dune-project.org/staging/dune-uggrid.git")
+         (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32
+         "192miqgmfj6jwk969gydzpbv9ki7jg5nky3ydnrwa2nq29b5xkh0"))))
+    (build-system cmake-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-after 'build 'build-tests
+           (lambda* (#:key make-flags #:allow-other-keys)
+             (apply invoke "make" "build_tests" make-flags))))))
+    (inputs
+     `(("dune-common" ,dune-common)))
+    (native-inputs
+     `(("gfortran" ,gfortran)
+       ("pkg-config" ,pkg-config)))
+    (home-page "https://dune-project.org/")
+    (synopsis "Distributed and Unified Numerics Environment")
+    (description "DUNE, the Distributed and Unified Numerics Environment is a
+modular toolbox for solving @dfn{partial differential equations} (PDEs) with
+grid-based methods.  It supports the easy implementation of methods like
+@dfn{Finite Elements} (FE), @dfn{Finite Volumes} (FV), and also @dfn{Finite
+Differences} (FD).
+
+This package contains the DUNE UG grid classes.")
+    (license license:lgpl2.1)))
+
 (define-public dune-grid
   (package
     (name "dune-grid")
-    (version "2.6.0")
+    (version "2.7.0")
     (source
      (origin
        (method url-fetch)
@@ -4618,70 +4997,23 @@ This package contains the basic DUNE geometry classes.")
                            version "/dune-grid-" version ".tar.gz"))
        (sha256
         (base32
-         "1jp4vscm9yb9xg0lh7apzccfkhvgbnk652yahigmh3cvzpl4acd0"))))
+         "17fjz30qazjgl11sryyxnw9klai4yz1ji4bs68013xcxc5hdv27s"))))
     (build-system cmake-build-system)
     (arguments
      `(#:phases
        (modify-phases %standard-phases
          (add-after 'build 'build-tests
            (lambda* (#:key make-flags #:allow-other-keys)
-             (apply invoke "make" "build_tests" make-flags)))
-         ;; These tests fail because they require a fully functional MPI
-         ;; environment.
-         (add-after 'unpack 'disable-failing-tests
-           (lambda _
-             (setenv "ARGS"
-                     (string-append "--exclude-regex '("
-                                    (string-join
-                                     (list
-                                      "scsgmappertest"
-                                      "conformvolumevtktest"
-                                      "gnuplottest"
-                                      "nonconformboundaryvtktest"
-                                      "subsamplingvtktest"
-                                      "vtktest"
-                                      "vtktest-mpi-2"
-                                      "vtksequencetest"
-                                      "gmshtest-onedgrid"
-                                      "test-dgf-yasp"
-                                      "test-dgf-yasp-offset"
-                                      "test-dgf-oned"
-                                      "test-geogrid-yaspgrid"
-                                      "test-gridinfo"
-                                      "test-identitygrid"
-                                      "testiteratorranges"
-                                      "test-hierarchicsearch"
-                                      "test-parallel-ug-mpi-2"
-                                      "test-yaspgrid-backuprestore-equidistant"
-                                      "test-yaspgrid-backuprestore-equidistant-mpi-2"
-                                      "test-yaspgrid-backuprestore-equidistantoffset"
-                                      "test-yaspgrid-backuprestore-equidistantoffset-mpi-2"
-                                      "test-yaspgrid-backuprestore-tensor"
-                                      "test-yaspgrid-backuprestore-tensor-mpi-2"
-                                      "test-yaspgrid-tensorgridfactory"
-                                      "test-yaspgrid-tensorgridfactory-mpi-2"
-                                      "test-yaspgrid-yaspfactory-1d"
-                                      "test-yaspgrid-yaspfactory-1d-mpi-2"
-                                      "test-yaspgrid-yaspfactory-2d"
-                                      "test-yaspgrid-yaspfactory-2d-mpi-2"
-                                      "test-yaspgrid-yaspfactory-3d"
-                                      "test-yaspgrid-yaspfactory-3d-mpi-2"
-                                      "globalindexsettest"
-                                      "persistentcontainertest"
-                                      "structuredgridfactorytest"
-                                      "tensorgridfactorytest"
-                                      "vertexordertest")
-                                     "|")
-                                    ")'"))
-             #t)))))
+             (apply invoke "make" "build_tests" make-flags))))))
     (inputs
      `(("dune-common" ,dune-common)
        ("dune-geometry" ,dune-geometry)
        ("gmp" ,gmp)
        ("metis" ,metis)
        ("openblas" ,openblas)
-       ("openmpi" ,openmpi)
        ("python" ,python)))
+    (propagated-inputs
+     `(("dune-uggrid" ,dune-uggrid)))
     (native-inputs
      `(("gfortran" ,gfortran)
        ("pkg-config" ,pkg-config)))
@@ -4700,7 +5032,7 @@ This package contains the basic DUNE grid classes.")
 (define-public dune-istl
   (package
     (name "dune-istl")
-    (version "2.6.0")
+    (version "2.7.0")
     (source
      (origin
        (method url-fetch)
@@ -4708,37 +5040,32 @@ This package contains the basic DUNE grid classes.")
                            version "/dune-istl-" version ".tar.gz"))
        (sha256
         (base32
-         "0l2gyrvys5w6wsmk0ckbb7295s80b7yk7qrl7x66akv2jv1nzq2w"))))
+         "0gl3wgz5rs6sb4m83440ny45sbx7z7lnbi3gx6r9nm3rvy5j33f9"))
+       (patches (search-patches "dune-istl-2.7-fix-non-mpi-tests.patch"))))
     (build-system cmake-build-system)
     (arguments
      `(#:phases
        (modify-phases %standard-phases
+         ;; XXX: istl/test/matrixtest.cc includes <fenv.h> and fails to find
+         ;; the stdlib types when the gfortran header is used.  Remove gfortran
+         ;; from CPLUS_INCLUDE_PATH as a workaround.
+         (add-after 'set-paths 'hide-gfortran
+           (lambda* (#:key inputs #:allow-other-keys)
+             (let ((gfortran (assoc-ref inputs "gfortran")))
+               (setenv "CPLUS_INCLUDE_PATH"
+                       (string-join
+                        (delete (string-append gfortran "/include/c++")
+                                (string-split (getenv "CPLUS_INCLUDE_PATH") #\:))
+                        ":"))
+               #t)))
          (add-after 'build 'build-tests
            (lambda* (#:key make-flags #:allow-other-keys)
-             (apply invoke "make" "build_tests" make-flags)))
-         ;; These tests fail because they require a fully functional MPI
-         ;; environment.
-         (add-after 'unpack 'disable-failing-tests
-           (lambda _
-             (setenv "ARGS"
-                     (string-append "--exclude-regex '("
-                                    (string-join
-                                     (list
-                                      "galerkintest"
-	                              "hierarchytest"
-	                              "pamgtest"
-	                              "pamg_comm_repart_test"
-	                              "matrixredisttest"
-	                              "vectorcommtest"
-	                              "matrixmarkettest")
-                                     "|")
-                                    ")'"))
-             #t)))))
+             (apply invoke "make" "build_tests" make-flags))))))
     (inputs
      `(("dune-common" ,dune-common)
-       ("openmpi" ,openmpi)
        ;; Optional
        ("metis" ,metis)
+       ("suitesparse" ,suitesparse)
        ("superlu" ,superlu)
        ("openblas" ,openblas)
        ("gmp" ,gmp)
@@ -4764,7 +5091,7 @@ aggregation-based algebraic multigrid.")
 (define-public dune-localfunctions
   (package
     (name "dune-localfunctions")
-    (version "2.6.0")
+    (version "2.7.0")
     (source
      (origin
        (method url-fetch)
@@ -4772,18 +5099,29 @@ aggregation-based algebraic multigrid.")
                            version "/dune-localfunctions-" version ".tar.gz"))
        (sha256
         (base32
-         "19c6zjinwwpy8jh4v4prhphyd438rapd4x80fj93apmwgw04nrhl"))))
+         "1yih59h6vngii696bx1c2vil02lriij4kz0nc583mjn9kiaqxfqd"))))
     (build-system cmake-build-system)
     (arguments
      `(#:phases
        (modify-phases %standard-phases
+         ;; XXX: localfunctions/test/lagrangeshapefunctiontest.cc includes <fenv.h>
+         ;; and fails to find the stdlib types when the gfortran header is used.
+         ;; Hide gfortran from CPLUS_INCLUDE_PATH to ensure we get the GCC header.
+         (add-after 'set-paths 'hide-gfortran
+           (lambda* (#:key inputs #:allow-other-keys)
+             (let ((gfortran (assoc-ref inputs "gfortran")))
+               (setenv "CPLUS_INCLUDE_PATH"
+                       (string-join
+                        (delete (string-append gfortran "/include/c++")
+                                (string-split (getenv "CPLUS_INCLUDE_PATH") #\:))
+                        ":"))
+               #t)))
          (add-after 'build 'build-tests
            (lambda* (#:key make-flags #:allow-other-keys)
              (apply invoke "make" "build_tests" make-flags))))))
     (inputs
      `(("dune-common" ,dune-common)
        ("dune-geometry" ,dune-geometry)
-       ("openmpi" ,openmpi)
        ;; Optional
        ("metis" ,metis)
        ("superlu" ,superlu)
@@ -4808,20 +5146,20 @@ assemble global function spaces on finite-element grids.")
 (define-public dune-alugrid
   (package
     (name "dune-alugrid")
-    (version "2.6.0")
+    (version "2.7.0-git-81d35682")
     (source
      (origin
-       (method url-fetch)
-       (uri (string-append "https://dune-project.org/download/"
-                           version "/dune-alugrid-" version ".tar.gz"))
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://gitlab.dune-project.org/extensions/dune-alugrid.git")
+             (commit "81d356827c84454b971937db02c02b90bbcd7fe5")))
+       (file-name (git-file-name name version))
        (sha256
         (base32
-         "1l9adgyjpra8mvwm445s0lpjshnb63jag85fb2hisbjn6bm320yj"))))
+         "0z54lwfp53prcrs94k8gwh047l9z642jll3l56xlyfr69z0b2zz1"))))
     (build-system cmake-build-system)
     (arguments
-     `(#:tests? #f ; 7 of 8 tests fail because they need a full MPI
-                   ; environment
-       #:phases
+     `(#:phases
        (modify-phases %standard-phases
          (add-after 'unpack 'patch-include
            (lambda _
@@ -4832,14 +5170,12 @@ assemble global function spaces on finite-element grids.")
          (add-after 'build 'build-tests
            (lambda* (#:key inputs make-flags #:allow-other-keys)
              (setenv "CPLUS_INCLUDE_PATH"
-                     (string-append (assoc-ref inputs "dune-grid") "/share:"
-                                    (getenv "CPLUS_INCLUDE_PATH")))
+                     (string-append (assoc-ref inputs "dune-grid") "/share"))
              (apply invoke "make" "build_tests" make-flags))))))
     (inputs
      `(("dune-common" ,dune-common)
        ("dune-geometry" ,dune-geometry)
        ("dune-grid" ,dune-grid)
-       ("openmpi" ,openmpi)
        ;; Optional
        ("metis" ,metis)
        ("openblas" ,openblas)
@@ -4857,20 +5193,20 @@ implementation of the DUNE grid interface supporting either simplices or
 cubes.")
     (license license:gpl2+)))
 
-(define-public dune-typetree
+(define-public dune-subgrid
   (package
-    (name "dune-typetree")
-    (version "2.6.0")
+    (name "dune-subgrid")
+    (version "2.7.0-git-2103a363")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://gitlab.dune-project.org/staging/dune-typetree.git")
-             (commit (string-append "v" version))))
+         (url "https://git.imp.fu-berlin.de/agnumpde/dune-subgrid")
+         (commit "2103a363f32e8d7b60e66eee7ddecf969f6cf762")))
        (file-name (git-file-name name version))
        (sha256
         (base32
-         "0mnv6w2f22lz3j4bdpdjq55vjm8xxfx9v4vvhg9bd36xpsbjpjp9"))))
+          "1wsjlypd3835c3arqjkw836cxx5q67zy447wa65q634lf6f6v9ia"))))
     (build-system cmake-build-system)
     (arguments
      `(#:phases
@@ -4880,7 +5216,46 @@ cubes.")
              (apply invoke "make" "build_tests" make-flags))))))
     (inputs
      `(("dune-common" ,dune-common)
-       ("openmpi" ,openmpi)
+       ("dune-geometry" ,dune-geometry)
+       ("dune-grid" ,dune-grid)
+       ;; Optional
+       ("metis" ,metis)
+       ("openblas" ,openblas)
+       ("gmp" ,gmp)))
+    (native-inputs
+     `(("gfortran" ,gfortran)
+       ("pkg-config" ,pkg-config)))
+    (home-page "http://numerik.mi.fu-berlin.de/dune-subgrid/index.php")
+    (synopsis "Distributed and Unified Numerics Environment")
+    (description "The dune-subgrid module marks elements of
+another hierarchical dune grid.  The set of marked elements can then be
+accessed as a hierarchical dune grid in its own right.  Dune-Subgrid
+provides the full grid interface including adaptive mesh refinement.")
+    (license license:gpl2+)))
+
+(define-public dune-typetree
+  (package
+    (name "dune-typetree")
+    (version "2.7.0")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://gitlab.dune-project.org/staging/dune-typetree.git")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32
+         "1rhv25yg0q1hw50c8wlfqhgwrjl4mh62zq9v14ilwgzbfgxmpiy7"))))
+    (build-system cmake-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-after 'build 'build-tests
+           (lambda* (#:key make-flags #:allow-other-keys)
+             (apply invoke "make" "build_tests" make-flags))))))
+    (inputs
+     `(("dune-common" ,dune-common)
        ;; Optional
        ("openblas" ,openblas)
        ("python" ,python)
@@ -4900,7 +5275,7 @@ operating on statically typed trees of objects.")
 (define-public dune-functions
   (package
     (name "dune-functions")
-    (version "2.6.0")
+    (version "2.7.0")
     (source
      (origin
        (method git-fetch)
@@ -4910,9 +5285,20 @@ operating on statically typed trees of objects.")
        (file-name (git-file-name name version))
        (sha256
         (base32
-         "1an8gb477n8j0kzpbrv7nr1snh8pxip0gsxq6w63jc83gg3dj200"))))
+         "1na4gcih0kin37ksj2xj07ds04v7zx53pjdhm1hzy55jjfqdjk8h"))))
     (build-system cmake-build-system)
-    (arguments `(#:tests? #f)) ; FIXME: tests require dune-uugrid
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'disable-failing-tests
+           (lambda _
+             (setenv "ARGS"
+                     ;; unable to load GMSH file in this test
+                     "--exclude-regex gridviewfunctionspacebasistest")
+            #t))
+         (add-after 'build 'build-tests
+           (lambda* (#:key make-flags #:allow-other-keys)
+             (apply invoke "make" "build_tests" make-flags))))))
     (inputs
      `(("dune-common" ,dune-common)
        ("dune-istl" ,dune-istl)
@@ -4920,7 +5306,6 @@ operating on statically typed trees of objects.")
        ("dune-grid" ,dune-grid)
        ("dune-geometry" ,dune-geometry)
        ("dune-typetree" ,dune-typetree)
-       ("openmpi" ,openmpi)
        ("openblas" ,openblas)
        ("metis" ,metis)
        ("python" ,python)
@@ -4940,17 +5325,17 @@ implemented as callable objects, and bases of finite element spaces.")
 (define-public dune-pdelab
   (package
     (name "dune-pdelab")
-    (version "2.6.0-rc1")
+    (version "2.7.0-git-476fe437")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
              (url "https://gitlab.dune-project.org/pdelab/dune-pdelab")
-             (commit (string-append "v" version))))
+             (commit "476fe43763fa6f459c5e4658e2a2b4b5582db834")))
        (file-name (git-file-name name version))
        (sha256
         (base32
-         "07g0s9448z65vjrq88g5rv3340iifil85k170n8kbqchsvi4ny5v"))))
+         "0cs36piqzn6rq0j2ih3ab3q3q9yg199wk72k5qi86pkzh7i7fdn1"))))
     (build-system cmake-build-system)
     (arguments '(#:tests? #f)) ; XXX: the tests cannot be compiled
     (inputs
@@ -4961,7 +5346,6 @@ implemented as callable objects, and bases of finite element spaces.")
        ("dune-grid" ,dune-grid)
        ("dune-typetree" ,dune-typetree)
        ("dune-functions" ,dune-functions)
-       ("openmpi" ,openmpi)
        ;; Optional
        ("openblas" ,openblas)
        ("eigen" ,eigen)
@@ -4978,6 +5362,59 @@ implemented as callable objects, and bases of finite element spaces.")
 built on top of DUNE, the Distributed and Unified Numerics Environment.")
     ;; Either GPL version 2 with "runtime exception" or LGPLv3+.
     (license (list license:lgpl3+ license:gpl2))))
+
+(define add-openmpi-to-dune-package
+  (let ((dune-package?
+          (lambda (p) (string-prefix? "dune-" (package-name p)))))
+    (package-mapping
+      (lambda (p)
+        (if (dune-package? p)
+            (package (inherit p)
+              (name (string-append (package-name p) "-openmpi"))
+              (inputs `(,@(package-inputs p)
+                        ("openmpi" ,openmpi)))
+              (arguments
+               (substitute-keyword-arguments (package-arguments p)
+                 ((#:phases phases '%standard-phases)
+                  `(modify-phases ,phases
+                     (add-before 'check 'mpi-setup
+                       ,%openmpi-setup)))))
+              (synopsis (string-append (package-synopsis p) " (with MPI support)")))
+            p))
+      (negate dune-package?))))
+
+(define-public dune-common-openmpi
+  (add-openmpi-to-dune-package dune-common))
+
+(define-public dune-geometry-openmpi
+  (add-openmpi-to-dune-package dune-geometry))
+
+(define-public dune-istl-openmpi
+  (add-openmpi-to-dune-package dune-istl))
+
+(define-public dune-typetree-openmpi
+  (add-openmpi-to-dune-package dune-typetree))
+
+(define-public dune-uggrid-openmpi
+  (add-openmpi-to-dune-package dune-uggrid))
+
+(define-public dune-grid-openmpi
+  (add-openmpi-to-dune-package dune-grid))
+
+(define-public dune-alugrid-openmpi
+  (add-openmpi-to-dune-package dune-alugrid))
+
+(define-public dune-subgrid-openmpi
+  (add-openmpi-to-dune-package dune-subgrid))
+
+(define-public dune-localfunctions-openmpi
+  (add-openmpi-to-dune-package dune-localfunctions))
+
+(define-public dune-functions-openmpi
+  (add-openmpi-to-dune-package dune-functions))
+
+(define-public dune-pdelab-openmpi
+  (add-openmpi-to-dune-package dune-pdelab))
 
 (define-public mlucas
   (package
@@ -5032,20 +5469,20 @@ management via the GIMPS project's Primenet server.")
 (define-public nauty
   (package
     (name "nauty")
-    (version "2.6r11")
-    (source (origin
-              (method url-fetch)
-              (uri (string-append
-                    "https://pallini.di.uniroma1.it/"
-                    "nauty" (string-join (string-split version #\.) "")
-                    ".tar.gz"))
-              (sha256
-               (base32
-                "05z6mk7c31j70md83396cdjmvzzip1hqb88pfszzc6k4gy8h3m2y"))))
+    (version "2.7r1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append
+             "https://pallini.di.uniroma1.it/"
+             "nauty" (string-join (string-split version #\.) "") ".tar.gz"))
+       (sha256
+        (base32 "0xsfqfcknbd6g6wzpa5l7crmmk3bf3zjh37rhylq6b20dqcmvjkn"))))
     (build-system gnu-build-system)
     (outputs '("out" "lib"))
     (arguments
      `(#:test-target "checks"
+       #:configure-flags '("--enable-generic") ;prevent -march-native
        #:phases
        (modify-phases %standard-phases
          ;; Default make target does not build all available
@@ -5065,15 +5502,16 @@ management via the GIMPS project's Primenet server.")
                     (include (string-append lib-output "/include/nauty"))
                     (lib (string-append lib-output "/lib/nauty")))
                (for-each (lambda (f) (install-file f bin))
-                         '("dreadnaut" "NRswitchg" "addedgeg" "amtog" "biplabg"
-                           "blisstog" "bliss2dre" "catg" "checks6" "complg"
-                           "converseg" "copyg" "countg" "cubhamg" "deledgeg"
-                           "delptg" "directg" "dretodot" "dretog" "genbg"
+                         '("addedgeg"  "amtog" "assembleg" "biplabg" "blisstog"
+                           "bliss2dre" "catg" "checks6" "complg" "converseg"
+                           "copyg" "countg" "cubhamg" "deledgeg" "delptg"
+                           "directg"  "dreadnaut" "dretodot" "dretog" "genbg"
                            "genbgL" "geng" "genquarticg" "genrang" "genspecialg"
                            "gentourng" "gentreeg" "hamheuristic" "labelg"
                            "linegraphg" "listg" "multig" "newedgeg" "pickg"
                            "planarg" "ranlabg" "shortg" "showg" "subdivideg"
-                           "sumlines" "twohamg" "vcolg" "watercluster2"))
+                           "sumlines" "twohamg" "underlyingg" "vcolg"
+                           "watercluster2" "NRswitchg"))
                (for-each (lambda (f) (install-file f include))
                          (find-files "." "\\.h$"))
                (for-each (lambda (f) (install-file f lib))
@@ -5136,3 +5574,186 @@ algorithm, a parametric integer programming solver, and primitives for
 termination analysis via the automatic synthesis of linear ranking
 functions.")
     (license license:gpl3+)))
+
+(define-public speedcrunch
+  (package
+    (name "speedcrunch")
+    (version "0.12.0")
+    (source
+     (origin
+      (method git-fetch)
+      (uri (git-reference
+        (url "https://bitbucket.org/heldercorreia/speedcrunch.git")
+        (commit (string-append "release-" version))))
+      (file-name (git-file-name name version))
+      (sha256
+       (base32
+        "0vh7cd1915bjqzkdp3sk25ngy8cq624mkh8c53c5bnzk357kb0fk"))))
+    (build-system cmake-build-system)
+    (inputs `(("qtbase" ,qtbase)))
+    (native-inputs `(("qttools" ,qttools)))
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'chdir-to-src
+           (lambda _ (chdir "src") #t)))))
+    (synopsis "High-precision scientific calculator")
+    (description
+     "SpeedCrunch is a high-precision scientific calculator.  It features a
+syntax-highlighted scrollable display and is designed to be fully used via
+keyboard.  Some distinctive features are auto-completion of functions and
+variables, a formula book, and quick insertion of constants from various
+fields of knowledge.")
+    (home-page "https://speedcrunch.org/")
+    (license license:gpl2+)))
+
+(define-public minisat
+  ;; This is the last commit which is available upstream, no
+  ;; release happened since 2010.
+  (let ((commit "37dc6c67e2af26379d88ce349eb9c4c6160e8543")
+        (revision "1"))
+    (package
+      (name "minisat")
+      (version (string-append "2.2.0-" revision "." (string-take commit 7)))
+      (source
+       (origin
+         (method git-fetch)
+         (uri (git-reference
+               (url "https://github.com/niklasso/minisat")
+               (commit commit)))
+         (file-name (string-append name "-" version "-checkout"))
+         (sha256
+          (base32
+           "091hf3qkm197s5r7xcr3m07xsdwyz2rqk1hc9kj0hn13imz09irq"))
+         (patches
+          (search-patches "minisat-friend-declaration.patch"
+                          "minisat-install.patch"))))
+      (build-system gnu-build-system)
+      (arguments
+       '(#:make-flags (list (string-append "prefix=" %output))
+         #:tests? #f ;no check target
+         #:phases
+         (modify-phases %standard-phases
+           (delete 'configure))))
+      (inputs
+       `(("zlib:static" ,zlib "static")
+         ("zlib" ,zlib)))
+      (synopsis
+       "Small, yet efficient, SAT solver")
+      (description
+       "MiniSat is a minimalistic, open-source SAT solver, developed to help
+researchers and developers alike to get started on SAT.")
+      (home-page
+       "http://minisat.se/MiniSat.html")
+      (license license:expat))))
+
+(define-public libqalculate
+  (package
+    (name "libqalculate")
+    (version "3.8.0")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/Qalculate/libqalculate/")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "1vbaza9c7159xf2ym90l0xkyj2mp6c3hbghhsqn29yvz08fda9df"))
+       (patches
+        (search-patches "libqalculate-3.8.0-libcurl-ssl-fix.patch"))))
+    (build-system gnu-build-system)
+    (native-inputs
+     `(("pkg-config" ,pkg-config)
+       ("gettext" ,gettext-minimal)
+       ("intltool" ,intltool)
+       ("automake" ,automake)
+       ("autoconf" ,autoconf)
+       ("libtool" ,libtool)
+       ("doxygen" ,doxygen)
+       ("file" ,file)))
+    (inputs
+     `(("gmp" ,gmp)
+       ("mpfr" ,mpfr)
+       ("libxml2" ,libxml2)
+       ("curl" ,curl)
+       ("icu4c" ,icu4c)
+       ("gnuplot" ,gnuplot)
+       ("readline" ,readline)
+       ("libiconv" ,libiconv)))
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-before 'bootstrap 'setenv
+           ;; Prevent the autogen.sh script to carry out the configure
+           ;; script, which has not yet been patched to replace /bin/sh.
+           (lambda _
+             (setenv "NOCONFIGURE" "TRUE")
+             #t)))))
+    (home-page "https://qalculate.github.io/")
+    (synopsis "Multi-purpose cli desktop calculator and library")
+    (description
+     "Libqalculate is a multi-purpose cli desktop calculator and library.
+It provides basic and advanced functionality.  Features include customizable
+functions, unit calculations, and conversions, physical constants, symbolic
+calculations (including integrals and equations), arbitrary precision,
+uncertainty propagation, interval arithmetic, plotting and a user-friendly
+cli.")
+    (license license:gpl2+)))
+
+(define-public qalculate-gtk
+  (package
+    (name "qalculate-gtk")
+    (version "3.8.0")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/Qalculate/qalculate-gtk/")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "0nsg6dzg5r7rzqr671nvrf1c50rjwpz7bxv5f20i4s7agizgv840"))))
+    (build-system glib-or-gtk-build-system)
+    (native-inputs
+     `(("pkg-config" ,pkg-config)
+       ("intltool" ,intltool)
+       ("automake" ,automake)
+       ("autoconf" ,autoconf)
+       ("libtool" ,libtool)
+       ("file" ,file)))
+    (inputs
+     `(("gmp" ,gmp)
+       ("mpfr" ,mpfr)
+       ("libqalculate" ,libqalculate)
+       ("libxml2" ,libxml2)
+       ("glib" ,glib)
+       ("gtk+" ,gtk+)))
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-before 'bootstrap 'setenv
+           ;; Prevent the autogen.sh script to carry out the configure
+           ;; script, which has not yet been patched to replace /bin/sh.
+           (lambda _
+             (setenv "NOCONFIGURE" "TRUE")
+             #t))
+         (add-before 'check 'add-pot-file
+           ;; the file contains translations and are currently not in use
+           ;; left out on purpose so add it to POTFILES.skip
+           (lambda _
+             (with-output-to-file "po/POTFILES.skip"
+               (lambda _
+                 (format #t "data/shortcuts.ui~%")
+                 #t))
+             #t)))))
+    (home-page "https://qalculate.github.io/")
+    (synopsis "Multi-purpose graphical desktop calculator")
+    (description
+     "Qalculate-gtk is the GTK frontend for libqalculate.  It is a
+multi-purpose GUI desktop calculator.  It provides basic and advanced
+functionality.  Features include customizable functions, unit calculations,
+and conversions, physical constants, symbolic calculations (including
+integrals and equations), arbitrary precision, uncertainty propagation,
+interval arithmetic, plotting.")
+    (license license:gpl2+)))

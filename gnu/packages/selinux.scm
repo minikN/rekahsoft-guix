@@ -1,6 +1,7 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2016, 2017, 2018 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2019, 2020 Marius Bakke <mbakke@fastmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -39,7 +40,6 @@
   #:use-module (gnu packages python)
   #:use-module (gnu packages python-xyz)
   #:use-module (gnu packages swig)
-  #:use-module (gnu packages textutils)
   #:use-module (gnu packages xml))
 
 ;; Update the SELinux packages together!
@@ -47,30 +47,35 @@
 (define-public libsepol
   (package
     (name "libsepol")
-    (version "2.7")
-    (source (let ((release "20170804"))
+    (version "3.0")
+    (source (let ((release "20191204"))
               (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/SELinuxProject/selinux.git")
+                      (url "https://github.com/SELinuxProject/selinux")
                       (commit release)))
                 (file-name (string-append "selinux-" release "-checkout"))
                 (sha256
                  (base32
-                  "1l1nn8bx08v4cxkw5kb0wgr61rfqj5ra9dh1dy5jslillj93vivq")))))
+                  "05rpzm72cgprd0ccr6lvx9hm8j8b5nkqi4avshlsyg7s3sdlcxjs")))))
     (build-system gnu-build-system)
     (arguments
      `(#:tests? #f ; tests require checkpolicy, which requires libsepol
        #:test-target "test"
        #:make-flags
-       (let ((out (assoc-ref %outputs "out")))
+       (let ((out (assoc-ref %outputs "out"))
+             (target ,(%current-target-system)))
          (list (string-append "PREFIX=" out)
-               (string-append "DESTDIR=" out)
+               (string-append "SHLIBDIR=" out "/lib")
                (string-append "MAN3DIR=" out "/share/man/man3")
                (string-append "MAN5DIR=" out "/share/man/man5")
                (string-append "MAN8DIR=" out "/share/man/man8")
                (string-append "LDFLAGS=-Wl,-rpath=" out "/lib")
-               "CC=gcc"))
+               (string-append "CC="
+                              (if target
+                                  (string-append (assoc-ref %build-inputs "cross-gcc")
+                                                 "/bin/" target "-gcc")
+                                  "gcc"))))
        #:phases
        (modify-phases %standard-phases
          (delete 'configure)
@@ -101,12 +106,17 @@ boolean settings).")
     (arguments
      `(#:tests? #f ; there is no check target
        #:make-flags
-       (let ((out (assoc-ref %outputs "out")))
+       (let ((out (assoc-ref %outputs "out"))
+             (target ,(%current-target-system)))
          (list (string-append "PREFIX=" out)
                (string-append "LIBSEPOLA="
                               (assoc-ref %build-inputs "libsepol")
                               "/lib/libsepol.a")
-               "CC=gcc"))
+               (string-append "CC="
+                              (if target
+                                  (string-append (assoc-ref %build-inputs "cross-gcc")
+                                                 "/bin/" target "-gcc")
+                                  "gcc"))))
        #:phases
        (modify-phases %standard-phases
          (delete 'configure)
@@ -131,6 +141,7 @@ module into a binary representation.")
 (define-public libselinux
   (package (inherit libsepol)
     (name "libselinux")
+    (outputs '("out" "python"))
     (arguments
      (substitute-keyword-arguments (package-arguments libsepol)
        ((#:make-flags flags)
@@ -138,8 +149,8 @@ module into a binary representation.")
                 (string-append "LIBSEPOLA="
                               (assoc-ref %build-inputs "libsepol")
                               "/lib/libsepol.a")
-                (string-append "PYSITEDIR="
-                               (assoc-ref %outputs "out")
+                (string-append "PYTHONLIBDIR="
+                               (assoc-ref %outputs "python")
                                "/lib/python"
                                ,(version-major+minor (package-version python))
                                "/site-packages/")
@@ -149,19 +160,17 @@ module into a binary representation.")
            (delete 'portability)
            (replace 'enter-dir
              (lambda _ (chdir ,name) #t))
-           (add-after 'enter-dir 'remove-Werror
-             (lambda _
-               ;; GCC complains about the fact that the output does not (yet)
-               ;; have an "include" directory, even though it is referenced.
-               (substitute* '("src/Makefile"
-                              "utils/Makefile")
-                 (("-Werror ") ""))
-               #t))
            (add-after 'build 'pywrap
              (lambda* (#:key make-flags #:allow-other-keys)
                (apply invoke "make" "pywrap" make-flags)))
            (add-after 'install 'install-pywrap
-             (lambda* (#:key make-flags #:allow-other-keys)
+             (lambda* (#:key make-flags outputs #:allow-other-keys)
+               ;; The build system uses "python setup.py install" to install
+               ;; Python bindings.  Instruct it to use the correct output.
+               (substitute* "src/Makefile"
+                 (("--prefix=\\$\\(PREFIX\\)")
+                  (string-append "--prefix=" (assoc-ref outputs "python"))))
+
                (apply invoke "make" "install-pywrap" make-flags)))))))
     ;; These libraries are in "Requires.private" in libselinux.pc.
     (propagated-inputs
@@ -190,7 +199,7 @@ the core SELinux management utilities.")
      (substitute-keyword-arguments (package-arguments libsepol)
        ((#:make-flags flags)
         `(cons* "PYTHON=python3"
-                (string-append "PYSITEDIR="
+                (string-append "PYTHONLIBDIR="
                                (assoc-ref %outputs "out")
                                "/lib/python"
                                ,(version-major+minor (package-version python))
@@ -201,6 +210,12 @@ the core SELinux management utilities.")
            (delete 'portability)
            (replace 'enter-dir
              (lambda _ (chdir ,name) #t))
+           (add-before 'install 'adjust-semanage-conf-location
+             (lambda _
+               (substitute* "src/Makefile"
+                 (("DEFAULT_SEMANAGE_CONF_LOCATION=/etc")
+                  "DEFAULT_SEMANAGE_CONF_LOCATION=$(PREFIX)/etc"))
+               #t))
            (add-after 'build 'pywrap
              (lambda* (#:key make-flags #:allow-other-keys)
                (apply invoke "make" "pywrap" make-flags)))
@@ -211,7 +226,6 @@ the core SELinux management utilities.")
      `(("libsepol" ,libsepol)
        ("libselinux" ,libselinux)
        ("audit" ,audit)
-       ("ustr" ,ustr)
        ;; For pywrap phase
        ("python" ,python-wrapper)))
     (native-inputs
@@ -313,7 +327,7 @@ based on required access.")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/TresysTechnology/setools.git")
+                    (url "https://github.com/TresysTechnology/setools")
                     (commit version)))
               (file-name (string-append name "-" version "-checkout"))
               (sha256
@@ -392,11 +406,6 @@ tools, and libraries designed to facilitate SELinux policy analysis.")
            (lambda _ (chdir ,name) #t))
          (add-after 'enter-dir 'ignore-/usr-tests
            (lambda* (#:key inputs #:allow-other-keys)
-             ;; The Makefile decides to build restorecond only if it finds the
-             ;; inotify header somewhere under /usr.
-             (substitute* "Makefile"
-               (("ifeq.*") "")
-               (("endif.*") ""))
              ;; Rewrite lookup paths for header files.
              (substitute* '("newrole/Makefile"
                             "setfiles/Makefile"

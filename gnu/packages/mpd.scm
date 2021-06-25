@@ -4,8 +4,9 @@
 ;;; Copyright © 2014 Cyrill Schenkel <cyrill.schenkel@gmail.com>
 ;;; Copyright © 2014 Ian Denhardt <ian@zenhack.net>
 ;;; Copyright © 2015 Paul van der Walt <paul@denknerd.org>
-;;; Copyright © 2016, 2018, 2019 Leo Famulari <leo@famulari.name>
-;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2016, 2018, 2019, 2020 Leo Famulari <leo@famulari.name>
+;;; Copyright © 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2019 Evan Straw <evan.straw99@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -27,13 +28,13 @@
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (guix packages)
   #:use-module (guix download)
+  #:use-module (guix git-download)
   #:use-module (guix utils)
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system meson)
   #:use-module (guix build-system python)
   #:use-module (gnu packages avahi)
   #:use-module (gnu packages boost)
-  #:use-module (gnu packages gcc)
   #:use-module (gnu packages gettext)
   #:use-module (gnu packages gnome)
   #:use-module (gnu packages gtk)
@@ -59,7 +60,7 @@
 (define-public libmpdclient
   (package
     (name "libmpdclient")
-    (version "2.16")
+    (version "2.19")
     (source (origin
               (method url-fetch)
               (uri
@@ -68,7 +69,7 @@
                               "/libmpdclient-" version ".tar.xz"))
               (sha256
                (base32
-                "0r24cl3i9nvs6a47mvwaxk1kb5wmnhkhrw1q5cq9010fgjvdlszs"))))
+                "12d1fzlkcnjw4ayk2wp11vhglfcvr5k02arzdbkhiavq496av2hm"))))
     (build-system meson-build-system)
     (native-inputs
      `(("pkg-config" ,pkg-config)
@@ -91,7 +92,7 @@ interfacing MPD in the C, C++ & Objective C languages.")
 (define-public mpd
   (package
     (name "mpd")
-    (version "0.21.11")
+    (version "0.21.25")
     (source (origin
               (method url-fetch)
               (uri
@@ -100,20 +101,10 @@ interfacing MPD in the C, C++ & Objective C languages.")
                               "/mpd-" version ".tar.xz"))
               (sha256
                (base32
-                "1gbcg8icm0pp918jw1lx1j066m39zg9wyqjla328ic848j5zhbnk"))))
+                "00f2cm3sg0vi9gxb1yk35lyyh3fbabwim3mfnsz2syrjpw0sv810"))))
     (build-system meson-build-system)
     (arguments
-     `(#:configure-flags '("-Ddocumentation=true") ; the default is 'false'...
-       #:phases
-       (modify-phases %standard-phases
-         (add-before 'configure 'expand-C++-include-path
-           ;; Make <gcc>/include/c++/ext/string_conversions.h find <stdlib.h>.
-           (lambda* (#:key inputs #:allow-other-keys)
-             (let* ((path "CPLUS_INCLUDE_PATH")
-                    (gcc  (assoc-ref inputs "gcc"))
-                    (c++  (string-append gcc "/include/c++")))
-               (setenv path (string-append c++ ":" (getenv path)))
-               #t))))))
+     `(#:configure-flags '("-Ddocumentation=true"))) ;the default is 'false'...
     (inputs `(("ao" ,ao)
               ("alsa-lib" ,alsa-lib)
               ("avahi" ,avahi)
@@ -135,10 +126,7 @@ interfacing MPD in the C, C++ & Objective C languages.")
               ("pulseaudio" ,pulseaudio)
               ("sqlite" ,sqlite)
               ("zlib" ,zlib)))
-    ;; MPD > 0.21 requires > GCC 6
-    (native-inputs `(("gcc" ,gcc-8)
-                     ("gcc-lib" ,gcc-8 "lib")
-                     ("pkg-config" ,pkg-config)
+    (native-inputs `(("pkg-config" ,pkg-config)
                      ("python-sphinx" ,python-sphinx)))
     ;; Missing optional inputs:
     ;;   libyajl
@@ -171,7 +159,7 @@ protocol.")
 (define-public mpd-mpc
   (package
     (name "mpd-mpc")
-    (version "0.32")
+    (version "0.33")
     (source (origin
               (method url-fetch)
               (uri
@@ -180,7 +168,7 @@ protocol.")
                               "/mpc-" version ".tar.xz"))
               (sha256
                (base32
-                "1irilgz64pny7b8zygy5i74nfmlhgsawz0djx9mrj6g0gidxjqbr"))))
+                "15hjpzqs83v1zx49x8nkpwy9hpl1jxd55z1w50vm82gm32zcqh2g"))))
     (build-system meson-build-system)
     (inputs `(("libmpdclient" ,libmpdclient)))
     (native-inputs
@@ -195,7 +183,7 @@ player daemon.")
 (define-public ncmpc
   (package
     (name "ncmpc")
-    (version "0.34")
+    (version "0.38")
     (source (origin
               (method url-fetch)
               (uri
@@ -204,26 +192,15 @@ player daemon.")
                               "/ncmpc-" version ".tar.xz"))
               (sha256
                (base32
-                "0mz8r6vc4zn5sa3hlq4ii74qcrkh01nbg784zcwahgz8g3fb3i8l"))))
+                "18i73q33xq89abrxjd3hhl05gjniv6ms76ndjlc168ydm8wamh9b"))))
     (build-system meson-build-system)
     (arguments
      `(#:configure-flags
        ;; Otherwise, they are installed incorrectly, in
        ;; '$out/share/man/man/man1'.
        (list (string-append "-Dmandir=" (assoc-ref %outputs "out")
-                            "/share"))
-       #:phases
-       (modify-phases %standard-phases
-         (add-before 'configure 'expand-C++-include-path
-           ;; Make <gcc>/include/c++/ext/string_conversions.h find <stdlib.h>.
-           (lambda* (#:key inputs #:allow-other-keys)
-             (let* ((path "CPLUS_INCLUDE_PATH")
-                    (gcc  (assoc-ref inputs "gcc"))
-                    (c++  (string-append gcc "/include/c++")))
-               (setenv path (string-append c++ ":" (getenv path)))
-               #t))))))
-    (inputs `(("gcc" ,gcc-8)            ; for its C++14 support
-              ("boost" ,boost)
+                            "/share"))))
+    (inputs `(("boost" ,boost)
               ("pcre" ,pcre)
               ("libmpdclient" ,libmpdclient)
               ("ncurses" ,ncurses)))
@@ -260,7 +237,7 @@ terminal using ncurses.")
      `(("pkg-config" ,pkg-config)))
     (arguments
      '(#:configure-flags
-       '("BOOST_LIB_SUFFIX=" "--with-taglib")))
+       '("BOOST_LIB_SUFFIX=" "--with-taglib" "--enable-clock")))
     (synopsis "Featureful ncurses based MPD client inspired by ncmpc")
     (description "Ncmpcpp is an mpd client with a UI very similar to ncmpc,
 but it provides new useful features such as support for regular expressions
@@ -322,14 +299,14 @@ interface for the Music Player Daemon.")
     (name "sonata")
     (version "1.7b1")
     (source (origin
-              (method url-fetch)
-              (uri
-               (string-append "https://github.com/multani/sonata/archive/v"
-                              version ".tar.gz"))
-              (file-name (string-append name "-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/multani/sonata")
+                     (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "07gq2nxqwxs0qyxjbay7k5j25zd386bn7wdr2dl1gk53diwnn7s0"))))
+                "1npbxlrg6k154qybfd250nq2p96kxdsdkj9wwnp93gljnii3g8wh"))))
     (build-system python-build-system)
     (arguments
      `(#:modules ((guix build gnu-build-system)
@@ -365,3 +342,27 @@ Daemon (MPD).  It supports playlists, multiple profiles (connecting to different
 MPD servers, search and multimedia key support.")
     (home-page "https://www.nongnu.org/sonata/")
     (license license:gpl3+)))
+
+(define-public ashuffle
+  (package
+    (name "ashuffle")
+    (version "2.0.2")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/joshkunz/ashuffle")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "11aa95cg0yca2m2d00sar6wr14g3lc7cfm9bin1h7lk7asdm8azp"))))
+    (native-inputs `(("pkg-config" ,pkg-config)))
+    (inputs `(("libmpdclient" ,libmpdclient)))
+    (build-system meson-build-system)
+    (home-page "https://github.com/joshkunz/ashuffle")
+    (synopsis "Automatic library-wide shuffle for mpd")
+    (description "ashuffle is an application for automatically shuffling your
+MPD library in a similar way to many other music players' 'shuffle library'
+feature. ashuffle works like any other MPD client, and can be used alongside
+other MPD frontends.")
+    (license license:expat)))

@@ -1,5 +1,5 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2013 Nikita Karetnikov <nikita@karetnikov.org>
 ;;; Copyright © 2013, 2015 Mark H Weaver <mhw@netris.org>
 ;;; Copyright © 2014, 2016 Alex Kost <alezost@gmail.com>
@@ -7,6 +7,8 @@
 ;;; Copyright © 2016 Benz Schenk <benz.schenk@uzh.ch>
 ;;; Copyright © 2016 Chris Marusich <cmmarusich@gmail.com>
 ;;; Copyright © 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2020 Ricardo Wurmus <rekado@elephly.net>
+;;; Copyright © 2020 Simon Tournier <zimon.toutoune@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -33,12 +35,14 @@
   #:use-module (guix packages)
   #:use-module (guix profiles)
   #:use-module (guix search-paths)
+  #:use-module (guix import json)
   #:use-module (guix monads)
   #:use-module (guix utils)
   #:use-module (guix config)
   #:use-module (guix scripts)
   #:use-module (guix scripts build)
-  #:autoload   (guix describe) (package-provenance)
+  #:use-module (guix describe)
+  #:autoload   (guix store roots) (gc-roots user-owned?)
   #:use-module ((guix build utils)
                 #:select (directory-exists? mkdir-p))
   #:use-module (ice-9 format)
@@ -52,13 +56,15 @@
   #:use-module (srfi srfi-35)
   #:use-module (srfi srfi-37)
   #:use-module (gnu packages)
-  #:autoload   (gnu packages base) (canonical-package)
-  #:autoload   (gnu packages guile) (guile-2.2)
   #:autoload   (gnu packages bootstrap) (%bootstrap-guile)
   #:export (build-and-use-profile
             delete-generations
             delete-matching-generations
             guix-package
+
+            search-path-environment-variables
+
+            transaction-upgrade-entry             ;mostly for testing
 
             (%options . %package-options)
             (%default-options . %package-default-options)
@@ -76,12 +82,15 @@
   "Ensure the default profile symlink and directory exist and are writable."
   (ensure-profile-directory)
 
-  ;; Create ~/.guix-profile if it doesn't exist yet.
+  ;; Try to create ~/.guix-profile if it doesn't exist yet.
   (when (and %user-profile-directory
              %current-profile
              (not (false-if-exception
                    (lstat %user-profile-directory))))
-    (symlink %current-profile %user-profile-directory)))
+    (catch 'system-error
+      (lambda ()
+        (symlink %current-profile %user-profile-directory))
+      (const #t))))
 
 (define (delete-generations store profile generations)
   "Delete GENERATIONS from PROFILE.
@@ -126,27 +135,19 @@ denote ranges as interpreted by 'matching-generations'."
                                 #:key
                                 (hooks %default-profile-hooks)
                                 allow-collisions?
-                                bootstrap? use-substitutes?
-                                dry-run?)
+                                bootstrap?)
   "Build a new generation of PROFILE, a file name, using the packages
 specified in MANIFEST, a manifest object.  When ALLOW-COLLISIONS? is true,
 do not treat collisions in MANIFEST as an error.  HOOKS is a list of \"profile
 hooks\" run when building the profile."
-  (when (equal? profile %current-profile)
-    (ensure-default-profile))
-
   (let* ((prof-drv (run-with-store store
                      (profile-derivation manifest
                                          #:allow-collisions? allow-collisions?
                                          #:hooks (if bootstrap? '() hooks)
                                          #:locales? (not bootstrap?))))
          (prof     (derivation->output-path prof-drv)))
-    (show-what-to-build store (list prof-drv)
-                        #:use-substitutes? use-substitutes?
-                        #:dry-run? dry-run?)
 
     (cond
-     (dry-run? #t)
      ((and (file-exists? profile)
            (and=> (readlink* profile) (cut string=? prof <>)))
       (format (current-error-port) (G_ "nothing to be done~%")))
@@ -163,10 +164,6 @@ hooks\" run when building the profile."
                (switch-symlinks profile (basename name))
                (unless (string=? profile %current-profile)
                  (register-gc-root store name))
-               (format #t (N_ "~a package in profile~%"
-                              "~a packages in profile~%"
-                              count)
-                       count)
                (display-search-path-hint entries profile)))
 
         (warn-about-disk-space profile))))))
@@ -202,9 +199,13 @@ non-zero relevance score."
                                 (package-full-name package2))
                       (> score1 score2))))))))))
 
-(define (transaction-upgrade-entry entry transaction)
+(define (transaction-upgrade-entry store entry transaction)
   "Return a variant of TRANSACTION that accounts for the upgrade of ENTRY, a
 <manifest-entry>."
+  (define (lower-manifest-entry* entry)
+    (run-with-store store
+      (lower-manifest-entry entry (%current-system))))
+
   (define (supersede old new)
     (info (G_ "package '~a' has been superseded by '~a'~%")
           (manifest-entry-name old) (package-name new))
@@ -217,40 +218,44 @@ non-zero relevance score."
         (output (manifest-entry-output old)))
       transaction)))
 
-  (match (if (manifest-transaction-removal-candidate? entry transaction)
-             'dismiss
-             entry)
-    ('dismiss
-     transaction)
-    (($ <manifest-entry> name version output (? string? path))
-     (match (find-best-packages-by-name name #f)
-       ((pkg . rest)
-        (let ((candidate-version (package-version pkg)))
-          (match (package-superseded pkg)
-            ((? package? new)
-             (supersede entry new))
-            (#f
-             (case (version-compare candidate-version version)
-               ((>)
-                (manifest-transaction-install-entry
-                 (package->manifest-entry* pkg output)
-                 transaction))
-               ((<)
-                transaction)
-               ((=)
-                (let ((candidate-path (derivation->output-path
-                                       (package-derivation (%store) pkg))))
-                  ;; XXX: When there are propagated inputs, assume we need to
-                  ;; upgrade the whole entry.
-                  (if (and (string=? path candidate-path)
-                           (null? (package-propagated-inputs pkg)))
-                      transaction
-                      (manifest-transaction-install-entry
-                       (package->manifest-entry* pkg output)
-                       transaction)))))))))
-       (()
-        (warning (G_ "package '~a' no longer exists~%") name)
-        transaction)))))
+  (define (upgrade entry)
+    (match entry
+      (($ <manifest-entry> name version output (? string? path))
+       (match (find-best-packages-by-name name #f)
+         ((pkg . rest)
+          (let ((candidate-version (package-version pkg)))
+            (match (package-superseded pkg)
+              ((? package? new)
+               (supersede entry new))
+              (#f
+               (case (version-compare candidate-version version)
+                 ((>)
+                  (manifest-transaction-install-entry
+                   (package->manifest-entry* pkg output)
+                   transaction))
+                 ((<)
+                  transaction)
+                 ((=)
+                  (let* ((new (package->manifest-entry* pkg output)))
+                    ;; Here we want to determine whether the NEW actually
+                    ;; differs from ENTRY, but we need to intercept
+                    ;; 'build-things' calls because they would prevent us from
+                    ;; displaying the list of packages to install/upgrade
+                    ;; upfront.  Thus, if lowering NEW triggers a build (due
+                    ;; to grafts), assume NEW differs from ENTRY.
+                    (if (with-build-handler (const #f)
+                          (manifest-entry=? (lower-manifest-entry* new)
+                                            entry))
+                        transaction
+                        (manifest-transaction-install-entry
+                         new transaction)))))))))
+         (()
+          (warning (G_ "package '~a' no longer exists~%") name)
+          transaction)))))
+
+  (if (manifest-transaction-removal-candidate? entry transaction)
+      transaction
+      (upgrade entry)))
 
 
 ;;;
@@ -315,7 +320,7 @@ Alternately, see @command{guix package --search-paths -p ~s}.")
     (debug . 0)
     (graft? . #t)
     (substitutes? . #t)
-    (build-hook? . #t)
+    (offload? . #t)
     (print-build-trace? . #t)
     (print-extended-build-trace? . #t)
     (multiplexed-build-output? . #t)))
@@ -359,6 +364,8 @@ Install, remove, or upgrade packages in a single transaction.\n"))
                          switch to a generation matching PATTERN"))
   (display (G_ "
   -p, --profile=PROFILE  use PROFILE instead of the user's default profile"))
+  (display (G_ "
+      --list-profiles    list the user's profiles"))
   (newline)
   (display (G_ "
       --allow-collisions do not treat collisions in the profile as an error"))
@@ -414,7 +421,10 @@ Install, remove, or upgrade packages in a single transaction.\n"))
          (option '(#\f "install-from-file") #t #f
                  (lambda (opt name arg result arg-handler)
                    (values (alist-cons 'install
-                                       (load* arg (make-user-module '()))
+                                       (let ((file (or (and (string-suffix? ".json" arg)
+                                                            (json->scheme-file arg))
+                                                       arg)))
+                                         (load* file (make-user-module '())))
                                        result)
                            #f)))
          (option '(#\r "remove") #f #t
@@ -458,6 +468,11 @@ command-line option~%")
                    (values (cons `(query list-generations ,arg)
                                  result)
                            #f)))
+         (option '("list-profiles") #f #f
+                 (lambda (opt name arg result arg-handler)
+                   (values (cons `(query list-profiles #t)
+                                 result)
+                           #f)))
          (option '(#\d "delete-generations") #f #t
                  (lambda (opt name arg result arg-handler)
                    (values (alist-cons 'delete-generations arg
@@ -488,8 +503,7 @@ kind of search path~%")
                            #f)))
          (option '(#\n "dry-run") #f #f
                  (lambda (opt name arg result arg-handler)
-                   (values (alist-cons 'dry-run? #t
-                                       (alist-cons 'graft? #f result))
+                   (values (alist-cons 'dry-run? #t result)
                            #f)))
          (option '(#\v "verbosity") #t #f
                  (lambda (opt name arg result arg-handler)
@@ -590,7 +604,7 @@ and upgrades."
   (define upgraded
     (fold (lambda (entry transaction)
             (if (upgrade? (manifest-entry-name entry))
-                (transaction-upgrade-entry entry transaction)
+                (transaction-upgrade-entry (%store) entry transaction)
                 transaction))
           transaction
           (manifest-entries manifest)))
@@ -607,7 +621,11 @@ and upgrades."
                        (let-values (((package output)
                                      (specification->package+output spec)))
                          (package->manifest-entry* package output))))
-                  (_ #f))
+                  (('install . obj)
+                   (leave (G_ "cannot install non-package object: ~s~%")
+                          obj))
+                  (_
+                   #f))
                 opts))
 
   (fold manifest-transaction-install-entry
@@ -657,12 +675,13 @@ doesn't need it."
 (define (process-query opts)
   "Process any query specified by OPTS.  Return #t when a query was actually
 processed, #f otherwise."
-  (let* ((profiles (match (filter-map (match-lambda
-                                        (('profile . p) p)
-                                        (_              #f))
-                                      opts)
-                     (() (list %current-profile))
-                     (lst (reverse lst))))
+  (let* ((profiles (delete-duplicates
+                    (match (filter-map (match-lambda
+                                         (('profile . p) p)
+                                         (_              #f))
+                                       opts)
+                      (() (list %current-profile))
+                      (lst (reverse lst)))))
          (profile  (match profiles
                      ((head tail ...) head))))
     (match (assoc-ref opts 'query)
@@ -700,7 +719,8 @@ processed, #f otherwise."
 
       (('list-installed regexp)
        (let* ((regexp    (and regexp (make-regexp* regexp regexp/icase)))
-              (manifest  (profile-manifest profile))
+              (manifest  (concatenate-manifests
+                          (map profile-manifest profiles)))
               (installed (manifest-entries manifest)))
          (leave-on-EPIPE
           (for-each (match-lambda
@@ -711,8 +731,8 @@ processed, #f otherwise."
                                  name (or version "?") output path))))
 
                     ;; Show most recently installed packages last.
-                    (reverse installed)))
-         #t))
+                    (reverse installed))))
+       #t)
 
       (('list-available regexp)
        (let* ((regexp    (and regexp (make-regexp* regexp regexp/icase)))
@@ -746,6 +766,19 @@ processed, #f otherwise."
                              (string<? name1 name2))))))
          #t))
 
+      (('list-profiles _)
+       (let ((profiles (delete-duplicates
+                        (filter-map (lambda (root)
+                                      (and (or (zero? (getuid))
+                                               (user-owned? root))
+                                           (generation-profile root)))
+                                    (gc-roots)))))
+         (leave-on-EPIPE
+          (for-each (lambda (profile)
+                      (display (user-friendly-profile profile))
+                      (newline))
+                    (sort profiles string<?)))))
+
       (('search _)
        (let* ((patterns (filter-map (match-lambda
                                       (('query 'search rx) rx)
@@ -757,17 +790,26 @@ processed, #f otherwise."
           (display-search-results matches (current-output-port)))
          #t))
 
-      (('show requested-name)
-       (let-values (((name version)
-                     (package-name->name+version requested-name)))
-         (match (find-packages-by-name name version)
-           (()
-            (leave (G_ "~a~@[@~a~]: package not found~%") name version))
-           (packages
-            (leave-on-EPIPE
-             (for-each (cute package->recutils <> (current-output-port))
-                       packages))))
-         #t))
+      (('show _)
+       (let ((requested-names
+              (filter-map (match-lambda
+                            (('query 'show requested-name) requested-name)
+                            (_                            #f))
+                          opts)))
+         (for-each
+          (lambda (requested-name)
+            (let-values (((name version)
+                          (package-name->name+version requested-name)))
+              (match (remove package-superseded
+                             (find-packages-by-name name version))
+                (()
+                 (leave (G_ "~a~@[@~a~]: package not found~%") name version))
+                (packages
+                 (leave-on-EPIPE
+                  (for-each (cute package->recutils <> (current-output-port))
+                            packages))))))
+          requested-names))
+       #t)
 
       (('search-paths kind)
        (let* ((manifests (map profile-manifest profiles))
@@ -804,32 +846,17 @@ processed, #f otherwise."
   (unless dry-run?
     (delete-matching-generations store profile pattern)))
 
-(define* (manifest-action store profile file opts
-                          #:key dry-run?)
-  "Change PROFILE to contain the packages specified in FILE."
-  (let* ((user-module  (make-user-module '((guix profiles) (gnu))))
-         (manifest     (load* file user-module))
-         (bootstrap?   (assoc-ref opts 'bootstrap?))
-         (substitutes? (assoc-ref opts 'substitutes?))
-         (allow-collisions? (assoc-ref opts 'allow-collisions?)))
-    (if dry-run?
-        (format #t (G_ "would install new manifest from '~a' with ~d entries~%")
-                file (length (manifest-entries manifest)))
-        (format #t (G_ "installing new manifest from '~a' with ~d entries~%")
-                file (length (manifest-entries manifest))))
-    (build-and-use-profile store profile manifest
-                           #:allow-collisions? allow-collisions?
-                           #:bootstrap? bootstrap?
-                           #:use-substitutes? substitutes?
-                           #:dry-run? dry-run?)))
+(define (load-manifest file)
+  "Load the user-profile manifest (Scheme code) from FILE and return it."
+  (let ((user-module (make-user-module '((guix profiles) (gnu)))))
+    (load* file user-module)))
 
 (define %actions
   ;; List of actions that may be processed.  The car of each pair is the
   ;; action's symbol in the option list; the cdr is the action's procedure.
   `((roll-back? . ,roll-back-action)
     (switch-generation . ,switch-generation-action)
-    (delete-generations . ,delete-generations-action)
-    (manifest . ,manifest-action)))
+    (delete-generations . ,delete-generations-action)))
 
 (define (process-actions store opts)
   "Process any install/remove/upgrade action from OPTS."
@@ -850,36 +877,64 @@ processed, #f otherwise."
                      (package-version item)
                      (manifest-entry-version entry))))))
 
-  ;; First, process roll-backs, generation removals, etc.
-  (for-each (match-lambda
-              ((key . arg)
-               (and=> (assoc-ref %actions key)
-                      (lambda (proc)
-                        (proc store profile arg opts
-                              #:dry-run? dry-run?)))))
-            opts)
+  (when (equal? profile %current-profile)
+    ;; Normally the daemon created %CURRENT-PROFILE when we connected, unless
+    ;; it's a version that lacks the fix for <https://bugs.gnu.org/37744>
+    ;; (aka. CVE-2019-18192).  Ensure %CURRENT-PROFILE exists so that
+    ;; 'with-profile-lock' can create its lock file below.
+    (ensure-default-profile))
 
-  ;; Then, process normal package removal/installation/upgrade.
-  (let* ((manifest (profile-manifest profile))
-         (step1    (options->removable opts manifest
-                                       (manifest-transaction)))
-         (step2    (options->installable opts manifest step1))
-         (step3    (manifest-transaction
-                    (inherit step2)
-                    (install (map transform-entry
-                                  (manifest-transaction-install step2)))))
-         (new      (manifest-perform-transaction manifest step3)))
+  ;; First, acquire a lock on the profile, to ensure only one guix process
+  ;; is modifying it at a time.
+  (with-profile-lock profile
+    ;; Then, process roll-backs, generation removals, etc.
+    (for-each (match-lambda
+                ((key . arg)
+                 (and=> (assoc-ref %actions key)
+                        (lambda (proc)
+                          (proc store profile arg opts
+                                #:dry-run? dry-run?)))))
+              opts)
 
-    (warn-about-old-distro)
+    ;; Then, process normal package removal/installation/upgrade.
+    (let* ((files    (filter-map (match-lambda
+                                   (('manifest . file) file)
+                                   (_ #f))
+                                 opts))
+           (manifest (match files
+                       (() (profile-manifest profile))
+                       (_  (map-manifest-entries
+                            manifest-entry-with-provenance
+                            (concatenate-manifests
+                             (map load-manifest files))))))
+           (step1    (options->removable opts manifest
+                                         (manifest-transaction)))
+           (step2    (options->installable opts manifest step1))
+           (step3    (manifest-transaction
+                      (inherit step2)
+                      (install (map transform-entry
+                                    (manifest-transaction-install step2)))))
+           (new      (manifest-perform-transaction manifest step3))
+           (trans    (if (null? files)
+                         step3
+                         (fold manifest-transaction-install-entry
+                               step3
+                               (manifest-entries manifest)))))
 
-    (unless (manifest-transaction-null? step3)
-      (show-manifest-transaction store manifest step3
-                                 #:dry-run? dry-run?)
-      (build-and-use-profile store profile new
-                             #:allow-collisions? allow-collisions?
-                             #:bootstrap? bootstrap?
-                             #:use-substitutes? substitutes?
-                             #:dry-run? dry-run?))))
+      (warn-about-old-distro)
+
+      (unless (manifest-transaction-null? trans)
+        ;; When '--manifest' is used, display information about TRANS as if we
+        ;; were starting from an empty profile.
+        (show-manifest-transaction store
+                                   (if (null? files)
+                                       manifest
+                                       (make-manifest '()))
+                                   trans
+                                   #:dry-run? dry-run?)
+        (build-and-use-profile store profile new
+                               #:allow-collisions? allow-collisions?
+                               #:bootstrap? bootstrap?)))))
 
 
 ;;;
@@ -908,10 +963,14 @@ option processing with 'parse-command-line'."
                        (%graft? (assoc-ref opts 'graft?)))
           (with-status-verbosity (assoc-ref opts 'verbosity)
             (set-build-options-from-command-line (%store) opts)
-            (parameterize ((%guile-for-build
-                            (package-derivation
-                             (%store)
-                             (if (assoc-ref opts 'bootstrap?)
-                                 %bootstrap-guile
-                                 (canonical-package guile-2.2)))))
-              (process-actions (%store) opts)))))))
+            (with-build-handler (build-notifier #:use-substitutes?
+                                                (assoc-ref opts 'substitutes?)
+                                                #:dry-run?
+                                                (assoc-ref opts 'dry-run?))
+              (parameterize ((%guile-for-build
+                              (package-derivation
+                               (%store)
+                               (if (assoc-ref opts 'bootstrap?)
+                                   %bootstrap-guile
+                                   (default-guile)))))
+                (process-actions (%store) opts))))))))

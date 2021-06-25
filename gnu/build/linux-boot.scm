@@ -1,6 +1,7 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2013, 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2017 Mathieu Othacehe <m.othacehe@gmail.com>
+;;; Copyright © 2019 Guillaume Le Vaillant <glv@posteo.net>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -222,7 +223,7 @@ one specific hardware device. These we have to create."
               (call-with-input-file devname-name
                                     read-static-device-nodes))))
 
-(define* (make-essential-device-nodes #:key (root "/"))
+(define* (make-essential-device-nodes #:optional (root "/"))
   "Make essential device nodes under ROOT/dev."
   ;; The hand-made devtmpfs/udev!
 
@@ -357,14 +358,16 @@ the last argument of `mknod'."
           (filter-map string->number (scandir "/proc")))))
 
 (define* (mount-root-file-system root type
-                                 #:key volatile-root?)
-  "Mount the root file system of type TYPE at device ROOT.  If VOLATILE-ROOT?
-is true, mount ROOT read-only and make it a overlay with a writable tmpfs
-using the kernel build-in overlayfs."
+                                 #:key volatile-root? (flags 0) options)
+  "Mount the root file system of type TYPE at device ROOT. If VOLATILE-ROOT? is
+true, mount ROOT read-only and make it an overlay with a writable tmpfs using
+the kernel built-in overlayfs. FLAGS and OPTIONS indicates the options to use
+to mount ROOT, and behave the same as for the `mount' procedure."
+
   (if volatile-root?
       (begin
         (mkdir-p "/real-root")
-        (mount root "/real-root" type MS_RDONLY)
+        (mount root "/real-root" type (logior MS_RDONLY flags) options)
         (mkdir-p "/rw-root")
         (mount "none" "/rw-root" "tmpfs")
 
@@ -381,7 +384,7 @@ using the kernel build-in overlayfs."
                "lowerdir=/real-root,upperdir=/rw-root/upper,workdir=/rw-root/work"))
       (begin
         (check-file-system root type)
-        (mount root "/root" type)))
+        (mount root "/root" type flags options)))
 
   ;; Make sure /root/etc/mtab is a symlink to /proc/self/mounts.
   (false-if-exception
@@ -464,95 +467,101 @@ upon error."
   (define (root-mount-point? fs)
     (string=? (file-system-mount-point fs) "/"))
 
-  (define root-fs-type
-    (or (any (lambda (fs)
-               (and (root-mount-point? fs)
-                    (file-system-type fs)))
-             mounts)
-        "ext4"))
-
-  (define (lookup-module name)
-    (string-append linux-module-directory "/"
-                   (ensure-dot-ko name)))
+  (define (device-string->file-system-device device-string)
+    ;; The "--root=SPEC" kernel command-line option always provides a
+    ;; string, but the string can represent a device, a UUID, or a
+    ;; label.  So check for all three.
+    (cond ((string-prefix? "/" device-string) device-string)
+          ((uuid device-string) => identity)
+          (else (file-system-label device-string))))
 
   (display "Welcome, this is GNU's early boot Guile.\n")
   (display "Use '--repl' for an initrd REPL.\n\n")
 
   (call-with-error-handling
-   (lambda ()
-     (mount-essential-file-systems)
-     (let* ((args    (linux-command-line))
-            (to-load (find-long-option "--load" args))
-            (root    (find-long-option "--root" args)))
+    (lambda ()
+      (mount-essential-file-systems)
+      (let* ((args    (linux-command-line))
+             (to-load (find-long-option "--load" args))
+             (root-fs (find root-mount-point? mounts))
+             (root-fs-type (or (and=> root-fs file-system-type)
+                               "ext4"))
+             (root-fs-device (and=> root-fs file-system-device))
+             (root-fs-flags (mount-flags->bit-mask
+                             (or (and=> root-fs file-system-flags)
+                                 '())))
+             (root-options (if root-fs
+                               (file-system-options root-fs)
+                               #f))
+             ;; --root takes precedence over the 'device' field of the root
+             ;; <file-system> record.
+             (root-device (or (and=> (find-long-option "--root" args)
+                                     device-string->file-system-device)
+                              root-fs-device)))
 
-       (when (member "--repl" args)
-         (start-repl))
+        (when (member "--repl" args)
+          (start-repl))
 
-       (display "loading kernel modules...\n")
-       (for-each (cut load-linux-module* <>
-                      #:lookup-module lookup-module)
-                 (map lookup-module linux-modules))
+        (display "loading kernel modules...\n")
+        (load-linux-modules-from-directory linux-modules
+                                           linux-module-directory)
 
-       (when keymap-file
-         (let ((status (system* "loadkeys" keymap-file)))
-           (unless (zero? status)
-             ;; Emit a warning rather than abort when we cannot load
-             ;; KEYMAP-FILE.
-             (format (current-error-port)
-                     "warning: 'loadkeys' exited with status ~a~%"
-                     status))))
+        (when keymap-file
+          (let ((status (system* "loadkeys" keymap-file)))
+            (unless (zero? status)
+              ;; Emit a warning rather than abort when we cannot load
+              ;; KEYMAP-FILE.
+              (format (current-error-port)
+                      "warning: 'loadkeys' exited with status ~a~%"
+                      status))))
 
-       (when qemu-guest-networking?
-         (unless (configure-qemu-networking)
-           (display "network interface is DOWN\n")))
+        (when qemu-guest-networking?
+          (unless (configure-qemu-networking)
+            (display "network interface is DOWN\n")))
 
-       ;; Prepare the real root file system under /root.
-       (unless (file-exists? "/root")
-         (mkdir "/root"))
+        ;; Prepare the real root file system under /root.
+        (unless (file-exists? "/root")
+          (mkdir "/root"))
 
-       (when (procedure? pre-mount)
-         ;; Do whatever actions are needed before mounting the root file
-         ;; system--e.g., installing device mappings.  Error out when the
-         ;; return value is false.
-         (unless (pre-mount)
-           (error "pre-mount actions failed")))
+        (when (procedure? pre-mount)
+          ;; Do whatever actions are needed before mounting the root file
+          ;; system--e.g., installing device mappings.  Error out when the
+          ;; return value is false.
+          (unless (pre-mount)
+            (error "pre-mount actions failed")))
 
-       (setenv "EXT2FS_NO_MTAB_OK" "1")
+        (setenv "EXT2FS_NO_MTAB_OK" "1")
 
-       (if root
-           ;; The "--root=SPEC" kernel command-line option always provides a
-           ;; string, but the string can represent a device, a UUID, or a
-           ;; label.  So check for all three.
-           (let ((root (cond ((string-prefix? "/" root) root)
-                             ((uuid root) => identity)
-                             (else (file-system-label root)))))
-             (mount-root-file-system (canonicalize-device-spec root)
-                                     root-fs-type
-                                     #:volatile-root? volatile-root?))
-           (mount "none" "/root" "tmpfs"))
+        (if root-device
+            (mount-root-file-system (canonicalize-device-spec root-device)
+                                    root-fs-type
+                                    #:volatile-root? volatile-root?
+                                    #:flags root-fs-flags
+                                    #:options root-options)
+            (mount "none" "/root" "tmpfs"))
 
-       ;; Mount the specified file systems.
-       (for-each mount-file-system
-                 (remove root-mount-point? mounts))
+        ;; Mount the specified file systems.
+        (for-each mount-file-system
+                  (remove root-mount-point? mounts))
 
-       (setenv "EXT2FS_NO_MTAB_OK" #f)
+        (setenv "EXT2FS_NO_MTAB_OK" #f)
 
-       (if to-load
-           (begin
-             (switch-root "/root")
-             (format #t "loading '~a'...\n" to-load)
+        (if to-load
+            (begin
+              (switch-root "/root")
+              (format #t "loading '~a'...\n" to-load)
 
-             (primitive-load to-load)
+              (primitive-load to-load)
 
-             (format (current-error-port)
-                     "boot program '~a' terminated, rebooting~%"
-                     to-load)
-             (sleep 2)
-             (reboot))
-           (begin
-             (display "no boot file passed via '--load'\n")
-             (display "entering a warm and cozy REPL\n")
-             (start-repl)))))
-   #:on-error on-error))
+              (format (current-error-port)
+                      "boot program '~a' terminated, rebooting~%"
+                      to-load)
+              (sleep 2)
+              (reboot))
+            (begin
+              (display "no boot file passed via '--load'\n")
+              (display "entering a warm and cozy REPL\n")
+              (start-repl)))))
+    #:on-error on-error))
 
-;;; linux-initrd.scm ends here
+;;; linux-boot.scm ends here

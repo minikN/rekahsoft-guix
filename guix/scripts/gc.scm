@@ -1,5 +1,5 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2012, 2013, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2012, 2013, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -22,7 +22,9 @@
   #:use-module (guix store)
   #:use-module (guix store roots)
   #:autoload   (guix build syscalls) (free-disk-space)
-  #:autoload   (guix profiles) (generation-profile)
+  #:autoload   (guix profiles) (generation-profile
+                                profile-generations
+                                generation-number)
   #:autoload   (guix scripts package) (delete-generations)
   #:use-module (ice-9 match)
   #:use-module (ice-9 regex)
@@ -56,6 +58,8 @@ Invoke the garbage collector.\n"))
   -D, --delete           attempt to delete PATHS"))
   (display (G_ "
       --list-roots       list the user's garbage collector roots"))
+  (display (G_ "
+      --list-busy        list store items used by running processes"))
   (display (G_ "
       --optimize         optimize the store by deduplicating identical files"))
   (display (G_ "
@@ -174,6 +178,10 @@ is deprecated; use '-D'~%"))
                 (lambda (opt name arg result)
                   (alist-cons 'action 'list-roots
                               (alist-delete 'action result))))
+        (option '("list-busy") #f #f
+                (lambda (opt name arg result)
+                  (alist-cons 'action 'list-busy
+                              (alist-delete 'action result))))
         (option '("list-dead") #f #f
                 (lambda (opt name arg result)
                   (alist-cons 'action 'list-dead
@@ -265,6 +273,12 @@ is deprecated; use '-D'~%"))
                   (newline))
                 roots)))
 
+  (define (list-busy)
+    ;; List store items used by running processes.
+    (for-each (lambda (item)
+                (display item) (newline))
+              (busy-store-items)))
+
   (with-error-handling
     (let* ((opts  (parse-options))
            (store (open-connection))
@@ -305,6 +319,9 @@ is deprecated; use '-D'~%"))
         ((list-roots)
          (assert-no-extra-arguments)
          (list-roots))
+        ((list-busy)
+         (assert-no-extra-arguments)
+         (list-busy))
         ((delete)
          (delete-paths store (map direct-store-path paths)))
         ((list-references)

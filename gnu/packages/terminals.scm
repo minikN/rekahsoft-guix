@@ -1,13 +1,13 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2015, 2016, 2017, 2018, 2019 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2015, 2016, 2017, 2018, 2019, 2020 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2016 Mckinley Olsen <mck.olsen@gmail.com>
-;;; Copyright © 2016, 2017 Alex Griffin <a@ajgrf.com>
+;;; Copyright © 2016, 2017, 2019 Alex Griffin <a@ajgrf.com>
 ;;; Copyright © 2016 David Craven <david@craven.ch>
-;;; Copyright © 2016, 2017, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2016, 2017, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2016, 2017 José Miguel Sánchez García <jmi2k@openmailbox.org>
-;;; Copyright © 2017, 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2017, 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2017 Kei Kebreau <kkebreau@posteo.net>
-;;; Copyright © 2017, 2018 Ricardo Wurmus <rekado@elephly.net>
+;;; Copyright © 2017, 2018, 2019 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2017 Petter <petter@mykolab.ch>
 ;;; Copyright © 2018 Hartmut Goebel <h.goebel@crazy-compilers.com>
 ;;; Copyright © 2018 Arun Isaac <arunisaac@systemreboot.net>
@@ -15,6 +15,11 @@
 ;;; Copyright © 2019 Rutger Helling <rhelling@mykolab.com>
 ;;; Copyright © 2018, 2019 Eric Bavier <bavier@member.fsf.org>
 ;;; Copyright © 2019 Julien Lepiller <julien@lepiller.eu>
+;;; Copyright © 2019 Pierre Langlois <pierre.langlois@gmx.com>
+;;; Copyright © 2019 Brett Gilio <brettg@gnu.org>
+;;; Copyright © 2020 Jakub Kądziołka <kuba@kadziolka.net>
+;;; Copyright © 2020 Valentin Ignatev <valentignatev@gmail.com>
+;;; Copyright © 2020 Michael Rohleder <mike@rohleder.de>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -33,6 +38,7 @@
 
 (define-module (gnu packages terminals)
   #:use-module ((guix licenses) #:prefix license:)
+  #:use-module (guix build-system cargo)
   #:use-module (guix build-system cmake)
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system glib-or-gtk)
@@ -44,7 +50,9 @@
   #:use-module (gnu packages)
   #:use-module (gnu packages autotools)
   #:use-module (gnu packages check)
+  #:use-module (gnu packages cmake)
   #:use-module (gnu packages compression)
+  #:use-module (gnu packages crates-io)
   #:use-module (gnu packages crypto)
   #:use-module (gnu packages docbook)
   #:use-module (gnu packages fontutils)
@@ -57,6 +65,7 @@
   #:use-module (gnu packages golang)
   #:use-module (gnu packages gtk)
   #:use-module (gnu packages image)
+  #:use-module (gnu packages libcanberra)
   #:use-module (gnu packages libevent)
   #:use-module (gnu packages linux)
   #:use-module (gnu packages ncurses)
@@ -81,23 +90,17 @@
 (define-public tilda
   (package
     (name "tilda")
-    (version "1.4.1")
+    (version "1.5.2")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/lanoxx/tilda.git")
+                    (url "https://github.com/lanoxx/tilda")
                     (commit (string-append "tilda-" version))))
               (file-name (git-file-name name version))
               (sha256
                (base32
-                "154rsldqjv2m1bddisb930qicb0y35kx7bxq392n2hn68jr2pxkj"))))
+                "0psq0f4s0s92bba6wwcf6b0j7i59b76svqxhvpavwv53yvhmmamn"))))
     (build-system glib-or-gtk-build-system)
-    (arguments
-     '(#:phases (modify-phases %standard-phases
-                 (replace 'bootstrap
-                  (lambda _
-                    (setenv "NOCONFIGURE" "true")
-                    (invoke "sh" "autogen.sh"))))))
     (native-inputs
      `(("autoconf" ,autoconf)
        ("automake" ,automake)
@@ -135,6 +138,11 @@ configurable through a graphical wizard.")
     (arguments
       `(#:phases
         (modify-phases %standard-phases
+          (add-after 'unpack 'patch-xdg-open
+            (lambda _
+              (substitute* "termite.cc"
+                (("xdg-open") (which "xdg-open")))
+              #t))
           (delete 'configure))
         #:tests? #f
         ;; This sets the destination when installing the necessary terminal
@@ -147,6 +155,7 @@ configurable through a graphical wizard.")
     (inputs
      `(("vte" ,vte-ng)
        ("gtk+" ,gtk+)
+       ("xdg-utils" ,xdg-utils)
        ("ncurses" ,ncurses)))
     (native-inputs
      `(("pkg-config" ,pkg-config)))
@@ -169,14 +178,17 @@ insert mode and command mode where keybindings have different functions.")
 (define-public asciinema
   (package
     (name "asciinema")
-    (version "1.4.0")
+    (version "2.0.2")
     (source
      (origin
-       (method url-fetch)
-       (uri (pypi-uri "asciinema" version))
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/asciinema/asciinema")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
        (sha256
         (base32
-         "1jrf8c8711gkdilmvyv3d37kp8xfvdc5cqighw5k92a6g9z4acgv"))))
+         "1a2pysxnp6icyd08mgf66xr6f6j0irnfxdpf3fmzcz31ix7l9kc4"))))
     (build-system python-build-system)
     (arguments
      `(#:phases
@@ -184,14 +196,16 @@ insert mode and command mode where keybindings have different functions.")
          (add-before 'build 'patch-exec-paths
            (lambda* (#:key inputs #:allow-other-keys)
              (let ((ncurses (assoc-ref inputs "ncurses")))
-               (substitute* "asciinema/recorder.py"
+               (substitute* "asciinema/term.py"
                  (("'tput'")
                   (string-append "'" ncurses "/bin/tput'"))))
-             #t)))))
+             #t))
+         (replace 'check
+           (lambda _ (invoke "nosetests" "-v"))))))
     (inputs `(("ncurses" ,ncurses)))
     (native-inputs
      ;; For tests.
-     `(("python-requests" ,python-requests)))
+     `(("python-nose" ,python-nose)))
     (home-page "https://asciinema.org")
     (synopsis "Terminal session recorder")
     (description
@@ -212,6 +226,7 @@ text-based approach to terminal recording.")
                 (uri (git-reference
                       (url (string-append "https://github.com/Aetf/" name))
                       (commit commit)))
+                (file-name (git-file-name name version))
                 (sha256
                  (base32
                   "0mwn91i5h5d518i1s05y7hzv6bc13vzcvxszpfh77473iwg4wprx"))))
@@ -260,10 +275,6 @@ compatibility to existing emulators like xterm, gnome-terminal, konsole, etc.")
          #:disallowed-references (,mesa)
 
          #:phases (modify-phases %standard-phases
-                    (replace 'bootstrap
-                      (lambda _
-                        (setenv "NOCONFIGURE" "indeed")
-                        (invoke "sh" "autogen.sh")))
                     ;; Use elogind instead of systemd.
                     (add-before 'configure 'remove-systemd
                       (lambda _
@@ -354,7 +365,7 @@ combining, and so on, with a simple interface.")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/npat-efault/picocom.git")
+                    (url "https://github.com/npat-efault/picocom")
                     (commit version)))
               (file-name (git-file-name name version))
               (sha256
@@ -387,7 +398,7 @@ to all types of devices that provide serial consoles.")
 (define-public beep
   (package
     (name "beep")
-    (version "1.4.4")
+    (version "1.4.9")
     (source
      (origin
        (method git-fetch)
@@ -396,11 +407,11 @@ to all types of devices that provide serial consoles.")
              ;; unmaintained for some time, and vulnerable to at least two CVEs:
              ;; https://github.com/johnath/beep/issues/11#issuecomment-454056858
              ;; Use this maintained fork instead.
-             (url "https://github.com/spkr-beep/beep.git")
+             (url "https://github.com/spkr-beep/beep")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "1bk7g63qpiclbq20iz2x238by8s1b2iafdim7i6dq1i5n01s7lgx"))))
+        (base32 "0jmvqk6g5n0wzj9znw42njxq3mzw1769f4db99b83927hf4aidi4"))))
     (build-system gnu-build-system)
     (arguments
      `(#:tests? #f                      ; no tests
@@ -410,8 +421,6 @@ to all types of devices that provide serial consoles.")
        #:phases
        (modify-phases %standard-phases
          (delete 'configure))))         ; no configure script
-    (native-inputs
-     `(("gcc" ,gcc-8)))                 ; for ‘-fstack-clash-protection’
     (synopsis "Linux command-line utility to control the PC speaker")
     (description "beep allows the user to control the PC speaker with precision,
 allowing different sounds to indicate different events.  While it can be run
@@ -429,7 +438,7 @@ has no notion of what's interesing, but it's very good at that notifying part.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/mauke/unibilium.git")
+             (url "https://github.com/mauke/unibilium")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
@@ -459,7 +468,7 @@ should be thread-safe.")
 (define-public libvterm
   (package
     (name "libvterm")
-    (version "0+bzr681")
+    (version "0.1.1")
     (source
      (origin
        (method url-fetch)
@@ -467,7 +476,7 @@ should be thread-safe.")
                            "libvterm-" version ".tar.gz"))
        (sha256
         (base32
-         "1s56c8p1qz6frkcri0hg4qyydv2wcccj6n2xmz1dwcdqn38ldsmb"))))
+         "1n5maylann2anfifjy576vzyar9q5m1kzpyiz2hca2pacxy8xf4v"))))
     (build-system gnu-build-system)
     (arguments
      `(#:make-flags
@@ -664,15 +673,15 @@ eye-candy, customizable, and reasonably lightweight.")
 (define-public sakura
   (package
     (name "sakura")
-    (version "3.6.0")
+    (version "3.7.1")
     (source (origin
               (method url-fetch)
-              (uri (string-append "https://launchpad.net/" name "/trunk/"
-                                  version "/+download/" name "-" version
+              (uri (string-append "https://launchpad.net/sakura/trunk/"
+                                  version "/+download/sakura-" version
                                   ".tar.bz2"))
               (sha256
                (base32
-                "1q463qm41ym7jb3kbzjz7b6x549vmgkb70arpkhsf86yxly1y5m1"))))
+                "12wjmckf03qbnm8cb7qma0980anzajn3l92rj2yr8hhafl74x6kj"))))
     (build-system cmake-build-system)
     (arguments
      '(#:tests? #f))                    ; no check phase
@@ -699,7 +708,7 @@ desktop installed to have a decent terminal emulator.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/nsf/termbox-go.git")
+                      (url "https://github.com/nsf/termbox-go")
                       (commit commit)))
                 (file-name (git-file-name name version))
                 (sha256
@@ -718,42 +727,6 @@ interfaces")
 programmer to write text-based user interfaces.")
       (home-page "https://github.com/nsf/termbox-go")
       (license license:expat))))
-
-(define-public go-golang.org-x-crypto-ssh-terminal
-  (let ((commit "c78caca803c95773f48a844d3dcab04b9bc4d6dd")
-        (revision "0"))
-    (package
-      (name "go-golang.org-x-crypto-ssh-terminal")
-      (version (git-version "0.0.0" revision commit))
-      (source (origin
-                (method git-fetch)
-                (uri (git-reference
-                      (url "https://go.googlesource.com/crypto")
-                      (commit commit)))
-                (file-name (git-file-name name version))
-                (sha256
-                 (base32
-                  "0vxlfxr9y681yn2cfh6dbqmq35vvq4f45ay0mm31ffkny9cms0y4"))))
-      (build-system go-build-system)
-      (arguments
-       '(#:import-path "golang.org/x/crypto/ssh/terminal"
-         #:unpack-path "golang.org/x/crypto"
-         #:phases
-         (modify-phases %standard-phases
-           (add-before 'reset-gzip-timestamps 'make-gzip-archive-writable
-             (lambda* (#:key outputs #:allow-other-keys)
-               (map (lambda (file)
-                      (make-file-writable file))
-                    (find-files
-                     (string-append (assoc-ref outputs "out")
-                                    "/src/golang.org/x/crypto/ed25519/testdata")
-                     ".*\\.gz$"))
-               #t)))))
-      (synopsis "Support functions for dealing with terminals in Go")
-      (description "@code{terminal} provides support functions for dealing
-with terminals in Go.")
-      (home-page "https://go.googlesource.com/crypto/")
-      (license license:bsd-3))))
 
 (define-public go-github-com-junegunn-fzf
   (package
@@ -777,7 +750,7 @@ with terminals in Go.")
        ("go-github-com-mattn-go-shellwords" ,go-github-com-mattn-go-shellwords)
        ("go-github-com-mattn-go-isatty" ,go-github-com-mattn-go-isatty)
        ("go-github-com-gdamore-tcell" ,go-github-com-gdamore-tcell)
-       ("go-golang-org-x-crypto-ssh-terminal" ,go-golang-org-x-crypto-ssh-terminal)))
+       ("go-golang-org-x-crypto" ,go-golang-org-x-crypto)))
     (home-page "https://github.com/junegunn/fzf")
     (synopsis "Command-line fuzzy-finder")
     (description "This package provides an interactive command-line filter
@@ -793,7 +766,7 @@ usable with any list--including files, command history, processes and more.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/howeyc/gopass.git")
+                      (url "https://github.com/howeyc/gopass")
                       (commit commit)))
                 (file-name (git-file-name name version))
                 (sha256
@@ -803,8 +776,8 @@ usable with any list--including files, command history, processes and more.")
       (arguments
        '(#:import-path "github.com/howeyc/gopass"))
       (propagated-inputs
-       `(("go-golang.org-x-crypto-ssh-terminal"
-          ,go-golang.org-x-crypto-ssh-terminal)))
+       `(("go-golang-org-x-crypto"
+          ,go-golang-org-x-crypto)))
       (synopsis "Retrieve password from a terminal or piped input in Go")
       (description
        "@code{gopass} is a Go package for retrieving a password from user
@@ -856,20 +829,21 @@ of VT100 terminal.")
 (define-public python-blessings
   (package
     (name "python-blessings")
-    (version "1.6.1")
+    (version "1.7")
     (source
      (origin
        (method url-fetch)
        (uri (pypi-uri "blessings" version))
        (sha256
         (base32
-         "1smngy65p8mi62lgm04icasx22v976szhs2aq95y2ljmi1srb4bl"))))
+         "0z8mgkbmisxs10rz88qg46l1c9a8n08k8cy2iassal2zh16qbrcq"))))
     (build-system python-build-system)
     (arguments
-     ;; TODO: For py3, 2to2 is used to convert the code, but test-suite fails
+     ;; FIXME: Test suite is unable to detect TTY conditions.
      `(#:tests? #f))
     (native-inputs
-     `(("python-nose" ,python-nose)))
+     `(("python-nose" ,python-nose)
+       ("python-six" ,python-six)))
     (home-page "https://github.com/erikrose/blessings")
     (synopsis "Python module to manage terminal color, styling, and
 positioning")
@@ -923,17 +897,17 @@ per-line fullscreen terminal rendering, and keyboard input event reporting.")
 (define-public tmate
   (package
     (name "tmate")
-    (version "2.2.1")
+    (version "2.4.0")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/tmate-io/tmate.git")
+             (url "https://github.com/tmate-io/tmate")
              (commit version)))
        (file-name (git-file-name name version))
        (sha256
         (base32
-         "0pfl9vrswzim9ydi1n652h3rax2zrmy6sqkp0r09yy3lw83h4y1r"))))
+         "0x5c31yq7ansmiy20a0qf59wagba9v3pq97mlkxrqxn4n1gcc6vi"))))
     (build-system gnu-build-system)
     (inputs
      `(("libevent" ,libevent)
@@ -954,18 +928,17 @@ tmux.")
 (define-public kitty
   (package
     (name "kitty")
-    (version "0.14.2")
+    (version "0.16.0")
     (home-page "https://sw.kovidgoyal.net/kitty/")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/kovidgoyal/kitty.git")
+             (url "https://github.com/kovidgoyal/kitty")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
-        (base32
-         "15iv3k7iryf10n8n67d37x24pzcarq97a3dr42lbld00k1lx19az"))
+        (base32 "1bszyddar0g1gdz67h8rd3gbrdhi6ahjg7j14cjiqxm1938z9ajf"))
        (modules '((guix build utils)))
        (snippet
         '(begin
@@ -984,6 +957,7 @@ tmux.")
      `(("python" ,python)
        ("harfbuzz" ,harfbuzz)
        ("zlib" ,zlib)
+       ("libcanberra" ,libcanberra)
        ("libpng" ,libpng)
        ("freetype" ,freetype)
        ("fontconfig" ,fontconfig)
@@ -1062,16 +1036,16 @@ comfortably in a pager or editor.
 (define-public eternalterminal
   (package
     (name "eternalterminal")
-    (version "5.1.10")
+    (version "6.0.7")
     (source
       (origin
         (method git-fetch)
         (uri (git-reference
-               (url "https://github.com/MisterTea/EternalTerminal.git")
+               (url "https://github.com/MisterTea/EternalTerminal")
                (commit (string-append "et-v" version))))
         (file-name (git-file-name name version))
        (sha256
-        (base32 "0jh89229bd9s82h3aj6faaybwr5xvnk8w2kgz47gq263pz021zpl"))))
+        (base32 "03pdspggqxkmz95qb96pig5x0xw18hy9a7ivszydr32ry6kxxx1h"))))
     (build-system cmake-build-system)
     (arguments
      '(#:configure-flags '("-DBUILD_TEST=ON")
@@ -1081,12 +1055,6 @@ comfortably in a pager or editor.
            (lambda* (#:key inputs #:allow-other-keys)
              (let ((tests (assoc-ref inputs "googletest")))
                (copy-recursively tests "external/googletest"))
-             #t))
-         (add-after 'install 'dont-provide-gtest-libraries
-           (lambda* (#:key outputs #:allow-other-keys)
-             (let ((out (assoc-ref outputs "out")))
-               (delete-file-recursively (string-append out "/include"))
-               (delete-file-recursively (string-append out "/lib")))
              #t)))))
     (inputs
      `(("gflags" ,gflags)
@@ -1103,4 +1071,238 @@ reconnected after a network outage an ET session will survive network outages
 and IP roaming.  ET provides the same core functionality as @command{mosh},
 while also supporting native scrolling and @command{tmux} control mode
 (@code{tmux -CC}).")
+    (license license:asl2.0)))
+
+(define-public wterm
+  (package
+    (name "wterm")
+    (version "0.7")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/majestrate/wterm")
+             (commit "0ae42717c08a85a6509214e881422c7fbe7ecc45")))
+       (sha256
+         (base32
+          "0g4lzmc1w6na81i6hny32xds4xfig4xzswzfijyi6p93a1226dv0"))
+       (file-name (git-file-name name version))))
+    (build-system gnu-build-system)
+    (native-inputs
+     `(("pkg-config" ,pkg-config)))
+    (inputs
+     `(("fontconfig" ,fontconfig)
+       ("freetype" ,freetype)
+       ("libdrm" ,libdrm)
+       ("libxkbcommon" ,libxkbcommon)
+       ("ncurses" ,ncurses)
+       ("pixman" ,pixman)
+       ("wayland" ,wayland)))
+    (arguments
+     '(#:tests? #f
+
+       ;; Without -j1 it fails to find file libwld.a.
+       #:parallel-build? #f
+
+       #:make-flags (list "CC=gcc"
+                          (string-append "PREFIX=" %output)
+                          (string-append "TERMINFO="
+                                         (assoc-ref %outputs "out")
+                                         "/share/terminfo"))
+       #:phases
+       (modify-phases %standard-phases
+         (delete 'configure)
+         (add-after 'unpack 'terminfo-fix
+           (lambda _
+             (substitute* "Makefile"
+               (("\ttic .*") "\tmkdir -p $(SHARE_PREFIX)/share/terminfo
+\ttic -o $(SHARE_PREFIX)/share/terminfo -s wterm.info\n"))
+             #t)))))
+    (native-search-paths
+      (list (search-path-specification
+              (variable "TERMINFO_DIRS")
+              (files '("share/terminfo")))))
+    (home-page "https://github.com/majestrate/wterm")
+    (synopsis "Terminal emulator for Wayland")
+    (description "wterm is a native Wayland terminal emulator based on
+an st fork using wld. st is a simple terminal emulator for X originally
+made by suckless.")
+    (license license:x11)))
+
+(define-public alacritty
+  (package
+    (name "alacritty")
+    (version "0.4.1")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/jwilm/alacritty")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "05jcg33ifngpzw2hdhgb614j87ihhhlqgar0kky183rywg0dxikg"))
+       (modules '((guix build utils)))
+       (snippet
+         ;; Don't use a custom location for winit-0.20-alpha6.
+         '(begin (substitute* "Cargo.toml"
+                   (("winit .*") ""))
+                 #t))))
+    (build-system cargo-build-system)
+    (arguments
+     `(#:cargo-inputs
+       (("rust-clap" ,rust-clap-2)
+        ("rust-log" ,rust-log-0.4)
+        ("rust-time" ,rust-time-0.1)
+        ("rust-env-logger" ,rust-env-logger-0.7)
+        ("rust-serde" ,rust-serde-1)
+        ("rust-serde-yaml" ,rust-serde-yaml-0.8)
+        ("rust-serde-json" ,rust-serde-json-1)
+        ("rust-glutin" ,rust-glutin-0.22) ; adjust 'patch-glutin-libgl-path as needed
+        ("rust-notify" ,rust-notify-4)
+        ("rust-libc" ,rust-libc-0.2)
+        ("rust-unicode-width" ,rust-unicode-width-0.1)
+        ("rust-parking-lot" ,rust-parking-lot-0.9)
+        ("rust-urlocator" ,rust-urlocator-0.1)
+        ("rust-xdg" ,rust-xdg-2.2)
+        ("rust-image" ,rust-image-0.22)
+        ("rust-dirs" ,rust-dirs-2.0)
+        ("rust-x11-dl" ,rust-x11-dl-2)
+        ("rust-winapi" ,rust-winapi-0.3)
+        ("rust-base64" ,rust-base64-0.11)
+        ("rust-bigflags" ,rust-bitflags-1)
+        ("rust-fnv" ,rust-fnv-1.0)
+        ("rust-mio" ,rust-mio-0.6)
+        ("rust-mio-extras" ,rust-mio-extras-2)
+        ("rust-terminfo" ,rust-terminfo-0.6)
+        ("rust-url" ,rust-url-2.1)
+        ("rust-vte" ,rust-vte-0.3)
+        ("rust-nix" ,rust-nix-0.15)
+        ("rust-miow" ,rust-miow-0.3)
+        ("rust-mio-anonymous-pipes" ,rust-mio-anonymous-pipes-0.1)
+        ("rust-mio-named-pipes" ,rust-mio-named-pipes-0.1)
+        ("rust-signal-hook" ,rust-signal-hook-0.1)
+        ("rust-clipboard-win" ,rust-clipboard-win-2.1)
+        ("rust-objc" ,rust-objc-0.2)
+        ("rust-objc-id" ,rust-objc-id-0.1)
+        ("rust-objc-foundation" ,rust-objc-foundation-0.1)
+        ("rust-x11-clipboard" ,rust-x11-clipboard-0.4)
+        ("rust-smithay-clipboard" ,rust-smithay-clipboard-0.3)
+        ("rust-wayland-client" ,rust-wayland-client-0.23)
+        ("rust-euclid" ,rust-euclid-0.20)
+        ("rust-foreign-types" ,rust-foreign-types-0.5)
+        ("rust-servo-fontconfig" ,rust-servo-fontconfig-0.4)
+        ("rust-freetype-rs" ,rust-freetype-rs-0.23)
+        ("rust-core-foundation" ,rust-core-foundation-0.6)
+        ("rust-core-foundation-sys" ,rust-core-foundation-sys-0.6)
+        ("rust-core-text" ,rust-core-text-13)
+        ("rust-core-graphics" ,rust-core-graphics-0.17)
+        ("rust-dwrote" ,rust-dwrote-0.9)
+        ("rust-winpty-sys" ,rust-winpty-sys-0.4))
+       #:cargo-development-inputs
+       (("rust-rustc-tools-util" ,rust-rustc-tools-util-0.2)
+        ("rust-gl-generator" ,rust-gl-generator-0.14)
+        ("rust-andrew" ,rust-andrew-0.2)
+        ("rust-smithay-client-toolkit" ,rust-smithay-client-toolkit-0.6)
+        ("rust-embed-resource" ,rust-embed-resource-1.3)
+        ("rust-http-req" ,rust-http-req-0.5)
+        ("rust-zip" ,rust-zip-0.5)
+        ("rust-tempfile" ,rust-tempfile-3)
+        ("rust-named-pipe" ,rust-named-pipe-0.4)
+        ("rust-winapi" ,rust-winapi-0.3))
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'configure 'patch-glutin-libgl-path
+           (lambda* (#:key inputs cargo-inputs vendor-dir #:allow-other-keys)
+             (let* ((glutin-name ,(package-name rust-glutin-0.22))
+                    (glutin-version ,(package-version rust-glutin-0.22))
+                    (src-api
+                      (string-append
+                        glutin-name "-" glutin-version ".tar.gz/src/api/"))
+                    (mesa (assoc-ref inputs "mesa")))
+              (substitute* (string-append vendor-dir "/" src-api "glx/mod.rs")
+                (("libGL.so") (string-append mesa "/lib/libGL.so")))
+              (substitute* (string-append vendor-dir "/" src-api "egl/mod.rs")
+                (("libEGL.so") (string-append mesa "/lib/libEGL.so")))
+              #t)))
+         (add-after 'configure 'remove-alacritty-vendor
+           (lambda* (#:key vendor-dir #:allow-other-keys)
+              ;; We don't want Alacritty to be a dependency of itself
+              ;; If we don't delete it from guix-vendor then build will fail
+              ;; because Alacritty has a virtual workspace Cargo.toml.
+              (delete-file-recursively
+                (string-append vendor-dir "/alacritty-" ,version ".tar.xz"))
+              #t))
+         (replace 'install
+           (lambda* (#:key inputs outputs #:allow-other-keys)
+             (let* ((out   (assoc-ref outputs "out"))
+                    (share (string-append out "/share"))
+                    (icons (string-append share "/icons/hicolor/scalable/apps"))
+                    (tic   (string-append (assoc-ref inputs "ncurses") "/bin/tic"))
+                    (man   (string-append share "/man/man1"))
+                    (alacritty-bin "target/release/alacritty"))
+
+               ;; Install binary
+               (install-file alacritty-bin (string-append out "/bin"))
+
+               ;; Install man pages
+               (mkdir-p man)
+               (copy-file "extra/alacritty.man"
+                          (string-append man "/alacritty.1"))
+
+               ;; Install desktop file
+               (install-file "extra/linux/alacritty.desktop"
+                             (string-append share "/applications"))
+
+               ;; Install icon
+               (mkdir-p icons)
+               (copy-file "extra/logo/alacritty-term.svg"
+                          (string-append icons "/Alacritty.svg"))
+
+               ;; Install terminfo
+               (mkdir-p (string-append share "/terminfo"))
+               ;; We don't compile alacritty-common entry because
+               ;; it's being used only for inheritance.
+               (invoke tic "-x" "-e" "alacritty,alacritty-direct"
+                       "-o" (string-append share "/terminfo/")
+                       "extra/alacritty.info")
+
+               ;; Install completions
+               (install-file
+                 "extra/completions/alacritty.bash"
+                 (string-append out "/etc/bash_completion.d"))
+               (install-file
+                 "extra/completions/_alacritty"
+                 (string-append share "/zsh/site-functions"))
+               (install-file
+                 "extra/completions/alacritty.fish"
+                 (string-append share "/fish/vendor_completions.d"))
+               #t))))))
+    (inputs
+     `(("expat" ,expat)
+       ("fontconfig" ,fontconfig)
+       ("freetype" ,freetype)
+       ("libx11" ,libx11)
+       ("libxcb" ,libxcb)
+       ("libxcursor" ,libxcursor)
+       ("libxi" ,libxi)
+       ("libxkbcommon" ,libxkbcommon)
+       ("libxrandr" ,libxrandr)
+       ("libxxf86vm" ,libxxf86vm)
+       ("wayland" ,wayland)
+       ("mesa" ,mesa)))
+    (native-inputs
+     `(("cmake" ,cmake)
+       ("ncurses" ,ncurses)
+       ("pkg-config" ,pkg-config)
+       ("python3" ,python)))
+    (home-page "https://github.com/alacritty/alacritty")
+    (synopsis "GPU-accelerated terminal emulator")
+    (description
+     "Alacritty is a GPU-accelerated terminal emulator with a strong focus on
+simplicity and performance.  With such a strong focus on performance, included
+features are carefully considered and you can always expect Alacritty to be
+blazingly fast.  By making sane choices for defaults, Alacritty requires no
+additional setup.  However, it does allow configuration of many aspects of the
+terminal.  Note that you need support for OpenGL 3.2 or higher.")
     (license license:asl2.0)))

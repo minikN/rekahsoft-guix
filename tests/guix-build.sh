@@ -1,5 +1,6 @@
 # GNU Guix --- Functional package management for GNU
-# Copyright © 2012, 2013, 2014, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+# Copyright © 2012, 2013, 2014, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
+# Copyright © 2020 Marius Bakke <mbakke@fastmail.com>
 #
 # This file is part of GNU Guix.
 #
@@ -36,6 +37,19 @@ guix build -e '(@@ (gnu packages bootstrap) %bootstrap-guile)' |	\
 guix build hello -d |				\
     grep -e '-hello-[0-9\.]\+\.drv$'
 
+# Passing a .drv.
+drv="`guix build -e '(@@ (gnu packages bootstrap) %bootstrap-guile)' -d`"
+out="`guix build "$drv"`"
+out2="`guix build -e '(@@ (gnu packages bootstrap) %bootstrap-guile)'`"
+test "$out" = "$out2"
+
+# Passing the name of a .drv that doesn't exist.  The daemon should try to
+# substitute the .drv.  Here we just look for the "cannot build missing
+# derivation" error that indicates that the daemon did try to substitute the
+# .drv.
+guix build "$NIX_STORE_DIR/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-foo.drv" 2>&1 \
+    | grep "missing derivation"
+
 # Passing a URI.
 GUIX_DAEMON_SOCKET="file://$GUIX_STATE_DIRECTORY/daemon-socket/socket"	\
 guix build -e '(@@ (gnu packages bootstrap) %bootstrap-guile)'
@@ -50,6 +64,12 @@ test `guix build sed -s x86_64-linux -d | wc -l` = 1
 # Passing multiple '-s' flags.
 all_systems="-s x86_64-linux -s i686-linux -s armhf-linux -s aarch64-linux"
 test `guix build sed $all_systems -d | sort -u | wc -l` = 4
+
+# Check there's no weird memoization effect leading to erroneous results.
+# See <https://bugs.gnu.org/40482>.
+drv1="`guix build sed -s x86_64-linux -s armhf-linux -d | sort`"
+drv2="`guix build sed -s armhf-linux -s x86_64-linux -d | sort`"
+test "$drv1" = "$drv2"
 
 # Check --sources option with its arguments
 module_dir="t-guix-build-$$"
@@ -226,6 +246,10 @@ rmdir "$result"
 # Cross building.
 guix build coreutils --target=mips64el-linux-gnu --dry-run --no-substitutes
 
+# Likewise, but with '-e' (see <https://bugs.gnu.org/38093>).
+guix build --target=arm-linux-gnueabihf --dry-run \
+     -e '(@ (gnu packages base) coreutils)'
+
 # Replacements.
 drv1=`guix build guix --with-input=guile@2.0=guile@2.2 -d`
 drv2=`guix build guix -d`
@@ -291,6 +315,25 @@ cat > "$module_dir/gexp.scm"<<EOF
 EOF
 guix build --file="$module_dir/gexp.scm" -d
 guix build --file="$module_dir/gexp.scm" -d | grep 'gexp\.drv'
+
+# Building from a manifest file.
+cat > "$module_dir/manifest.scm"<<EOF
+(specifications->manifest '("hello" "guix"))
+EOF
+test `guix build -d --manifest="$module_dir/manifest.scm" \
+      | grep -e '-hello-' -e '-guix-' \
+      | wc -l` -eq 2
+
+# Building from a manifest that contains a non-package object.
+cat > "$module_dir/manifest.scm"<<EOF
+(manifest
+  (list (manifest-entry (name "foo") (version "0")
+			(item (computed-file "computed-thingie"
+					     #~(mkdir (ungexp output)))))))
+EOF
+guix build -d -m "$module_dir/manifest.scm" \
+    | grep 'computed-thingie\.drv$'
+
 rm "$module_dir"/*.scm
 
 # Using 'GUIX_BUILD_OPTIONS'.

@@ -3,7 +3,7 @@
 ;;; Copyright © 2015, 2017 Mark H Weaver <mhw@netris.org>
 ;;; Copyright © 2015 Eric Dvorsak <eric@dvorsak.fr>
 ;;; Copyright © 2016 David Thompson <davet@gnu.org>
-;;; Copyright © 2017, 2019 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2017, 2019, 2020 Marius Bakke <mbakke@fastmail.com>
 ;;; Copyright © 2017 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2019 Pierre Neidhardt <mail@ambrevar.xyz>
@@ -43,19 +43,20 @@
     (name "libevent")
     (version "2.1.11")
     (source (origin
-             (method url-fetch)
-             (uri (string-append
-                   "https://github.com/libevent/libevent/releases/download/release-"
-                   version "-stable/libevent-" version "-stable.tar.gz"))
-             (sha256
-              (base32
-               "0g988zqm45sj1hlhhz4il5z4dpi5dl74hzjwzl4md37a09iaqnx6"))))
+              (method url-fetch)
+              (uri (string-append
+                    "https://github.com/libevent/libevent/releases/download/release-"
+                    version "-stable/libevent-" version "-stable.tar.gz"))
+              (sha256
+               (base32
+                "0g988zqm45sj1hlhhz4il5z4dpi5dl74hzjwzl4md37a09iaqnx6"))))
     (build-system gnu-build-system)
+    (outputs '("out" "bin"))
     (arguments
-      ;; This skips some of the tests which fail on armhf and aarch64.
+     ;; This skips some of the tests which fail on armhf and aarch64.
      '(#:configure-flags '("--disable-libevent-regress")))
     (inputs
-     `(("python" ,python-2)))           ; for 'event_rpcgen.py'
+     `(("python" ,python-wrapper)))     ;for 'event_rpcgen.py'
     (native-inputs
      `(("which" ,which)))
     (home-page "https://libevent.org/")
@@ -75,7 +76,7 @@ loop.")
 (define-public libev
   (package
     (name "libev")
-    (version "4.24")
+    (version "4.31")
     (source (origin
               (method url-fetch)
               (uri (string-append "http://dist.schmorp.de/libev/Attic/libev-"
@@ -83,8 +84,10 @@ loop.")
                                   ".tar.gz"))
               (sha256
                (base32
-                "08gqsza1czx0nf62nkk183jb0946yzjsymaacxbzdgcs8z9r6dcp"))))
+                "0nkfqv69wfyy2bpga4d53iqydycpik8jp8x6q70353hia8mmv1gd"))))
     (build-system gnu-build-system)
+    (arguments
+     '(#:configure-flags '("--disable-static")))
     (home-page "http://software.schmorp.de/pkg/libev.html")
     (synopsis "Event loop loosely modelled after libevent")
     (description
@@ -99,17 +102,18 @@ limited support for fork events.")
 (define-public libuv
   (package
     (name "libuv")
-    (version "1.24.0")
+    (version "1.35.0")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://dist.libuv.org/dist/v" version
                                   "/libuv-v" version ".tar.gz"))
               (sha256
                (base32
-                "01pg0zsfr8mxlpipkbpw0dpsl26x5s966f5br7dx9ac29abk419q"))))
+                "0126mfmaw3s92dsga60sydgwjmzwg9cd36n127pydmisah17v50f"))))
     (build-system gnu-build-system)
     (arguments
-     '(;; XXX: Some tests want /dev/tty, attempt to make connections, etc.
+     '(#:configure-flags '("--disable-static")
+       ;; XXX: Some tests want /dev/tty, attempt to make connections, etc.
        #:tests? #f))
     (native-inputs `(("autoconf" ,autoconf-wrapper)
                      ("automake" ,automake)
@@ -132,14 +136,14 @@ resolution, asynchronous file system operations, and threading primitives.")
 (define-public perl-anyevent
   (package
     (name "perl-anyevent")
-    (version "7.15")
+    (version "7.17")
     (source (origin
               (method url-fetch)
               (uri (string-append "mirror://cpan/authors/id/M/ML/MLEHMANN/"
                                   "AnyEvent-" version ".tar.gz"))
               (sha256
                (base32
-                "0m73r67ah9xmcwzxs50jxf8ncd8h71mi4wf2mvnqkxvibhrv478i"))))
+                "11drlj8r02czhjgzkb39axnr8zzyp506r043xfmf93q9kilfmgjh"))))
     (build-system perl-build-system)
     (native-inputs
      `(("perl-canary-stability" ,perl-canary-stability)))
@@ -166,14 +170,14 @@ not rely on XS.")
 (define-public perl-ev
   (package
     (name "perl-ev")
-    (version "4.25")
+    (version "4.31")
     (source (origin
               (method url-fetch)
               (uri (string-append "mirror://cpan/authors/id/M/ML/MLEHMANN/EV-"
                                   version ".tar.gz"))
               (sha256
                (base32
-                "0slw68zxrkfribf6lhggdhpay3mdng0nqxlglkwrk19myblchr9f"))
+                "1jxlhnvrqim39977zwavjrcbdf9bifb46pwaxvm0s8klq121kjwb"))
               (modules '((guix build utils)))
               (snippet
                '(begin

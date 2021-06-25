@@ -1,11 +1,11 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2013, 2015, 2017 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2015 Mark H Weaver <mhw@netris.org>
-;;; Copyright © 2016, 2017 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2016, 2017, 2019 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2016 Adonay "adfeno" Felipe Nogueira <https://libreplanet.org/wiki/User:Adfeno> <adfeno@openmailbox.org>
 ;;; Copyright © 2017 Thomas Danckaert <post@thomasdanckaert.be>
-;;; Copyright © 2017, 2018 Marius Bakke <mbakke@fastmail.com>
-;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2017, 2018, 2020 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2019 Rutger Helling <rhelling@mykolab.com>
 ;;;
@@ -27,6 +27,7 @@
 (define-module (gnu packages samba)
   #:use-module (guix packages)
   #:use-module (guix download)
+  #:use-module (guix git-download)
   #:use-module (guix build-system gnu)
   #:use-module (guix licenses)
   #:use-module (guix utils)
@@ -43,12 +44,14 @@
   #:use-module (gnu packages gnupg)
   #:use-module (gnu packages kerberos)
   #:use-module (gnu packages linux)
+  #:use-module (gnu packages onc-rpc)
   #:use-module (gnu packages openldap)
   #:use-module (gnu packages perl)
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages popt)
   #:use-module (gnu packages python)
   #:use-module (gnu packages readline)
+  #:use-module (gnu packages time)
   #:use-module (gnu packages tls)
   #:use-module (gnu packages web)
   #:use-module (gnu packages xml))
@@ -56,14 +59,14 @@
 (define-public cifs-utils
   (package
     (name "cifs-utils")
-    (version "6.9")
+    (version "6.10")
     (source
      (origin
        (method url-fetch)
        (uri (string-append "https://download.samba.org/pub/linux-cifs/"
                            "cifs-utils/cifs-utils-" version ".tar.bz2"))
        (sha256 (base32
-                "175cp509wn1zv8p8mv37hkf6sxiskrsxdnq22mhlsg61jazz3n0q"))))
+                "19q4b5bzlxhn1hpi843xrp6f50d33w7m0rs26krkg5h3x742kz4j"))))
     (build-system gnu-build-system)
     (native-inputs
      `(("autoconf" ,autoconf)
@@ -79,12 +82,24 @@
     (arguments
      `(#:phases
        (modify-phases %standard-phases
-         (add-before 'configure 'set-root-sbin
+         (replace 'bootstrap
+           ;; Force a bootstrap to fix a ‘cannot find install-sh, install.sh,
+           ;; or shtool’ error since version 6.10.
            (lambda _
+             (invoke "autoreconf" "-vfi")
+             #t))
+         (add-before 'configure 'set-root-sbin
+           (lambda* (#:key outputs #:allow-other-keys)
              ;; Don't try to install into "/sbin".
              (setenv "ROOTSBINDIR"
-                     (string-append (assoc-ref %outputs "out") "/sbin"))
-             #t)))))
+                     (string-append (assoc-ref outputs "out") "/sbin"))
+             #t))
+         (add-before 'install 'create-man8dir
+           ;; Create a directory that isn't created since version 6.10.
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out")))
+               (mkdir-p (string-append out "/share/man/man8"))
+               #t))))))
     (synopsis "User-space utilities for Linux CIFS (Samba) mounts")
     (description "@code{cifs-utils} is a set of user-space utilities for
 mounting and managing @dfn{Common Internet File System} (CIFS) shares using
@@ -98,17 +113,18 @@ the Linux kernel CIFS client.")
     (name "iniparser")
     (version "4.1")
     (source (origin
-             (method url-fetch)
-             (uri (string-append "https://github.com/ndevilla/iniparser/archive/v"
-                                 version ".tar.gz"))
-             (file-name (string-append name "-" version ".tar.gz"))
+             (method git-fetch)
+             (uri (git-reference
+                    (url "https://github.com/ndevilla/iniparser")
+                    (commit (string-append "v" version))))
+             (file-name (git-file-name name version))
              (sha256
               (base32
-               "1bpk8dj9d5cl64lg6jsk0qlzrpg848nymwxc3fx707fk1n0al3cn"))))
+               "0dhab6pad6wh816lr7r3jb6z273njlgw2vpw8kcfnmi7ijaqhnr5"))))
     (build-system gnu-build-system)
     (arguments
      `(#:make-flags
-       (list "CC=gcc")
+       (list ,(string-append "CC=" (cc-for-target)))
        #:phases
        (modify-phases %standard-phases
          (replace 'configure
@@ -143,24 +159,34 @@ the Linux kernel CIFS client.")
                          '("AUTHORS" "INSTALL" "LICENSE" "README.md"))
                #t))))))
     (home-page "https://github.com/ndevilla/iniparser")
-    (synopsis "Standalone ini file parsing library")
+    (synopsis "Simple @file{.ini} configuration file parsing library")
     (description
-     "iniparser is a free stand-alone @code{ini} file parsing library (Windows
-configuration files).  It is written in portable ANSI C and should compile
-anywhere.")
+     "The iniParser C library reads and writes Windows-style @file{.ini}
+configuration files.  These are simple text files with a basic structure
+composed of sections, properties, and values.  While not expressive, they
+are easy to read, write, and modify.
+
+The library is small, thread safe, and written in portable ANSI C with no
+external dependencies.")
     (license x11)))
 
 (define-public samba
   (package
     (name "samba")
-    (version "4.10.6")
-    (source (origin
-             (method url-fetch)
-             (uri (string-append "https://download.samba.org/pub/samba/stable/"
-                                 "samba-" version ".tar.gz"))
-             (sha256
-              (base32
-               "0hpgdqlyczj98pkh2ldglvvnkrb1q541r3qikdvxq0qjvd9fpywy"))))
+    (version "4.12.3")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "https://download.samba.org/pub/samba/stable/"
+                           "samba-" version ".tar.gz"))
+       (sha256
+        (base32 "09w7aap1cjc41ayhaksm1igc7p7gl40fad4a1l6q4ds9a2jbrb9z"))
+       (modules '((guix build utils)))
+       (snippet
+        '(begin
+           ;; TODO: also remove the bundled ‘third_party/popt’.
+           (delete-file-recursively "third_party/pyiso8601")
+           #t))))
     (build-system gnu-build-system)
     (arguments
      `(#:phases
@@ -207,13 +233,13 @@ anywhere.")
        ;; ("gamin" ,gamin)
        ("gpgme" ,gpgme)
        ("gnutls" ,gnutls)
-       ("iniparser" ,iniparser)
        ("jansson" ,jansson)
-       ("libaio" ,libaio)
        ("libarchive" ,libarchive)
        ("linux-pam" ,linux-pam)
        ("lmdb" ,lmdb)
        ("openldap" ,openldap)
+       ("perl" ,perl)
+       ("python" ,python)
        ("popt" ,popt)
        ("readline" ,readline)
        ("tdb" ,tdb)))
@@ -223,11 +249,15 @@ anywhere.")
        ("talloc" ,talloc)
        ("tevent" ,tevent)))
     (native-inputs
-     `(("docbook-xsl" ,docbook-xsl)    ;for generating manpages
-       ("xsltproc" ,libxslt)           ;ditto
-       ("perl" ,perl)
+     `(("perl-parse-yapp" ,perl-parse-yapp)
        ("pkg-config" ,pkg-config)
-       ("python" ,python)))
+       ("python-iso8601" ,python-iso8601)
+       ("rpcsvc-proto" ,rpcsvc-proto)   ; for 'rpcgen'
+
+       ;; For generating man pages.
+       ("docbook-xml" ,docbook-xml-4.2)
+       ("docbook-xsl" ,docbook-xsl)
+       ("xsltproc" ,libxslt)))
     (home-page "https://www.samba.org/")
     (synopsis
      "The standard Windows interoperability suite of programs for GNU and Unix")
@@ -243,14 +273,14 @@ Desktops into Active Directory environments using the winbind daemon.")
 (define-public talloc
   (package
     (name "talloc")
-    (version "2.2.0")
+    (version "2.3.1")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://www.samba.org/ftp/talloc/talloc-"
                                   version ".tar.gz"))
               (sha256
                (base32
-                "1g1fqa37xkjp9lp6lrwxrbfgashcink769ll505zvcwnxx2nlvsw"))))
+                "0xwzgzrqamfdlklwacp9d219pqkah0yfrhxb1j7bxlmgzp924j7g"))))
     (build-system gnu-build-system)
     (arguments
      '(#:phases
@@ -310,14 +340,14 @@ destructors.  It is the core memory allocator used in Samba.")
 (define-public tevent
   (package
     (name "tevent")
-    (version "0.10.0")
+    (version "0.10.2")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://www.samba.org/ftp/tevent/tevent-"
                                   version ".tar.gz"))
               (sha256
                (base32
-                "1rm4d9245ya15wyrh9vqn1dnz14l2ic88mr46ykyc6kdrl99dwrk"))))
+                "15k6i8ad5lpxfjsjyq9h64zlyws8d3cm0vwdnaw8z1xjwli7hhpq"))))
     (build-system gnu-build-system)
     (arguments
      '(#:phases
@@ -346,14 +376,14 @@ many event types, including timers, signals, and the classic file descriptor eve
 (define-public ldb
   (package
     (name "ldb")
-    (version "1.6.3")
+    (version "1.5.6")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://www.samba.org/ftp/ldb/ldb-"
                                   version ".tar.gz"))
               (sha256
                (base32
-                "01livdy3g073bm6xnc8zqnqrxg53sw8q66d1903z62hd6g87whsa"))
+                "0nwpkqidsna4yz3vhjzzadm4hpviwnyk80yml8ay82gi1d6lg0pz"))
               (modules '((guix build utils)))
               (snippet
                '(begin
@@ -405,57 +435,51 @@ key-value pair databases and a real LDAP database.")
     (license lgpl3+)))
 
 (define-public ppp
-  (package
-    (name "ppp")
-    (version "2.4.7")
-    (source (origin
-              (method url-fetch)
-              (uri (string-append "https://www.samba.org/ftp/ppp/ppp-"
-                                  version ".tar.gz"))
-              (patches
-               (list (origin
-                       ;; Use OpenSSL for cryptography instead of the obsolete glibc
-                       ;; crypto functions that were removed in glibc 2.28.
-                       (method url-fetch)
-                       (uri (string-append "https://github.com/paulusmack/ppp/commit/"
-                                           "3c7b86229f7bd2600d74db14b1fe5b3896be3875"
-                                           ".patch"))
-                       (file-name "ppp-use-openssl-crypto.patch")
-                       (sha256
-                        (base32
-                         "0qlbi247lx3injpy8a1gcij9yilik0vfaibkpvdp88k3sa1rs69z")))))
-              (sha256
-               (base32
-                "0c7vrjxl52pdwi4ckrvfjr08b31lfpgwf3pp0cqy76a77vfs7q02"))))
-    (build-system gnu-build-system)
-    (arguments
-     '(#:tests? #f ; no check target
-       #:make-flags '("CC=gcc")
-       #:phases
-       (modify-phases %standard-phases
-         (add-before 'configure 'patch-Makefile
-           (lambda* (#:key inputs #:allow-other-keys)
-             (let ((libc    (assoc-ref inputs "libc"))
-                   (openssl (assoc-ref inputs "openssl"))
-                   (libpcap (assoc-ref inputs "libpcap")))
-               (substitute* "pppd/Makefile.linux"
-                 (("/usr/include/crypt\\.h")
-                  (string-append libc "/include/crypt.h"))
-                 (("/usr/include/openssl")
-                  (string-append openssl "/include/openssl"))
-                 (("/usr/include/pcap-bpf.h")
-                  (string-append libpcap "/include/pcap-bpf.h")))
-               #t))))))
-    (inputs
-     `(("libpcap" ,libpcap)
-       ("openssl" ,(@ (gnu packages tls) openssl))))
-    (synopsis "Implementation of the Point-to-Point Protocol")
-    (home-page "https://ppp.samba.org/")
-    (description
-     "The Point-to-Point Protocol (PPP) provides a standard way to establish
+  ;; This git commit contains unreleased fixes for CVE-2020-8597.
+  (let ((revision "1")
+        (commit "8d45443bb5c9372b4c6a362ba2f443d41c5636af"))
+    (package
+      (name "ppp")
+      (version (git-version "2.4.8" revision commit))
+      (source (origin
+                (method git-fetch)
+                (uri (git-reference
+                      (url "https://github.com/paulusmack/ppp")
+                      (commit commit)))
+                (file-name (git-file-name name version))
+                (sha256
+                 (base32
+                  "06cf8fb84l3h2zy5da4j7k2j1qjv2gfqn986sf43xgj75605aks2"))))
+      (build-system gnu-build-system)
+      (arguments
+       '(#:tests? #f                    ; no check target
+         #:make-flags '("CC=gcc")
+         #:phases
+         (modify-phases %standard-phases
+           (add-before 'configure 'patch-Makefile
+             (lambda* (#:key inputs #:allow-other-keys)
+               (let ((libc    (assoc-ref inputs "libc"))
+                     (openssl (assoc-ref inputs "openssl"))
+                     (libpcap (assoc-ref inputs "libpcap")))
+                 (substitute* "pppd/Makefile.linux"
+                   (("/usr/include/crypt\\.h")
+                    (string-append libc "/include/crypt.h"))
+                   (("/usr/include/openssl")
+                    (string-append openssl "/include/openssl"))
+                   (("/usr/include/pcap-bpf.h")
+                    (string-append libpcap "/include/pcap-bpf.h")))
+                 #t))))))
+      (inputs
+       `(("libpcap" ,libpcap)
+         ("openssl" ,(@ (gnu packages tls) openssl))))
+      (synopsis "Implementation of the Point-to-Point Protocol")
+      (home-page "https://ppp.samba.org/")
+      (description
+       "The Point-to-Point Protocol (PPP) provides a standard way to establish
 a network connection over a serial link.  At present, this package supports IP
 and IPV6 and the protocols layered above them, such as TCP and UDP.")
-    ;; pppd, pppstats and pppdump are under BSD-style notices.
-    ;; some of the pppd plugins are GPL'd.
-    ;; chat is public domain.
-    (license (list bsd-3 bsd-4 gpl2+ public-domain))))
+      ;; pppd, pppstats and pppdump are under BSD-style notices.
+      ;; some of the pppd plugins are GPL'd.
+      ;; chat is public domain.
+      (license (list bsd-3 bsd-4 gpl2+ public-domain)))))
+

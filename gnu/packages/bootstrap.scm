@@ -1,7 +1,10 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
-;;; Copyright © 2014, 2015, 2018 Mark H Weaver <mhw@netris.org>
-;;; Copyright © 2017 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2014, 2015, 2018, 2019 Mark H Weaver <mhw@netris.org>
+;;; Copyright © 2017, 2020 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2018, 2020 Jan (janneke) Nieuwenhuizen <janneke@gnu.org>
+;;; Copyright © 2019 Carl Dong <contact@carldong.me>
+;;; Copyright © 2019 Léo Le Bouter <lle-bout@zaclys.net>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -31,22 +34,32 @@
   #:use-module ((guix derivations)
                 #:select (derivation derivation-input derivation->output-path))
   #:use-module ((guix utils) #:select (gnu-triplet->nix-system))
+  #:use-module ((guix gexp) #:select (lower-object))
   #:use-module (guix memoization)
+  #:use-module (guix i18n)
   #:use-module (srfi srfi-1)
   #:use-module (srfi srfi-26)
+  #:use-module (srfi srfi-34)
+  #:use-module (srfi srfi-35)
   #:use-module (ice-9 match)
   #:export (bootstrap-origin
             package-with-bootstrap-guile
             glibc-dynamic-linker
 
+            bootstrap-executable
             bootstrap-guile-origin
 
             %bootstrap-guile
             %bootstrap-coreutils&co
+            %bootstrap-linux-libre-headers
             %bootstrap-binutils
             %bootstrap-gcc
             %bootstrap-glibc
-            %bootstrap-inputs))
+            %bootstrap-inputs
+            %bootstrap-mescc-tools
+            %bootstrap-mes
+
+            %bootstrap-inputs-for-tests))
 
 ;;; Commentary:
 ;;;
@@ -58,49 +71,145 @@
 
 
 ;;;
+;;; The bootstrap executables: 'bash', 'mkdir', 'tar', 'xz'.  They allow us to
+;;; extract the very first tarball.
+;;;
+
+(define %bootstrap-executables
+  ;; List of bootstrap executables and their recursive hashes (as per 'guix
+  ;; hash -r'), taking their executable bit into account.
+  `(("aarch64-linux"
+     ("bash"
+      ,(base32 "13aqhqb8nydlwq1ah9974q0iadx1pb95v13wzzyf7vgv6nasrwzr"))
+     ("mkdir"
+      ,(base32 "1pxhdp7ldwavmm71xbh9wc197cb2nr66acjn26yjx3732cixh9ws"))
+     ("tar"
+      ,(base32 "1j51gv08sfg277yxj73xd564wjq3f8xwd6s9rbcg8v9gms47m4cx"))
+     ("xz"
+      ,(base32 "1d779rwsrasphg5g3r37qppcqy3p7ay1jb1y83w7x4i3qsc7zjy2")))
+    ("armhf-linux"
+     ("bash"
+      ,(base32 "0s6f1s26g4dsrrkl39zblvwpxmbzi6n9mgqf6vxsqz42gik6bgyn"))
+     ("mkdir"
+      ,(base32 "1r5rcp35niyxfkrdf00y2ba8ifrq9bi76cr63lwjf2l655j1i5p7"))
+     ("tar"
+      ,(base32 "0dksx5im3fv8ximz7368bsax9f26nn47ds74298flm5lnvpv9xly"))
+     ("xz"
+      ,(base32 "1cqqavghjfr0iwxqf61lrssv27wfigysgq2rs4rm1gkmn04yn1k3")))
+    ("i686-linux"
+     ("bash"
+      ,(base32 "0rjaxyzjdllfkf1abczvgaf3cdcc7mmahyvdbkjmjzhgz92pv23g"))
+     ("mkdir"
+      ,(base32 "133ybmfpkmsnysrzbngwvbysqnsmfi8is8zifs7i7n6n600h4s1w"))
+     ("tar"
+      ,(base32 "07830bx29ad5i0l1ykj0g0b1jayjdblf01sr3ww9wbnwdbzinqms"))
+     ("xz"
+      ,(base32 "0i9kxdi17bm5gxfi2xzm0y73p3ii0cqxli1sbljm6rh2fjgyn90k")))
+    ("i586-gnu"
+     ("bash"
+      ,(base32 "1as8649aqaibahhhrvkj10ci8shpi4hq5n7gnik8rhhy0dc1jarg"))
+     ("mkdir"
+      ,(base32 "1snqgpfrl00hfn82lm29jqylzjsfb9jd6ha74dp12phwb8fpbmb9"))
+     ("tar"
+      ,(base32 "0nq2c1zb3wv5bf7kd83sziaashydazrn7xgq6kijlk0zj2syzc2m"))
+     ("xz"
+      ,(base32 "033rhpk6zrpxpd6ffjyg5y2zwq9x9cnq0zljb7k8jlncbalsayq5")))
+    ("mips64el-linux"
+     ("bash"
+      ,(base32 "1aw046dhda240k9pb9iaj5aqkm23gkvxa9j82n4k7fk87nbrixw6"))
+     ("mkdir"
+      ,(base32 "0c9j6qgyw84zxbry3ypifzll13gy8ax71w40kdk1h11jbgla3f5k"))
+     ("tar"
+      ,(base32 "06gmqdjq3rl8lr47b9fyx4ifnm5x56ymc8lyryp1ax1j2s4y5jb4"))
+     ("xz"
+      ,(base32 "09j1d69qr0hhhx4k4ih8wp00dfc9y4rp01hfg3vc15yxd0jxabh5")))))
+
+(define %bootstrap-executable-base-urls
+  ;; This is where the bootstrap executables come from.
+  '("https://git.savannah.gnu.org/cgit/guix.git/plain/gnu/packages/bootstrap/"
+    "http://lilypond.org/janneke/guix/"))
+
+(define (bootstrap-executable-file-name system program)
+  "Return the FILE-NAME part of url where PROGRAM can be found for SYSTEM."
+  (match system
+    ("i586-gnu" (string-append system "/20200326/" program))
+    (_ (string-append system "/" program
+                      "?id=44f07d1dc6806e97c4e9ee3e6be883cc59dc666e"))))
+
+(define bootstrap-executable
+  (mlambda (program system)
+    "Return an origin for PROGRAM, a statically-linked bootstrap executable
+built for SYSTEM."
+    (let ((system (if (string=? system "x86_64-linux")
+                      "i686-linux"
+                      system)))
+      (match (assoc-ref (assoc-ref %bootstrap-executables system)
+                        program)
+        (#f
+         (raise (condition
+                 (&message
+                  (message
+                   (format #f (G_ "could not find bootstrap binary '~a' \
+for system '~a'")
+                           program system))))))
+        ((bv)
+         (origin
+           (method url-fetch/executable)
+           (uri (map (cute string-append <>
+                           (bootstrap-executable-file-name system program))
+                     %bootstrap-executable-base-urls))
+           (file-name program)
+           (hash (content-hash bv sha256))))))))
+
+
+;;;
 ;;; Helper procedures.
 ;;;
 
-(define (bootstrap-origin source)
-  "Return a variant of SOURCE, an <origin> instance, whose method uses
+(define bootstrap-origin
+  (mlambdaq (source)
+    "Return a variant of SOURCE, an <origin> instance, whose method uses
 %BOOTSTRAP-GUILE to do its job."
-  (define (boot fetch)
-    (lambda* (url hash-algo hash
-              #:optional name #:key system)
-      (fetch url hash-algo hash name
-             #:guile %bootstrap-guile
-             #:system system)))
+    (define (boot fetch)
+      (lambda* (url hash-algo hash
+                    #:optional name #:key system)
+        (fetch url hash-algo hash name
+               #:guile %bootstrap-guile
+               #:system system)))
 
-  (define %bootstrap-patch-inputs
-    ;; Packages used when an <origin> has a non-empty 'patches' field.
-    `(("tar"   ,%bootstrap-coreutils&co)
-      ("xz"    ,%bootstrap-coreutils&co)
-      ("bzip2" ,%bootstrap-coreutils&co)
-      ("gzip"  ,%bootstrap-coreutils&co)
-      ("patch" ,%bootstrap-coreutils&co)))
+    (define %bootstrap-patch-inputs
+      ;; Packages used when an <origin> has a non-empty 'patches' field.
+      `(("tar"   ,%bootstrap-coreutils&co)
+        ("xz"    ,%bootstrap-coreutils&co)
+        ("bzip2" ,%bootstrap-coreutils&co)
+        ("gzip"  ,%bootstrap-coreutils&co)
+        ("patch" ,%bootstrap-coreutils&co)))
 
-  (let ((orig-method (origin-method source)))
-    (origin (inherit source)
-      (method (cond ((eq? orig-method url-fetch)
-                     (boot url-fetch))
-                    (else orig-method)))
-      (patch-guile %bootstrap-guile)
-      (patch-inputs %bootstrap-patch-inputs)
+    (let ((orig-method (origin-method source)))
+      (if (or (not (null? (origin-patches source)))
+              (origin-snippet source))
+          (origin (inherit source)
+                  (method (if (eq? orig-method url-fetch)
+                              (boot url-fetch)
+                              orig-method))
+                  (patch-guile %bootstrap-guile)
+                  (patch-inputs %bootstrap-patch-inputs)
 
-      ;; Patches can be origins as well, so process them.
-      (patches (map (match-lambda
-                     ((? origin? patch)
-                      (bootstrap-origin patch))
-                     (patch patch))
-                    (origin-patches source))))))
+                  ;; Patches can be origins as well, so process them.
+                  (patches (map (match-lambda
+                                  ((? origin? patch)
+                                   (bootstrap-origin patch))
+                                  (patch patch))
+                                (origin-patches source))))
+          source))))
 
 (define* (package-from-tarball name source program-to-test description
                                #:key snippet)
   "Return a package that correspond to the extraction of SOURCE.
-PROGRAM-TO-TEST is a program to run after extraction of SOURCE, to check
-whether everything is alright.  If SNIPPET is provided, it is evaluated after
-extracting SOURCE.  SNIPPET should raise an exception to signal an error; its
-return value is ignored."
+PROGRAM-TO-TEST is #f or a string: the program to run after extraction of
+SOURCE to check whether everything is alright.  If SNIPPET is provided, it is
+evaluated after extracting SOURCE.  SNIPPET should return true if successful,
+or false to signal an error."
   (package
     (name name)
     (version "0")
@@ -109,25 +218,28 @@ return value is ignored."
      `(#:guile ,%bootstrap-guile
        #:modules ((guix build utils))
        #:builder
-       (let ((out     (assoc-ref %outputs "out"))
-             (tar     (assoc-ref %build-inputs "tar"))
-             (xz      (assoc-ref %build-inputs "xz"))
-             (tarball (assoc-ref %build-inputs "tarball")))
+       (begin
          (use-modules (guix build utils))
 
-         (mkdir out)
-         (copy-file tarball "binaries.tar.xz")
-         (invoke xz "-d" "binaries.tar.xz")
-         (let ((builddir (getcwd)))
-           (with-directory-excursion out
-             (invoke tar "xvf"
-                     (string-append builddir "/binaries.tar"))
-             ,@(if snippet (list snippet) '())
-             (invoke (string-append "bin/" ,program-to-test)
-                     "--version"))))))
+         (let ((out     (assoc-ref %outputs "out"))
+              (tar     (assoc-ref %build-inputs "tar"))
+              (xz      (assoc-ref %build-inputs "xz"))
+              (tarball (assoc-ref %build-inputs "tarball")))
+
+          (mkdir out)
+          (copy-file tarball "binaries.tar.xz")
+          (invoke xz "-d" "binaries.tar.xz")
+          (let ((builddir (getcwd)))
+            (with-directory-excursion out
+              (invoke tar "xvf"
+                      (string-append builddir "/binaries.tar"))
+              ,@(if snippet (list snippet) '())
+              (or (not ,program-to-test)
+                  (invoke (string-append "bin/" ,program-to-test)
+                          "--version"))))))))
     (inputs
-     `(("tar" ,(search-bootstrap-binary "tar" (%current-system)))
-       ("xz"  ,(search-bootstrap-binary "xz" (%current-system)))
+     `(("tar" ,(bootstrap-executable "tar" (%current-system)))
+       ("xz"  ,(bootstrap-executable "xz" (%current-system)))
        ("tarball" ,(bootstrap-origin (source (%current-system))))))
     (source #f)
     (synopsis description)
@@ -174,6 +286,7 @@ return value is ignored."
         ((string=? system "i686-gnu") "/lib/ld.so.1")
         ((string=? system "aarch64-linux") "/lib/ld-linux-aarch64.so.1")
         ((string=? system "powerpc-linux") "/lib/ld.so.1")
+        ((string=? system "powerpc64-linux") "/lib/ld64.so.1")
         ((string=? system "powerpc64le-linux") "/lib/ld64.so.2")
         ((string=? system "alpha-linux") "/lib/ld-linux.so.2")
         ((string=? system "s390x-linux") "/lib/ld64.so.1")
@@ -187,6 +300,7 @@ return value is ignored."
         ((string=? system "avr") "no-ld.so")
         ((string=? system "propeller-elf") "no-ld.so")
         ((string=? system "i686-mingw") "no-ld.so")
+        ((string=? system "x86_64-mingw") "no-ld.so")
         ((string=? system "vc4-elf") "no-ld.so")
 
         (else (error "dynamic linker name not known for this system"
@@ -199,11 +313,14 @@ return value is ignored."
 
 (define %bootstrap-base-urls
   ;; This is where the initial binaries come from.
-  '("https://alpha.gnu.org/gnu/guix/bootstrap"
+  '("https://ftp.gnu.org/gnu/guix/bootstrap"
+    "https://alpha.gnu.org/gnu/guix/bootstrap"
+    "http://ftp.gnu.org/gnu/guix/bootstrap"
     "http://alpha.gnu.org/gnu/guix/bootstrap"
     "ftp://alpha.gnu.org/gnu/guix/bootstrap"
     "http://www.fdn.fr/~lcourtes/software/guix/packages"
-    "http://flashner.co.il/guix/bootstrap"))
+    "http://flashner.co.il/guix/bootstrap"
+    "http://lilypond.org/janneke/guix/"))
 
 (define (bootstrap-guile-url-path system)
   "Return the URI for FILE."
@@ -213,6 +330,8 @@ return value is ignored."
                     "/20170217/guile-2.0.14.tar.xz")
                    ("armhf-linux"
                     "/20150101/guile-2.0.11.tar.xz")
+                   ("i586-gnu"
+                    "/20200326/guile-static-stripped-2.0.14-i586-pc-gnu.tar.xz")
                    (_
                     "/20131110/guile-2.0.9.tar.xz"))))
 
@@ -228,7 +347,9 @@ return value is ignored."
     ("armhf-linux"
      (base32 "1mi3brl7l58aww34rawhvja84xc7l1b4hmwdmc36fp9q9mfx0lg5"))
     ("aarch64-linux"
-     (base32 "1giy2aprjmn5fp9c4s9r125fljw4wv6ixy5739i5bffw4jgr0f9r"))))
+     (base32 "1giy2aprjmn5fp9c4s9r125fljw4wv6ixy5739i5bffw4jgr0f9r"))
+    ("i586-gnu"
+     (base32 "0wgqpsmvg25rnqn49ap7kwd2qxccd8dr4lllzp7i3rjvgav27vac"))))
 
 (define (bootstrap-guile-origin system)
   "Return an <origin> object for the Guile tarball of SYSTEM."
@@ -251,11 +372,9 @@ return value is ignored."
                     #:key outputs system search-paths
                     #:allow-other-keys)
   (define (->store file)
-    (add-to-store store file #t "sha256"
-                  (or (search-bootstrap-binary file
-                                               system)
-                      (error "bootstrap binary not found"
-                             file system))))
+    (run-with-store store
+      (lower-object (bootstrap-executable file system)
+                    system)))
 
   (let* ((tar   (->store "tar"))
          (xz    (->store "xz"))
@@ -305,15 +424,17 @@ $out/bin/guile -c ~s $out ~a
 
 # Sanity check.
 $out/bin/guile --version~%"
-                                     mkdir xz tar
+                                     (derivation->output-path mkdir)
+                                     (derivation->output-path xz)
+                                     (derivation->output-path tar)
                                      (format #f "~s" make-guile-wrapper)
-                                     bash)
-                             (list mkdir xz tar bash))))
+                                     (derivation->output-path bash)))))
     (derivation store name
-                bash `(,builder)
+                (derivation->output-path bash) `(,builder)
                 #:system system
-                #:inputs (list (derivation-input guile))
-                #:sources (list bash builder)
+                #:inputs (map derivation-input
+                              (list bash mkdir tar xz guile))
+                #:sources (list builder)
                 #:env-vars `(("GUILE_TARBALL"
                               . ,(derivation->output-path guile))))))
 
@@ -358,6 +479,8 @@ $out/bin/guile --version~%"
                                              "/20150101/static-binaries.tar.xz")
                                             ("aarch64-linux"
                                              "/20170217/static-binaries.tar.xz")
+                                            ("i586-gnu"
+                                             "/20200326/static-binaries-0-i586-pc-gnu.tar.xz")
                                             (_
                                              "/20131110/static-binaries.tar.xz")))
                                      %bootstrap-base-urls))
@@ -375,6 +498,9 @@ $out/bin/guile --version~%"
                               ("aarch64-linux"
                                (base32
                                 "18dfiq6c6xhsdpbidigw6480wh0vdgsxqq3xindq4lpdgqlccpfh"))
+                              ("i586-gnu"
+                               (base32
+                                "17kllqnf3fg79gzy9ansgi801c46yh9c23h4d923plvb0nfm1cfn"))
                               ("mips64el-linux"
                                (base32
                                 "072y4wyfsj1bs80r6vbybbafy8ya4vfy7qj25dklwk97m6g71753"))))))
@@ -394,6 +520,22 @@ $out/bin/guile --version~%"
                                (("^exec grep") (string-append (getcwd) "/bin/grep"))))
                            (chmod "bin" #o555))))
 
+(define-public %bootstrap-linux-libre-headers
+  (package-from-tarball
+   "linux-libre-headers-bootstrap"
+   (lambda (system)
+     (origin
+       (method url-fetch)
+       (uri (map (cute string-append <>
+                       "/i686-linux/20190815/"
+                       "linux-libre-headers-stripped-4.14.67-i686-linux.tar.xz")
+                 %bootstrap-base-urls))
+       (sha256
+        (base32
+         "0sm2z9x4wk45bh6qfs94p0w1d6hsy6dqx9sw38qsqbvxwa1qzk8s"))))
+   #f                                   ; no program to test
+   "Bootstrap linux-libre-headers"))
+
 (define %bootstrap-binutils
   (package-from-tarball "binutils-bootstrap"
                         (lambda (system)
@@ -405,6 +547,8 @@ $out/bin/guile --version~%"
                                              "/20150101/binutils-2.25.tar.xz")
                                             ("aarch64-linux"
                                              "/20170217/binutils-2.27.tar.xz")
+                                            ("i586-gnu"
+                                             "/20200326/binutils-static-stripped-2.34-i586-pc-gnu.tar.xz")
                                             (_
                                              "/20131110/binutils-2.23.2.tar.xz")))
                                      %bootstrap-base-urls))
@@ -422,6 +566,9 @@ $out/bin/guile --version~%"
                               ("aarch64-linux"
                                (base32
                                 "111s7ilfiby033rczc71797xrmaa3qlv179wdvsaq132pd51xv3n"))
+                              ("i586-gnu"
+                               (base32
+                                "11kykv1kmqc5wln57rs4klaqa13hm952smkc57qcsyss21kfjprs"))
                               ("mips64el-linux"
                                (base32
                                 "1x8kkhcxmfyzg1ddpz2pxs6fbdl6412r7x0nzbmi5n7mj8zw2gy7"))))))
@@ -439,31 +586,33 @@ $out/bin/guile --version~%"
      `(#:guile ,%bootstrap-guile
        #:modules ((guix build utils))
        #:builder
-       (let ((out     (assoc-ref %outputs "out"))
-             (tar     (assoc-ref %build-inputs "tar"))
-             (xz      (assoc-ref %build-inputs "xz"))
-             (tarball (assoc-ref %build-inputs "tarball")))
+       (begin
          (use-modules (guix build utils))
 
-         (mkdir out)
-         (copy-file tarball "binaries.tar.xz")
-         (invoke xz "-d" "binaries.tar.xz")
-         (let ((builddir (getcwd)))
-           (with-directory-excursion out
-             (invoke tar "xvf"
-                     (string-append builddir
-                                    "/binaries.tar"))
-             (chmod "lib" #o755)
+         (let ((out     (assoc-ref %outputs "out"))
+              (tar     (assoc-ref %build-inputs "tar"))
+              (xz      (assoc-ref %build-inputs "xz"))
+              (tarball (assoc-ref %build-inputs "tarball")))
 
-             ;; Patch libc.so so it refers to the right path.
-             (substitute* "lib/libc.so"
-               (("/[^ ]+/lib/(libc|ld)" _ prefix)
-                (string-append out "/lib/" prefix)))
+          (mkdir out)
+          (copy-file tarball "binaries.tar.xz")
+          (invoke xz "-d" "binaries.tar.xz")
+          (let ((builddir (getcwd)))
+            (with-directory-excursion out
+              (invoke tar "xvf"
+                      (string-append builddir
+                                     "/binaries.tar"))
+              (chmod "lib" #o755)
 
-             #t)))))
+              ;; Patch libc.so so it refers to the right path.
+              (substitute* "lib/libc.so"
+                (("/[^ ]+/lib/(libc|ld)" _ prefix)
+                 (string-append out "/lib/" prefix)))
+
+              #t))))))
     (inputs
-     `(("tar" ,(search-bootstrap-binary "tar" (%current-system)))
-       ("xz"  ,(search-bootstrap-binary "xz" (%current-system)))
+     `(("tar" ,(bootstrap-executable "tar" (%current-system)))
+       ("xz"  ,(bootstrap-executable "xz" (%current-system)))
        ("tarball" ,(bootstrap-origin
                     (origin
                      (method url-fetch)
@@ -473,6 +622,8 @@ $out/bin/guile --version~%"
                                        "/20150101/glibc-2.20.tar.xz")
                                       ("aarch64-linux"
                                        "/20170217/glibc-2.25.tar.xz")
+                                      ("i586-gnu"
+                                       "/20200326/glibc-stripped-2.31-i586-pc-gnu.tar.xz")
                                       (_
                                        "/20131110/glibc-2.18.tar.xz")))
                                %bootstrap-base-urls))
@@ -490,6 +641,9 @@ $out/bin/guile --version~%"
                         ("aarch64-linux"
                          (base32
                           "07nx3x8598i2924rjnlrncg6rm61c9bmcczbbcpbx0fb742nvv5c"))
+                        ("i586-gnu"
+                         (base32
+                          "14ddm10lpbas8bankmn5bcrlqvz1v5dnn1qjzxb19r57vd2w5952"))
                         ("mips64el-linux"
                          (base32
                           "0k97a3whzx3apsi9n2cbsrr79ad6lh00klxph9hw4fqyp1abkdsg")))))))))
@@ -510,73 +664,80 @@ $out/bin/guile --version~%"
      `(#:guile ,%bootstrap-guile
        #:modules ((guix build utils))
        #:builder
-       (let ((out     (assoc-ref %outputs "out"))
-             (tar     (assoc-ref %build-inputs "tar"))
-             (xz      (assoc-ref %build-inputs "xz"))
-             (bash    (assoc-ref %build-inputs "bash"))
-             (libc    (assoc-ref %build-inputs "libc"))
-             (tarball (assoc-ref %build-inputs "tarball")))
+       (begin
          (use-modules (guix build utils)
                       (ice-9 popen))
 
-         (mkdir out)
-         (copy-file tarball "binaries.tar.xz")
-         (invoke xz "-d" "binaries.tar.xz")
-         (let ((builddir (getcwd))
-               (bindir   (string-append out "/bin")))
-           (with-directory-excursion out
-             (invoke tar "xvf"
-                     (string-append builddir "/binaries.tar")))
+         (let ((out     (assoc-ref %outputs "out"))
+               (tar     (assoc-ref %build-inputs "tar"))
+               (xz      (assoc-ref %build-inputs "xz"))
+               (bash    (assoc-ref %build-inputs "bash"))
+               (libc    (assoc-ref %build-inputs "libc"))
+               (tarball (assoc-ref %build-inputs "tarball")))
 
-           (with-directory-excursion bindir
-             (chmod "." #o755)
-             (rename-file "gcc" ".gcc-wrapped")
-             (call-with-output-file "gcc"
-               (lambda (p)
-                 (format p "#!~a
+           (mkdir out)
+           (copy-file tarball "binaries.tar.xz")
+           (invoke xz "-d" "binaries.tar.xz")
+           (let ((builddir (getcwd))
+                 (bindir   (string-append out "/bin")))
+             (with-directory-excursion out
+               (invoke tar "xvf"
+                       (string-append builddir "/binaries.tar")))
+
+             (with-directory-excursion bindir
+               (chmod "." #o755)
+               (rename-file "gcc" ".gcc-wrapped")
+               (call-with-output-file "gcc"
+                 (lambda (p)
+                   (format p "#!~a
 exec ~a/bin/.gcc-wrapped -B~a/lib \
      -Wl,-rpath -Wl,~a/lib \
      -Wl,-dynamic-linker -Wl,~a/~a \"$@\"~%"
-                         bash
-                         out libc libc libc
-                         ,(glibc-dynamic-linker))))
+                           bash
+                           out libc libc libc
+                           ,(glibc-dynamic-linker))))
 
-             (chmod "gcc" #o555)
-             #t)))))
+               (chmod "gcc" #o555)
+               #t))))))
     (inputs
-     `(("tar" ,(search-bootstrap-binary "tar" (%current-system)))
-       ("xz"  ,(search-bootstrap-binary "xz" (%current-system)))
-       ("bash" ,(search-bootstrap-binary "bash" (%current-system)))
+     `(("tar" ,(bootstrap-executable "tar" (%current-system)))
+       ("xz"  ,(bootstrap-executable "xz" (%current-system)))
+       ("bash" ,(bootstrap-executable "bash" (%current-system)))
        ("libc" ,%bootstrap-glibc)
        ("tarball" ,(bootstrap-origin
                     (origin
-                     (method url-fetch)
-                     (uri (map (cut string-append <> "/" (%current-system)
-                                    (match (%current-system)
-                                      ("armhf-linux"
-                                       "/20150101/gcc-4.8.4.tar.xz")
-                                      ("aarch64-linux"
-                                       "/20170217/gcc-5.4.0.tar.xz")
-                                      (_
-                                       "/20131110/gcc-4.8.2.tar.xz")))
-                               %bootstrap-base-urls))
-                     (sha256
-                      (match (%current-system)
-                        ("x86_64-linux"
-                         (base32
-                          "17ga4m6195n4fnbzdkmik834znkhs53nkypp6557pl1ps7dgqbls"))
-                        ("i686-linux"
-                         (base32
-                          "150c1arrf2k8vfy6dpxh59vcgs4p1bgiz2av5m19dynpks7rjnyw"))
-                        ("armhf-linux"
-                         (base32
-                          "0ghz825yzp43fxw53kd6afm8nkz16f7dxi9xi40bfwc8x3nbbr8v"))
-                        ("aarch64-linux"
-                         (base32
-                          "1ar3vdzyqbfm0z36kmvazvfswxhcihlacl2dzdjgiq25cqnq9ih1"))
-                        ("mips64el-linux"
-                         (base32
-                          "1m5miqkyng45l745n0sfafdpjkqv9225xf44jqkygwsipj2cv9ks")))))))))
+                      (method url-fetch)
+                      (uri (map (cut string-append <> "/" (%current-system)
+                                     (match (%current-system)
+                                       ("armhf-linux"
+                                        "/20150101/gcc-4.8.4.tar.xz")
+                                       ("aarch64-linux"
+                                        "/20170217/gcc-5.4.0.tar.xz")
+                                       ("i586-gnu"
+                                        "/20200326/gcc-stripped-5.5.0-i586-pc-gnu.tar.xz")
+                                       (_
+                                        "/20131110/gcc-4.8.2.tar.xz")))
+                                %bootstrap-base-urls))
+                      (sha256
+                       (match (%current-system)
+                         ("x86_64-linux"
+                          (base32
+                           "17ga4m6195n4fnbzdkmik834znkhs53nkypp6557pl1ps7dgqbls"))
+                         ("i686-linux"
+                          (base32
+                           "150c1arrf2k8vfy6dpxh59vcgs4p1bgiz2av5m19dynpks7rjnyw"))
+                         ("armhf-linux"
+                          (base32
+                           "0ghz825yzp43fxw53kd6afm8nkz16f7dxi9xi40bfwc8x3nbbr8v"))
+                         ("aarch64-linux"
+                          (base32
+                           "1ar3vdzyqbfm0z36kmvazvfswxhcihlacl2dzdjgiq25cqnq9ih1"))
+                         ("i586-gnu"
+                          (base32
+                           "1j2zc58wzil71a34h7c70sd68dmqvcscrw3rmn2whq79vd70zvv5"))
+                         ("mips64el-linux"
+                          (base32
+                           "1m5miqkyng45l745n0sfafdpjkqv9225xf44jqkygwsipj2cv9ks")))))))))
     (native-search-paths
      (list (search-path-specification
             (variable "CPATH")
@@ -589,15 +750,128 @@ exec ~a/bin/.gcc-wrapped -B~a/lib \
     (home-page #f)
     (license gpl3+)))
 
-(define %bootstrap-inputs
+(define %bootstrap-mescc-tools
+  ;; The initial MesCC tools.  Uses binaries from a tarball typically built by
+  ;; %MESCC-TOOLS-BOOTSTRAP-TARBALL.
+  (package
+    (name "bootstrap-mescc-tools")
+    (version "0.5.2")
+    (source #f)
+    (build-system trivial-build-system)
+    (arguments
+     `(#:guile ,%bootstrap-guile
+       #:modules ((guix build utils))
+       #:builder
+       (begin
+         (use-modules (guix build utils)
+                      (ice-9 popen))
+         (let ((out     (assoc-ref %outputs "out"))
+               (tar     (assoc-ref %build-inputs "tar"))
+               (xz      (assoc-ref %build-inputs "xz"))
+               (tarball (assoc-ref %build-inputs "tarball")))
+
+           (mkdir out)
+           (copy-file tarball "binaries.tar.xz")
+           (invoke xz "-d" "binaries.tar.xz")
+           (let ((builddir (getcwd))
+                 (bindir   (string-append out "/bin")))
+             (with-directory-excursion out
+               (invoke tar "xvf"
+                       (string-append builddir "/binaries.tar"))))))))
+    (inputs
+     `(("tar" ,(bootstrap-executable "tar" (%current-system)))
+       ("xz"  ,(bootstrap-executable "xz" (%current-system)))
+       ("tarball"
+        ,(bootstrap-origin
+          (origin
+            (method url-fetch)
+            (uri (map
+                  (cute string-append <>
+                        "/i686-linux/20190815/"
+                        "mescc-tools-static-stripped-0.5.2-i686-linux.tar.xz")
+                  %bootstrap-base-urls))
+            (sha256
+             (base32
+              "0c3kklgghzh4q2dbpl6asb74cimp7hp6jscdwqwmzxbapgcl6582")))))))
+    (synopsis "Bootstrap binaries of MesCC Tools")
+    (description synopsis)
+    (home-page #f)
+    (supported-systems '("i686-linux" "x86_64-linux"))
+    (license gpl3+)))
+
+(define %bootstrap-mes
+  ;; The initial Mes.  Uses binaries from a tarball typically built by
+  ;; %MES-BOOTSTRAP-TARBALL.
+  (package
+    (name "bootstrap-mes")
+    (version "0")
+    (source #f)
+    (build-system trivial-build-system)
+    (arguments
+     `(#:guile ,%bootstrap-guile
+       #:modules ((guix build utils))
+       #:builder
+       (begin
+         (use-modules (guix build utils)
+                      (ice-9 popen))
+         (let ((out     (assoc-ref %outputs "out"))
+               (tar     (assoc-ref %build-inputs "tar"))
+               (xz      (assoc-ref %build-inputs "xz"))
+               (tarball (assoc-ref %build-inputs "tarball")))
+
+           (mkdir out)
+           (copy-file tarball "binaries.tar.xz")
+           (invoke xz "-d" "binaries.tar.xz")
+           (let ((builddir (getcwd))
+                 (bindir   (string-append out "/bin")))
+             (with-directory-excursion out
+               (invoke tar "xvf"
+                       (string-append builddir "/binaries.tar"))))))))
+    (inputs
+     `(("tar" ,(bootstrap-executable "tar" (%current-system)))
+       ("xz"  ,(bootstrap-executable "xz" (%current-system)))
+       ("tarball"
+        ,(bootstrap-origin
+          (origin
+            (method url-fetch)
+            (uri (map
+                  (cute string-append <>
+                        "/i686-linux/20190815/"
+                        "mes-minimal-stripped-0.19-i686-linux.tar.xz")
+                  %bootstrap-base-urls))
+            (sha256
+             (base32
+              "1q4xjpx6nbn44kxnilpgl12bhpmwy2bblzwszc2ci7xkf400jcpv")))))))
+    (supported-systems '("i686-linux" "x86_64-linux"))
+    (synopsis "Bootstrap binaries of Mes")
+    (description synopsis)
+    (home-page #f)
+    (license gpl3+)))
+
+(define (%bootstrap-inputs)
   ;; The initial, pre-built inputs.  From now on, we can start building our
   ;; own packages.
+  (match (%current-system)
+    ((or "i686-linux" "x86_64-linux")
+     `(("linux-libre-headers" ,%bootstrap-linux-libre-headers)
+       ("bootstrap-mescc-tools" ,%bootstrap-mescc-tools)
+       ("mes" ,%bootstrap-mes)))
+    (_
+     `(("libc" ,%bootstrap-glibc)
+       ("gcc" ,%bootstrap-gcc)
+       ("binutils" ,%bootstrap-binutils)
+       ("coreutils&co" ,%bootstrap-coreutils&co)
+       ;; In gnu-build-system.scm, we rely on the availability of Bash.
+       ("bash" ,%bootstrap-coreutils&co)))))
+
+(define %bootstrap-inputs-for-tests
+  ;; These are bootstrap inputs that are cheap to produce (no compilation
+  ;; needed) and that are meant to be used for testing.  (These are those we
+  ;; used before the Mes-based reduced bootstrap.)
   `(("libc" ,%bootstrap-glibc)
     ("gcc" ,%bootstrap-gcc)
     ("binutils" ,%bootstrap-binutils)
     ("coreutils&co" ,%bootstrap-coreutils&co)
-
-    ;; In gnu-build-system.scm, we rely on the availability of Bash.
     ("bash" ,%bootstrap-coreutils&co)))
 
 ;;; bootstrap.scm ends here

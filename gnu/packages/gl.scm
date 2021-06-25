@@ -3,13 +3,16 @@
 ;;; Copyright © 2013 Joshua Grant <tadni@riseup.net>
 ;;; Copyright © 2014, 2016 David Thompson <davet@gnu.org>
 ;;; Copyright © 2014, 2015, 2016, 2017 Mark H Weaver <mhw@netris.org>
-;;; Copyright © 2016 ng0 <ng0@n0.is>
-;;; Copyright © 2016, 2017, 2018 Ricardo Wurmus <rekado@elephly.net>
+;;; Copyright © 2016 Nikita <nikita@n0.is>
+;;; Copyright © 2016, 2017, 2018, 2020 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2016 David Thompson <davet@gnu.org>
 ;;; Copyright © 2017, 2018, 2019 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2017 Arun Isaac <arunisaac@systemreboot.net>
 ;;; Copyright © 2017, 2018, 2019 Rutger Helling <rhelling@mykolab.com>
-;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2019 Pierre Neidhardt <mail@ambrevar.xyz>
+;;; Copyright © 2020 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2020 Giacomo Leidi <goodoldpaul@autistici.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -41,6 +44,7 @@
   #:use-module (gnu packages image)
   #:use-module (gnu packages linux)
   #:use-module (gnu packages llvm)
+  #:use-module (gnu packages mono)
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages python)
   #:use-module (gnu packages python-xyz)
@@ -52,6 +56,7 @@
   #:use-module (gnu packages xorg)
   #:use-module (guix download)
   #:use-module (guix git-download)
+  #:use-module (guix hg-download)
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system cmake)
   #:use-module (guix build-system meson)
@@ -64,14 +69,14 @@
 (define-public glu
   (package
     (name "glu")
-    (version "9.0.0")
+    (version "9.0.1")
     (source (origin
               (method url-fetch)
               (uri (string-append "ftp://ftp.freedesktop.org/pub/mesa/glu/glu-"
                                   version ".tar.gz"))
               (sha256
                (base32
-                "0r72yyhj09x3krn3kn629jqbwyq50ji8w5ri2pn6zwrk35m4g1s3"))))
+                "1xqhk9bn10nbvffw3r4p4rjslwz1l7gaycc0x2pqkr2irp7q9x7n"))))
     (build-system gnu-build-system)
     (propagated-inputs
      `(("mesa" ,mesa))) ; according to glu.pc
@@ -93,7 +98,7 @@ as ASCII text.")
 (define-public freeglut
   (package
     (name "freeglut")
-    (version "3.0.0")
+    (version "3.2.1")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -101,16 +106,15 @@ as ASCII text.")
                     version "/freeglut-" version ".tar.gz"))
               (sha256
                (base32
-                "18knkyczzwbmyg8hr4zh8a1i5ga01np2jzd1rwmsh7mh2n2vwhra"))))
+                "0s6sk49q8ijgbsrrryb7dzqx2fa744jhx1wck5cz5jia2010w06l"))))
     (build-system cmake-build-system)
-    (arguments '(#:tests? #f)) ; no test target
-    (inputs `(("mesa" ,mesa)
-              ("libx11" ,libx11)
+    (arguments
+     '(#:tests? #f                      ;no test target
+       #:configure-flags '("-DFREEGLUT_BUILD_STATIC_LIBS=OFF")))
+    (inputs `(("libx11" ,libx11)
               ("libxi" ,libxi)
               ("libxrandr" ,libxrandr)
-              ("libxxf86vm" ,libxxf86vm)
-              ("xorgproto" ,xorgproto)
-              ("xinput" ,xinput)))
+              ("libxxf86vm" ,libxxf86vm)))
     (propagated-inputs
      ;; Headers from Mesa and GLU are needed.
      `(("glu" ,glu)
@@ -144,20 +148,23 @@ the X-Consortium license.")
               (sha256
                (base32
                 "16lrxxxd9ps9l69y3zsw6iy0drwjsp6m26d1937xj71alqk6dr6x"))))
-    (build-system gnu-build-system)))
+    (build-system gnu-build-system)
+    (arguments
+     '(#:configure-flags '("--disable-static")))))
 
 (define-public ftgl
   (package
     (name "ftgl")
-    (version "2.1.3-rc5")
+    (version "2.4.0")
+    (home-page "https://github.com/frankheckenbach/ftgl")
     (source (origin
-              (method url-fetch)
-              (uri (string-append
-                    "mirror://sourceforge/ftgl/FTGL%20Source/2.1.3~rc5/"
-                    "ftgl-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference (url home-page)
+                                  (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "0nsn4s6vnv5xcgxcw6q031amvh2zfj2smy1r5mbnjj2548hxcn2l"))))
+                "0zjs1h9w30gajq9lndzvjsa26rsmr1081lb1fbpbj10yhcdcsc79"))))
     (build-system gnu-build-system)
     (arguments
      `(#:configure-flags '("--disable-static")))
@@ -167,8 +174,10 @@ the X-Consortium license.")
               ("mesa" ,mesa)
               ("glu" ,glu)))
     (native-inputs
-     `(("pkg-config" ,pkg-config)))
-    (home-page "http://ftgl.sourceforge.net")
+     `(("pkg-config" ,pkg-config)
+       ("autoconf" ,autoconf)
+       ("automake" ,automake)
+       ("libtool" ,libtool)))
     (synopsis "Font rendering library for OpenGL applications")
     (description
      "FTGL is a font rendering library for OpenGL applications.  Supported
@@ -184,7 +193,7 @@ Polygon meshes, and Extruded polygon meshes.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/divVerent/s2tc.git")
+             (url "https://github.com/divVerent/s2tc")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
@@ -224,7 +233,14 @@ also known as DXTn or DXTC) for Mesa.")
 (define-public mesa
   (package
     (name "mesa")
-    (version "19.1.1")
+    (version "20.0.7")
+
+    ;; Mesa 20.0.5 through 20.0.7 has problems with some graphic drivers, so
+    ;; we need this newer version.
+    ;; https://gitlab.freedesktop.org/mesa/mesa/-/issues/2882
+    ;; https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/4861
+    (replacement mesa-20.0.8)
+
     (source
       (origin
         (method url-fetch)
@@ -236,7 +252,7 @@ also known as DXTn or DXTC) for Mesa.")
                                   version "/mesa-" version ".tar.xz")))
         (sha256
          (base32
-          "10amy5sdmpjbskr3xazgk0jyli8xpgi0y1nsmjr76hx8nhb4n4bj"))
+          "0y517qpdg6v6dsdgzb365p03m30511sbyh8pq0mcvhvjwy7javpy"))
         (patches
          (search-patches "mesa-skip-disk-cache-test.patch"))))
     (build-system meson-build-system)
@@ -260,10 +276,10 @@ also known as DXTn or DXTC) for Mesa.")
         ("libxvmc" ,libxvmc)
         ,@(match (%current-system)
             ((or "x86_64-linux" "i686-linux")
-             `(("llvm" ,llvm)))
+             ;; Note: update the 'clang' input of mesa-opencl when bumping this.
+             `(("llvm" ,llvm-10)))
             (_
              `()))
-        ("makedepend" ,makedepend)
         ("wayland" ,wayland)
         ("wayland-protocols" ,wayland-protocols)))
     (native-inputs
@@ -272,23 +288,22 @@ also known as DXTn or DXTC) for Mesa.")
         ("gettext" ,gettext-minimal)
         ,@(match (%current-system)
             ((or "x86_64-linux" "i686-linux")
-             `(("glslang" ,glslang)
-               ("vulkan-headers" ,vulkan-headers)
-               ("vulkan-loader" ,vulkan-loader)))
+             `(("glslang" ,glslang)))
             (_
              `()))
         ("pkg-config" ,pkg-config)
-        ("python" ,python)
+        ("python" ,python-wrapper)
         ("python-mako" ,python-mako)
         ("which" ,(@ (gnu packages base) which))))
+    (outputs '("out" "bin"))
     (arguments
      `(#:configure-flags
        '(,@(match (%current-system)
              ((or "armhf-linux" "aarch64-linux")
               ;; TODO: Fix svga driver for aarch64 and armhf.
-              '("-Dgallium-drivers=etnaviv,freedreno,nouveau,r300,r600,swrast,tegra,v3d,vc4,virgl"))
+              '("-Dgallium-drivers=etnaviv,freedreno,kmsro,lima,nouveau,panfrost,r300,r600,swrast,tegra,v3d,vc4,virgl"))
              (_
-              '("-Dgallium-drivers=nouveau,r300,r600,radeonsi,svga,swrast,virgl")))
+              '("-Dgallium-drivers=iris,nouveau,r300,r600,radeonsi,svga,swrast,virgl")))
          ;; Enable various optional features.  TODO: opencl requires libclc,
          ;; omx requires libomxil-bellagio
          "-Dplatforms=x11,drm,surfaceless,wayland"
@@ -305,11 +320,8 @@ also known as DXTn or DXTC) for Mesa.")
 
          ;; Enable Vulkan on i686-linux and x86-64-linux.
          ,@(match (%current-system)
-             ("x86_64-linux"
+             ((or "i686-linux" "x86_64-linux")
               '("-Dvulkan-drivers=intel,amd"))
-             ;; TODO: Fix intel driver on i686-linux.
-             ("i686-linux"
-              '("-Dvulkan-drivers=amd"))
              (_
               '("-Dvulkan-drivers=auto")))
 
@@ -331,37 +343,37 @@ also known as DXTn or DXTC) for Mesa.")
                 "-Dllvm=true"))         ; default is x86/x86_64 only
              (_
               '("-Ddri-drivers=nouveau,r200,r100"))))
+
+       ;; XXX: 'debugoptimized' causes LTO link failures on some drivers.  The
+       ;; documentation recommends using 'release' for performance anyway.
+       #:build-type "release"
+
        #:modules ((ice-9 match)
                   (srfi srfi-1)
                   (guix build utils)
                   (guix build meson-build-system))
        #:phases
        (modify-phases %standard-phases
-         (add-after
-           'unpack 'patch-create_test_cases
-           (lambda _
-             (substitute* "src/intel/genxml/gen_pack_header.py"
-               (("/usr/bin/env python2") (which "python")))
-             #t))
-         ,@(if (string-prefix? "i686" (%current-system))
+         ,@(if (string-prefix? "i686" (or (%current-target-system)
+                                          (%current-system)))
                ;; Disable new test from Mesa 19 that fails on i686.  Upstream
                ;; report: <https://bugs.freedesktop.org/show_bug.cgi?id=110612>.
                `((add-after 'unpack 'disable-failing-test
                    (lambda _
-                     (substitute* "src/gallium/tests/unit/meson.build"
+                     (substitute* "src/util/tests/format/meson.build"
                        (("'u_format_test',") ""))
                      #t)))
                '())
-         (add-before
-           'configure 'fix-dlopen-libnames
+         (add-before 'configure 'fix-dlopen-libnames
            (lambda* (#:key inputs outputs #:allow-other-keys)
              (let ((out (assoc-ref outputs "out")))
                ;; Remain agnostic to .so.X.Y.Z versions while doing
                ;; the substitutions so we're future-safe.
-               (substitute* "src/glx/dri_common.c"
-                 (("dlopen\\(\"libGL\\.so")
-                  (string-append "dlopen(\"" out "/lib/libGL.so")))
-               (substitute* "src/egl/drivers/dri2/egl_dri2.c"
+               (substitute* "src/glx/meson.build"
+                 (("-DGL_LIB_NAME=\"lib@0@\\.so\\.@1@\"")
+                  (string-append "-DGL_LIB_NAME=\"" out
+                                 "/lib/lib@0@.so.@1@\"")))
+               (substitute* "src/gbm/backends/dri/gbm_dri.c"
                  (("\"libglapi\\.so")
                   (string-append "\"" out "/lib/libglapi.so")))
                (substitute* "src/gbm/main/backend.c"
@@ -370,6 +382,26 @@ also known as DXTn or DXTC) for Mesa.")
                  ;; egl_gallium support.
                  (("\"gbm_dri\\.so")
                   (string-append "\"" out "/lib/dri/gbm_dri.so")))
+               #t)))
+         (add-after 'install 'split-outputs
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out"))
+                   (bin (assoc-ref outputs "bin")))
+               ,@(match (%current-system)
+                   ((or "i686-linux" "x86_64-linux")
+                    ;; Install the Vulkan overlay control script to a separate
+                    ;; output to prevent a reference on Python, saving ~70 MiB
+                    ;; on the closure size.
+                    '((copy-recursively (string-append out "/bin")
+                                        (string-append bin "/bin"))
+                      (delete-file-recursively (string-append out "/bin"))))
+                   (_
+                    ;; XXX: On architectures without the Vulkan overlay layer
+                    ;; just create an empty file because outputs can not be
+                    ;; added conditionally.
+                    '((mkdir-p (string-append bin "/bin"))
+                      (call-with-output-file (string-append bin "/bin/.empty")
+                        (const #t)))))
                #t)))
          (add-after 'install 'symlinks-instead-of-hard-links
            (lambda* (#:key outputs #:allow-other-keys)
@@ -414,9 +446,23 @@ device drivers allows Mesa to be used in many different environments ranging
 from software emulation to complete hardware acceleration for modern GPUs.")
     (license license:x11)))
 
-(define-public mesa-opencl
+;; Replacement package to fix <https://gitlab.freedesktop.org/mesa/mesa/-/issues/2863>.
+(define mesa-20.0.8
   (package
     (inherit mesa)
+    (version "20.0.8")
+    (source (origin
+              (inherit (package-source mesa))
+              (uri (list (string-append "https://mesa.freedesktop.org/archive/"
+                                        "mesa-" version ".tar.xz")
+                         (string-append "ftp://ftp.freedesktop.org/pub/mesa/"
+                                        "mesa-" version ".tar.xz")))
+              (sha256
+               (base32
+                "0v0bfh3ay07s6msxmklvwfaif0q02kq2yhy65fdhys49vw8c1w3c"))))))
+
+(define-public mesa-opencl
+  (package/inherit mesa
     (name "mesa-opencl")
     (arguments
      (substitute-keyword-arguments (package-arguments mesa)
@@ -426,12 +472,11 @@ from software emulation to complete hardware acceleration for modern GPUs.")
      `(("libclc" ,libclc)
        ,@(package-inputs mesa)))
     (native-inputs
-     `(("clang" ,clang)
+     `(("clang" ,clang-10)
        ,@(package-native-inputs mesa)))))
 
 (define-public mesa-opencl-icd
-  (package
-    (inherit mesa-opencl)
+  (package/inherit mesa-opencl
     (name "mesa-opencl-icd")
     (arguments
      (substitute-keyword-arguments (package-arguments mesa)
@@ -440,12 +485,12 @@ from software emulation to complete hardware acceleration for modern GPUs.")
                ,(delete "-Dgallium-opencl=standalone" flags)))))))
 
 (define-public mesa-headers
-  (package
-    (inherit mesa)
+  (package/inherit mesa
     (name "mesa-headers")
     (propagated-inputs '())
     (inputs '())
     (native-inputs '())
+    (outputs '("out"))
     (arguments
      '(#:phases
        (modify-phases %standard-phases
@@ -594,10 +639,30 @@ extension functionality is exposed in a single header file.")
 OpenGL graphics API.")
     (license license:lgpl3+)))
 
+(define-public guile3.0-opengl
+  (package
+    (inherit guile-opengl)
+    (name "guile3.0-opengl")
+    (arguments
+     (substitute-keyword-arguments (package-arguments guile-opengl)
+       ((#:phases phases)
+        `(modify-phases ,phases
+           (add-after 'unpack 'build-with-guile-3.0
+             (lambda _
+               (substitute* "configure"
+                 (("_guile_versions_to_search=\"")
+                  "_guile_versions_to_search=\"3.0 "))
+               #t))))))
+    (inputs
+     `(("guile" ,guile-3.0)
+       ("mesa" ,mesa)
+       ("glu" ,glu)
+       ("freeglut" ,freeglut)))))
+
 (define-public libepoxy
   (package
     (name "libepoxy")
-    (version "1.5.3")
+    (version "1.5.4")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -605,7 +670,7 @@ OpenGL graphics API.")
                     version "/libepoxy-" version ".tar.xz"))
               (sha256
                (base32
-                "0ga3qjv50x37my6pw5xr14g5n6z78hy5s8s06kays8c3ab2mha80"))))
+                "1ll9fach4v30dsyd47s5ial4gaiwihzr2afb77vxxzzy3mlcrlhb"))))
     (arguments
      `(#:phases
        (modify-phases %standard-phases
@@ -632,6 +697,53 @@ OpenGL graphics API.")
     (description
      "A library for handling OpenGL function pointer management.")
     (license license:x11)))
+
+(define-public libglvnd
+  (package
+    (name "libglvnd")
+    (version "1.3.2")
+    (home-page "https://gitlab.freedesktop.org/glvnd/libglvnd")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url home-page)
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "10x7fgb114r4gikdg6flszl3kwzcb9y5qa7sj9936mk0zxhjaylz"))))
+    (build-system meson-build-system)
+    (arguments
+     '(#:configure-flags '("-Dx11=enabled")
+       #:phases (modify-phases %standard-phases
+                  (add-after 'unpack 'disable-glx-tests
+                    (lambda _
+                      ;; This package is meant to be used alongside Mesa.
+                      ;; To avoid a circular dependency, disable tests that
+                      ;; require a running Xorg server.
+                      (substitute* "tests/meson.build"
+                        (("if with_glx")
+                         "if false"))
+                      #t)))))
+    (native-inputs
+     `(("pkg-config" ,pkg-config)))
+    (inputs
+     `(("libx11" ,libx11)
+       ("libxext" ,libxext)
+       ("xorgproto" ,xorgproto)))
+    (synopsis "Vendor-neutral OpenGL dispatch library")
+    (description
+     "libglvnd is a vendor-neutral dispatch layer for arbitrating OpenGL
+API calls between multiple vendors.  It allows multiple drivers from
+different vendors to coexist on the same filesystem, and determines which
+vendor to dispatch each API call to at runtime.
+
+Both GLX and EGL are supported, in any combination with OpenGL and OpenGL ES.")
+    ;; libglvnd is available under a custom X11-style license, and incorporates
+    ;; code with various other licenses.  See README.md for details.
+    (license (list (license:x11-style "file://README.md")
+                   license:x11
+                   license:expat))))
 
 (define-public soil
   (package
@@ -703,7 +815,7 @@ OpenGL.")
        ("libxinerama" ,libxinerama)
        ("libxcursor" ,libxcursor)
        ("libxxf86vm" ,libxxf86vm)))
-    (home-page "http://www.glfw.org")
+    (home-page "https://www.glfw.org")
     (synopsis "OpenGL application development library")
     (description
      "GLFW is a library for OpenGL, OpenGL ES and Vulkan development for
@@ -712,35 +824,39 @@ and surfaces, receiving input and events.")
     (license license:zlib)))
 
 (define-public nanovg-for-extempore
-  (package
-    (name "nanovg-for-extempore")
-    (version "0.7.1")
-    (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/extemporelang/nanovg/"
-                                  "archive/"  version ".tar.gz"))
-              (file-name (string-append name "-" version ".tar.gz"))
-              (sha256
-               (base32
-                "0ivs1sagq19xiw8jxd9f8w2b39svi0n9hrbmdvckwvqg95r8701g"))))
-    (build-system cmake-build-system)
-    (arguments `(#:tests? #f)) ; no tests included
-    (inputs
-     `(("mesa" ,mesa)))
-    ;; Extempore refuses to build on architectures other than x86_64
-    (supported-systems '("x86_64-linux"))
-    (home-page "https://github.com/extemporelang/nanovg")
-    (synopsis "2D vector drawing library on top of OpenGL")
-    (description "NanoVG is small antialiased vector graphics rendering
+  (let ((version "0.7.1")
+        (revision "0")
+        (commit "3c60175fcc2e5fe305b04355cdce35d499c80310"))
+    (package
+      (name "nanovg-for-extempore")
+      (version (git-version version revision commit))
+      (source (origin
+                (method git-fetch)
+                (uri (git-reference
+                      (url "https://github.com/extemporelang/nanovg")
+                      (commit commit)))
+                (file-name (git-file-name name version))
+                (sha256
+                 (base32
+                  "0ddn3d3mxqn8hj9967v3pss7lz1wn08pcdnqzc118g7yjkq7hxzy"))))
+      (build-system cmake-build-system)
+      (arguments `(#:tests? #f))        ; no tests included
+      (inputs
+       `(("mesa" ,mesa)))
+      ;; Extempore refuses to build on architectures other than x86_64
+      (supported-systems '("x86_64-linux"))
+      (home-page "https://github.com/extemporelang/nanovg")
+      (synopsis "2D vector drawing library on top of OpenGL")
+      (description "NanoVG is small antialiased vector graphics rendering
 library for OpenGL.  It has lean API modeled after HTML5 canvas API.  It is
 aimed to be a practical and fun toolset for building scalable user interfaces
 and visualizations.")
-    (license license:zlib)))
+      (license license:zlib))))
 
 (define-public gl2ps
   (package
     (name "gl2ps")
-    (version "1.4.0")
+    (version "1.4.2")
     (source
      (origin
        (method url-fetch)
@@ -748,15 +864,14 @@ and visualizations.")
              "http://geuz.org/gl2ps/src/gl2ps-"
              version ".tgz"))
        (sha256
-        (base32
-         "1qpidkz8x3bxqf69hlhyz1m0jmfi9kq24fxsp7rq6wfqzinmxjq3"))))
+        (base32 "1sgzv547h7hrskb9qd0x5yp45kmhvibjwj2mfswv95lg070h074d"))))
     (build-system cmake-build-system)
     (inputs
      `(("libpng" ,libpng)
        ("mesa" ,mesa)
        ("zlib" ,zlib)))
     (arguments
-     `(#:tests? #f))  ;; no tests
+     `(#:tests? #f))                    ; no tests
     (home-page "http://www.geuz.org/gl2ps/")
     (synopsis "OpenGL to PostScript printing library")
     (description "GL2PS is a C library providing high quality vector
@@ -778,7 +893,7 @@ mixed vector/bitmap output.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/VirtualGL/virtualgl.git")
+             (url "https://github.com/VirtualGL/virtualgl")
              (commit version)))
        (file-name (git-file-name name version))
        (sha256
@@ -804,3 +919,119 @@ applications to 3D accelerator hardware in a dedicated server and displays the
 rendered output interactively to a thin client located elsewhere on the
 network.")
     (license license:wxwindows3.1+)))
+
+(define-public mojoshader
+  (let ((changeset "5887634ea695"))
+    (package
+      (name "mojoshader")
+      (version (string-append "20190825" "-" changeset))
+      (source
+       (origin
+         (method hg-fetch)
+         (uri (hg-reference
+               (url "https://hg.icculus.org/icculus/mojoshader/")
+               (changeset changeset)))
+         (file-name (git-file-name name version))
+         (sha256
+          (base32 "0ibl4z1696jiifv9j5drir7jm0b5px0vwkwckbi7cfd46p7p6wcy"))))
+      (arguments
+       ;; Tests only for COMPILER_SUPPORT=ON.
+       `(#:tests? #f
+         #:configure-flags '("-DBUILD_SHARED=ON"
+                             "-DFLIP_VIEWPORT=ON"
+                             "-DDEPTH_CLIPPING=ON")
+         #:phases
+         (modify-phases %standard-phases
+           (replace 'install
+             (lambda* (#:key outputs #:allow-other-keys)
+               (let* ((out (assoc-ref outputs "out"))
+                      (lib (string-append out "/lib"))
+                      (header (string-append out "/include")))
+                 (install-file "libmojoshader.so" lib)
+                 (for-each (lambda (f)
+                             (install-file f header))
+                           (find-files "../source" "mojoshader.*\\.h$"))
+                 (let ((profiles-header (string-append header "/profiles")))
+                   (mkdir-p profiles-header)
+                   (rename-file (string-append header "/mojoshader_profile.h")
+                                (string-append profiles-header "/mojoshader_profile.h"))))
+               #t)))))
+      (build-system cmake-build-system)
+      (home-page "https://www.icculus.org/mojoshader/")
+      (synopsis "Work with Direct3D shaders on alternate 3D APIs")
+      (description "MojoShader is a library to work with Direct3D shaders on
+alternate 3D APIs and non-Windows platforms.  The primary motivation is moving
+shaders to OpenGL languages on the fly.  The developer deals with \"profiles\"
+that represent various target languages, such as GLSL or ARB_*_program.
+
+This allows a developer to manage one set of shaders, presumably written in
+Direct3D HLSL, and use them across multiple rendering backends.  This also
+means that the developer only has to worry about one (offline) compiler to
+manage program complexity, while MojoShader itself deals with the reduced
+complexity of the bytecode at runtime.
+
+MojoShader provides both a simple API to convert bytecode to various profiles,
+and (optionally) basic glue to rendering APIs to abstract the management of
+the shaders at runtime.")
+      (license license:zlib))))
+
+(define-public mojoshader-with-viewport-flip
+  ;; Changeset c586d4590241 replaced glProgramViewportFlip with
+  ;; glProgramViewportInfo.
+  ;; https://hg.icculus.org/icculus/mojoshader/rev/c586d4590241
+  (let ((changeset "2e37299b13d8"))
+    (package
+      (inherit mojoshader)
+      (name "mojoshader-with-viewport-flip")
+      (version (string-append "20190725" "-" changeset))
+      (source
+       (origin
+         (method hg-fetch)
+         (uri (hg-reference
+               (url "https://hg.icculus.org/icculus/mojoshader/")
+               (changeset changeset)))
+         (file-name (git-file-name name version))
+         (sha256
+          (base32 "0ffws7cqbskxwc3hjsnnzq4r2bbf008kdr3b11pa3kr7dsi50y6i"))))
+      (synopsis "Work with Direct3D shaders on alternate 3D APIs (with viewport flip)")
+      (description "This is the last version of the mojoshader library with
+the glProgramViewportFlip before it was replaced with glProgramViewportInfo.")
+      (license license:zlib))))
+
+(define-public mojoshader-cs
+  (let ((commit "10d0dba21ff1cfe332eb7de328a2adce01286bd7"))
+    (package
+      (name "mojoshader-cs")
+      (version (git-version "20191205" "1" commit))
+      (source (origin
+                (method git-fetch)
+                (uri (git-reference
+                      (url "https://github.com/FNA-XNA/MojoShader")
+                      (commit commit)))
+                (file-name (git-file-name name version))
+                (sha256
+                 (base32
+                  "11mdhf3fmb9rsn2iv753gmb596j4dh5j2iipgw078vg0lj23rml7"))))
+      (build-system gnu-build-system)
+      (arguments
+       '(#:tests? #f  ; No tests.
+         #:phases
+         (modify-phases %standard-phases
+           (delete 'configure)
+           (replace 'build
+             (lambda _
+               (invoke "make" "-C" "csharp")))
+           (replace 'install
+             (lambda* (#:key outputs #:allow-other-keys)
+               (let ((out (assoc-ref outputs "out")))
+                 (install-file "csharp/bin/MojoShader-CS.dll" (string-append out "/lib"))
+                 #t))))))
+      (native-inputs
+       `(("mono" ,mono)))
+      (home-page "https://github.com/FNA-XNA/MojoShader")
+      (synopsis "C# wrapper for MojoShader")
+      (description
+       "Mojoshader-CS provides C# bindings for the Mojoshader library.
+The C# wrapper was written to be used for FNA's platform support.  However, this
+is written in a way that can be used for any general C# application.")
+      (license license:zlib))))

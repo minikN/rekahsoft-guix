@@ -8,6 +8,8 @@
 ;;; Copyright © 2017 Jonathan Brielmaier <jonathan.brielmaier@web.de>
 ;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018 Vagrant Cascadian <vagrant@debian.org>
+;;; Copyright © 2020 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2020 Christopher Howard <christopher@librehacker.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -51,15 +53,15 @@
 (define-public libusb
   (package
     (name "libusb")
-    (version "1.0.22")
+    (version "1.0.23")
     (source
      (origin
       (method url-fetch)
-      (uri (string-append "mirror://sourceforge/libusb/libusb-1.0/"
-                          "libusb-" version "/libusb-" version ".tar.bz2"))
+      (uri (string-append "https://github.com/libusb/libusb/"
+                          "releases/download/v" version
+                          "/libusb-" version ".tar.bz2"))
       (sha256
-       (base32
-        "0mw1a5ss4alg37m6bd4k44v35xwrcwp5qm4s686q1nsgkbavkbkm"))))
+       (base32 "13dd2a9x290d1q8nb1lqiaf36grcvns5ripk5k2xm0lajmpc04fv"))))
     (build-system gnu-build-system)
 
     ;; XXX: Enabling udev is now recommended, but eudev indirectly depends on
@@ -82,9 +84,9 @@ devices on various operating systems.")
      (origin
       (method url-fetch)
       (uri (string-append "mirror://sourceforge/libusb/"
-                          name "-" (version-major+minor version) "/"
-                          name "-" version "/"
-                          name "-" version ".tar.bz2"))
+                          "libusb-compat-" (version-major+minor version) "/"
+                          "libusb-compat-" version "/"
+                          "libusb-compat-" version ".tar.bz2"))
       (sha256
        (base32
         "0nn5icrfm9lkhzw1xjvaks9bq3w6mjg86ggv3fn7kgi4nfvg8kj0"))))
@@ -113,7 +115,8 @@ version of libusb to run with newer libusb.")
       (sha256
        (base32
         "0i4bacxkyr7xyqxbmb00ypkrv4swkgm0mghbzjsnw6blvvczgxip"))
-      (patches (search-patches "libusb-0.1-disable-tests.patch"))))))
+      (patches (search-patches "libusb-0.1-disable-tests.patch"))))
+    (arguments `(#:configure-flags (list "CFLAGS=-Wno-error")))))
 
 (define-public libusb4java
   ;; There is no public release so we take the latest version from git.
@@ -125,7 +128,7 @@ version of libusb to run with newer libusb.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/usb4java/libusb4java.git")
+                      (url "https://github.com/usb4java/libusb4java")
                       (commit commit)))
                 (file-name (git-file-name name version))
                 (sha256
@@ -163,12 +166,14 @@ with usb4java.")
     (name "java-usb4java")
     (version "1.2.0")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/usb4java/usb4java/"
-                                  "archive/usb4java-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/usb4java/usb4java")
+                     (commit (string-append "usb4java-" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "0gzpsnzwgsdyra3smq288yvxnwrgvdwxr6g8jbknnsk56kv6wc34"))))
+                "0aip6k24czz5g58qwb963mpick0b6ks774drfpdd8gcdvj9iv87j"))))
     (build-system ant-build-system)
     (arguments
      `(#:jar-name "usb4java.jar"
@@ -302,28 +307,74 @@ wrapper for accessing libusb-1.0.")
 (define-public python2-pyusb
   (package-with-python2 python-pyusb))
 
+(define-public python-capablerobot-usbhub
+  (package
+    (name "python-capablerobot-usbhub")
+    (version "0.2.7")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "capablerobot_usbhub" version))
+       (sha256
+        (base32
+         "1priic4iq2vn1rc711kzxwhxrwa508rkxrr193qdz2lw26kdhvix"))))
+    (build-system python-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-after 'install 'install-udev-rules
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out")))
+               (mkdir-p (string-append out "/lib/udev/rules.d"))
+               (copy-file "50-capablerobot-usbhub.rules"
+                          (string-append out
+                                         "/lib/udev/rules.d/"
+                                         "50-capablerobot-usbhub.rules"))
+               #t))))))
+    (propagated-inputs
+     `(("python-click" ,python-click)
+       ("python-construct" ,python-construct)
+       ("python-pyusb" ,python-pyusb)
+       ("python-pyyaml" ,python-pyyaml)))
+    (home-page
+     "https://github.com/CapableRobot/CapableRobot_USBHub_Driver")
+    (synopsis
+     "Host side driver for the Capable Robot Programmable USB Hub")
+    (description
+     "This package provides access to the internal state of the Capable Robot
+USB Hub, allowing you to monitor and control the Hub from an upstream
+computer.  It also creates a transparent CircuitPython Bridge, allowing
+unmodified CircuitPython code to run on the host computer and interact with
+I2C and SPI devices attached to the USB Hub.")
+    (license license:expat)))
+
 (define-public libplist
   (package
     (name "libplist")
-    (version "2.0.0")
-    (source (origin
-              (method url-fetch)
-              (uri (string-append "https://www.libimobiledevice.org/downloads/"
-                                  "libplist-" version ".tar.bz2"))
-              (sha256
-               (base32
-                "00pnh9zf3iwdji2faccns7vagbmbrwbj9a8zp9s53a6rqaa9czis"))))
+    (version "2.1.0")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/libimobiledevice/libplist")
+             (commit version)))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "02vraf4j46bp746s0gz7vga2gv2dy3zd1v1bsy9x8algg9fpcb7n"))))
     (build-system gnu-build-system)
     (arguments
-     ;; Tests fail randomly when run in parallel because several of them write
-     ;; and read to/from the same file--e.g., "4.plist" is accessed by
-     ;; 'large.test' and 'largecmp.test'.
-     '(#:parallel-tests? #f))
+     `(;; Tests fail randomly when run in parallel because several of them write
+       ;; and read to/from the same file--e.g., "4.plist" is accessed by
+       ;; 'large.test' and 'largecmp.test'.
+       #:parallel-tests? #f))
     (inputs
      `(("python" ,python)))
     (native-inputs
-     `(("pkg-config" ,pkg-config)
-       ("python-cython" ,python-cython)))
+     `(("autoconf" ,autoconf)
+       ("automake" ,automake)
+       ("libtool" ,libtool)
+       ("pkg-config" ,pkg-config)
+       ("python-cython" ,python-cython))) ; to build Python bindings
     (home-page "https://www.libimobiledevice.org/")
     (synopsis "C library to handle Apple Property List files")
     (description "This package provides a small portable C library to handle
@@ -352,6 +403,25 @@ connections from and to iOS devices by connecting to a socket provided by a
 @code{usbmuxd} daemon.")
     (license license:lgpl2.1+)))
 
+;; These patches are needed to build with Python 3.8.
+(define %libimobiledevice-patches
+  (list (origin
+          (method url-fetch)
+          (uri (string-append "https://github.com/libimobiledevice/libimobiledevice"
+                              "/commit/1ff3448d2e27f1bac8d2f0af8b8e952854860278.patch"))
+          (file-name "libimobiledevice-python-config.patch")
+          (sha256
+           (base32
+            "1mkwhp8vvhajij29jk3w4rkgcfh8d8waf908drh3076k70hb6i8y")))
+        (origin
+          (method url-fetch)
+          (uri (string-append "https://github.com/libimobiledevice/libimobiledevice"
+                              "/commit/eea4f1be9107c8ab621fd71460e47d0d38e55d71.patch"))
+          (file-name "libimobiledevice-python-3.8-compat.patch")
+          (sha256
+           (base32
+            "1zz8v7kgwyq5ck1qp03l29pcmljygnjwls9d6q28nv5pkwa6848w")))))
+
 (define-public libimobiledevice
   (package
     (name "libimobiledevice")
@@ -360,19 +430,21 @@ connections from and to iOS devices by connecting to a socket provided by a
               (method url-fetch)
               (uri (string-append "https://www.libimobiledevice.org/downloads/"
                                   "libimobiledevice-" version ".tar.bz2"))
+              ;; Note: Remove the 'force-bootstrap' phase and the autoconf
+              ;; inputs below when removing these patches.
+              (patches %libimobiledevice-patches)
               (sha256
                (base32
                 "0dqhy4qwj30mw8pwckvjmgnj1qqrh6p8c6jknmhvylshhzh0ssvq"))))
     (build-system gnu-build-system)
     (arguments
-     `(#:configure-flags
-       (list (string-append "PYTHON_LDFLAGS=-L"
-                            (assoc-ref %build-inputs "python")
-                            "/lib -lpython"
-                            ,(version-major+minor (package-version python))
-                            "m"))))
+     `(#:phases (modify-phases %standard-phases
+                  (add-before 'bootstrap 'force-bootstrap
+                    (lambda _
+                      (delete-file "configure")
+                      #t)))))
     (propagated-inputs
-     `(("openssl" ,openssl)
+     `(("openssl" ,openssl-1.0)
        ("libplist" ,libplist)
        ("libusbmuxd" ,libusbmuxd)))
     (inputs
@@ -380,6 +452,10 @@ connections from and to iOS devices by connecting to a socket provided by a
     (native-inputs
      `(("pkg-config" ,pkg-config)
        ("python-cython" ,python-cython)
+
+       ;; These are required because we patch and bootstrap the build system.
+       ("autoconf" ,autoconf)
+       ("automake" ,automake)
        ("libtool" ,libtool)))
     (home-page "https://www.libimobiledevice.org/")
     (synopsis "Protocol library and tools to communicate with Apple devices")
@@ -443,24 +519,26 @@ over USB.")
 (define-public libmtp
   (package
     (name "libmtp")
-    (version "1.1.16")
+    (version "1.1.17")
     (source (origin
              (method url-fetch)
              (uri (string-append "mirror://sourceforge/libmtp/libmtp/" version
                                  "/libmtp-" version ".tar.gz"))
              (sha256
               (base32
-               "185vh9bds6dcy00ycggg69g4v7m3api40zv8vrcfb3fk3vfzjs2v"))))
+               "1p3r38nvdip40ab1h4scj3mzfjkx6kd14szjqyw9r6wz5pslr8zq"))))
     (build-system gnu-build-system)
     (native-inputs
      `(("pkg-config" ,pkg-config)))
+    (inputs
+     `(("libgcrypt" ,libgcrypt)))
     (propagated-inputs
      ;; libmtp.pc refers to all these.
-     `(("libgcrypt" ,libgcrypt)
-       ("libusb" ,libusb)))
+     `(("libusb" ,libusb)))
     (arguments
      `(#:configure-flags
-       (list (string-append "--with-udev="
+       (list "--disable-static"
+             (string-append "--with-udev="
                             (assoc-ref %outputs "out")
                             "/lib/udev"))))
     (home-page "http://libmtp.sourceforge.net/")
@@ -513,14 +591,16 @@ devices.")
 (define-public hidapi
   (package
     (name "hidapi")
-    (version "0.8.0-rc1")
-    (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/signal11/hidapi/archive/hidapi-"
-                                  version ".tar.gz"))
-              (sha256
-               (base32
-                "0qdgyj9rgb7n0nk3ghfswrhzzknxqn4ibn3wj8g4r828pw07451w"))))
+    (version "0.9.0")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/libusb/hidapi")
+             (commit (string-append "hidapi-" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "1p4g8lgwj4rki6lbn5l6rvwj0xlbn1xfh4d255bg5pvgczmwmc4i"))))
     (build-system gnu-build-system)
     (inputs
      `(("libusb" ,libusb)
@@ -530,7 +610,7 @@ devices.")
        ("automake" ,automake)
        ("libtool" ,libtool)
        ("pkg-config" ,pkg-config)))
-    (home-page "http://www.signal11.us/oss/hidapi/")
+    (home-page "https://github.com/libusb/hidapi")
     (synopsis "HID API library")
     (description
      "HIDAPI is a library which allows an application to interface with USB and Bluetooth

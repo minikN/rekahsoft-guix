@@ -1,10 +1,12 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2016, 2017, 2018 Ricardo Wurmus <rekado@elephly.net>
+;;; Copyright © 2016, 2017, 2018, 2019 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2016, 2017 Theodoros Foradis <theodoros@foradis.org>
 ;;; Copyright © 2016 David Craven <david@craven.ch>
-;;; Copyright © 2017 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2017, 2020 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
-;;; Copyright © 2018 Clément Lassieur <clement@lassieur.org>
+;;; Copyright © 2018, 2019 Clément Lassieur <clement@lassieur.org>
+;;; Copyright © 2020 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2020 Björn Höfling <bjoern.hoefling@bjoernhoefling.de>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -30,8 +32,9 @@
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (guix build-system cmake)
   #:use-module (guix build-system gnu)
+  #:use-module (guix build-system python)
   #:use-module (guix build-system trivial)
-  #:use-module (guix build utils)
+  #:use-module ((guix build utils) #:select (alist-replace))
   #:use-module (gnu packages)
   #:use-module (gnu packages autotools)
   #:use-module ((gnu packages base) #:prefix base:)
@@ -47,6 +50,7 @@
   #:use-module (gnu packages perl)
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages python)
+  #:use-module (gnu packages python-xyz)
   #:use-module (gnu packages swig)
   #:use-module (gnu packages texinfo)
   #:use-module (gnu packages xorg)
@@ -85,11 +89,27 @@
                           (origin-patches (package-source xgcc))))))
       (native-inputs
        `(("flex" ,flex)
+         ("gcc@5" ,gcc-5)
          ,@(package-native-inputs xgcc)))
       (arguments
        (substitute-keyword-arguments (package-arguments xgcc)
          ((#:phases phases)
           `(modify-phases ,phases
+             (add-after 'set-paths 'augment-CPLUS_INCLUDE_PATH
+               (lambda* (#:key inputs #:allow-other-keys)
+                 (let ((gcc (assoc-ref inputs  "gcc")))
+                   ;; Remove the default compiler from CPLUS_INCLUDE_PATH to
+                   ;; prevent header conflict with the GCC from native-inputs.
+                   (setenv "CPLUS_INCLUDE_PATH"
+                           (string-join
+                            (delete (string-append gcc "/include/c++")
+                                    (string-split (getenv "CPLUS_INCLUDE_PATH")
+                                                  #\:))
+                            ":"))
+                   (format #t
+                           "environment variable `CPLUS_INCLUDE_PATH' changed to ~a~%"
+                           (getenv "CPLUS_INCLUDE_PATH"))
+                   #t)))
              (add-after 'unpack 'fix-genmultilib
                (lambda _
                  (substitute* "gcc/genmultilib"
@@ -172,7 +192,7 @@
      `(("xbinutils" ,(cross-binutils "arm-none-eabi"))
        ("xgcc" ,gcc-arm-none-eabi-4.9)
        ("texinfo" ,texinfo)))
-    (home-page "http://www.sourceware.org/newlib/")
+    (home-page "https://www.sourceware.org/newlib/")
     (synopsis "C library for use on embedded systems")
     (description "Newlib is a C library intended for use on embedded
 systems.  It is a conglomeration of several library parts that are easily
@@ -204,6 +224,138 @@ usable on embedded products.")
            "--disable-nls"))))
     (synopsis "Newlib variant for small systems with limited memory")))
 
+
+;;; The following definitions are for the "7-2018-q2-update" variant of the
+;;; ARM cross toolchain as offered on https://developer.arm.com
+(define-public gcc-arm-none-eabi-7-2018-q2-update
+  (let ((xgcc (cross-gcc "arm-none-eabi"
+                         #:xgcc gcc-7
+                         #:xbinutils (cross-binutils "arm-none-eabi")))
+        (revision "1")
+        (svn-revision 261907))
+    (package (inherit xgcc)
+      (version (string-append "7-2018-q2-update-"
+                              revision "." (number->string svn-revision)))
+      (source
+       (origin
+         (method svn-fetch)
+         (uri (svn-reference
+               (url "svn://gcc.gnu.org/svn/gcc/branches/ARM/embedded-7-branch/")
+               (revision svn-revision)))
+         (file-name (string-append "gcc-arm-embedded-" version "-checkout"))
+         (sha256
+          (base32
+           "192ggs63bixf3irpijgfkjks73yx1r3a4i6grk1y0i0iny76pmx5"))
+         (patches
+          (append
+           (origin-patches (package-source gcc-7))
+           (search-patches "gcc-7-cross-environment-variables.patch")))))
+      (native-inputs
+       `(("flex" ,flex)
+         ("isl" ,isl-0.18)
+         ,@(alist-delete "isl" (package-native-inputs xgcc))))
+      (arguments
+       (substitute-keyword-arguments (package-arguments xgcc)
+         ((#:phases phases)
+          `(modify-phases ,phases
+             (add-after 'unpack 'expand-version-string
+               (lambda _
+                 (make-file-writable "gcc/DEV-PHASE")
+                 (with-output-to-file "gcc/DEV-PHASE"
+                   (lambda ()
+                     (display "7-2018-q2-update")))
+                 #t))
+             (add-after 'unpack 'fix-genmultilib
+               (lambda _
+                 (substitute* "gcc/genmultilib"
+                   (("#!/bin/sh") (string-append "#!" (which "sh"))))
+                 #t))
+             (add-after 'set-paths 'augment-CPLUS_INCLUDE_PATH
+               (lambda* (#:key inputs #:allow-other-keys)
+                 (let ((gcc (assoc-ref inputs  "gcc")))
+                   ;; Remove the default compiler from CPLUS_INCLUDE_PATH to
+                   ;; prevent header conflict with the GCC from native-inputs.
+                   (setenv "CPLUS_INCLUDE_PATH"
+                           (string-join
+                            (delete (string-append gcc "/include/c++")
+                                    (string-split (getenv "CPLUS_INCLUDE_PATH")
+                                                  #\:))
+                            ":"))
+                   (format #t
+                           "environment variable `CPLUS_INCLUDE_PATH' changed to ~a~%"
+                           (getenv "CPLUS_INCLUDE_PATH"))
+                   #t)))))
+         ((#:configure-flags flags)
+          ;; The configure flags are largely identical to the flags used by the
+          ;; "GCC ARM embedded" project.
+          `(append (list "--enable-multilib"
+                         "--with-newlib"
+                         "--with-multilib-list=rmprofile"
+                         "--with-host-libstdcxx=-static-libgcc -Wl,-Bstatic,-lstdc++,-Bdynamic -lm"
+                         "--enable-plugins"
+                         "--disable-decimal-float"
+                         "--disable-libffi"
+                         "--disable-libgomp"
+                         "--disable-libmudflap"
+                         "--disable-libquadmath"
+                         "--disable-libssp"
+                         "--disable-libstdcxx-pch"
+                         "--disable-nls"
+                         "--disable-shared"
+                         "--disable-threads"
+                         "--disable-tls")
+                   (delete "--disable-multilib" ,flags)))))
+      (native-search-paths
+       (list (search-path-specification
+              (variable "CROSS_C_INCLUDE_PATH")
+              (files '("arm-none-eabi/include")))
+             (search-path-specification
+              (variable "CROSS_CPLUS_INCLUDE_PATH")
+              (files '("arm-none-eabi/include")))
+             (search-path-specification
+              (variable "CROSS_LIBRARY_PATH")
+              (files '("arm-none-eabi/lib"))))))))
+
+(define-public newlib-arm-none-eabi-7-2018-q2-update
+  ;; This is the same commit as used for the 7-2018-q2-update release
+  ;; according to the release.txt.
+  (let ((commit "3ccfb407af410ba7e54ea0da11ae1e40b554a6f4")
+        (revision "0"))
+    (package
+      (inherit newlib-arm-none-eabi)
+      (version (git-version "3.0.0" revision commit))
+      (source
+       (origin
+         (method git-fetch)
+         (uri (git-reference
+               (url "http://sourceware.org/git/newlib-cygwin.git")
+               (commit commit)))
+         (file-name (git-file-name "newlib" commit))
+         (sha256
+          (base32
+           "1dq23fqrk75g1a4v7569fvnnw5q440zawbxi3w0g05n8jlqsmvcy"))))
+      (arguments
+       (substitute-keyword-arguments (package-arguments newlib-arm-none-eabi)
+         ;; The configure flags are identical to the flags used by the "GCC ARM
+         ;; embedded" project.
+         ((#:configure-flags flags)
+          `(cons* "--enable-newlib-io-c99-formats"
+                  "--enable-newlib-retargetable-locking"
+                  "--with-headers=yes"
+                  ,flags))))
+      (native-inputs
+       `(("xbinutils" ,(cross-binutils "arm-none-eabi"))
+         ("xgcc" ,gcc-arm-none-eabi-7-2018-q2-update)
+         ("texinfo" ,texinfo))))))
+
+(define-public newlib-nano-arm-none-eabi-7-2018-q2-update
+  (package (inherit newlib-arm-none-eabi-7-2018-q2-update)
+    (name "newlib-nano")
+    (arguments
+     (package-arguments newlib-nano-arm-none-eabi))
+    (synopsis "Newlib variant for small systems with limited memory")))
+
+
 (define (make-libstdc++-arm-none-eabi xgcc newlib)
   (let ((libstdc++ (make-libstdc++ xgcc)))
     (package (inherit libstdc++)
@@ -284,6 +436,14 @@ languages are C and C++.")
   (arm-none-eabi-toolchain gcc-arm-none-eabi-6
                            newlib-nano-arm-none-eabi))
 
+(define-public arm-none-eabi-toolchain-7-2018-q2-update
+  (arm-none-eabi-toolchain gcc-arm-none-eabi-7-2018-q2-update
+                           newlib-arm-none-eabi-7-2018-q2-update))
+
+(define-public arm-none-eabi-nano-toolchain-7-2018-q2-update
+  (arm-none-eabi-toolchain gcc-arm-none-eabi-7-2018-q2-update
+                           newlib-nano-arm-none-eabi-7-2018-q2-update))
+
 (define-public gdb-arm-none-eabi
   (package
     (inherit gdb)
@@ -321,7 +481,7 @@ languages are C and C++.")
          ("pkg-config" ,pkg-config)))
       (inputs
        `(("libusb" ,libusb)))
-      (home-page "http://repo.or.cz/w/libjaylink.git")
+      (home-page "https://repo.or.cz/w/libjaylink.git")
       (synopsis "Library to interface Segger J-Link devices")
       (description "libjaylink is a shared library written in C to access
 SEGGER J-Link and compatible devices.")
@@ -330,16 +490,16 @@ SEGGER J-Link and compatible devices.")
 (define-public jimtcl
   (package
     (name "jimtcl")
-    (version "0.77")
+    (version "0.79")
     (source (origin
-              (method url-fetch)
-              (uri (string-append
-                    "https://github.com/msteveb/jimtcl"
-                    "/archive/" version ".tar.gz"))
-              (file-name (string-append name "-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/msteveb/jimtcl")
+                     (commit version)))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "1cmk3qscqckg70chjyimzxa2qcka4qac0j4wq908kiijp45cax08"))))
+                "1k88hz0v3bi19xdvlp0i9nsx38imzwpjh632w7326zwbv2wldf0h"))))
     (build-system gnu-build-system)
     (arguments
      `(#:phases
@@ -350,7 +510,7 @@ SEGGER J-Link and compatible devices.")
              (let ((out (assoc-ref outputs "out")))
                (invoke "./configure"
                        (string-append "--prefix=" out))))))))
-    (home-page "http://jim.tcl.tk")
+    (home-page "http://jim.tcl.tk/index.html")
     (synopsis "Small footprint Tcl implementation")
     (description "Jim is a small footprint implementation of the Tcl programming
 language.")
@@ -435,7 +595,7 @@ with a layered architecture of JTAG interface and TAP support.")
       (source (origin (inherit (package-source xbinutils))
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/parallaxinc/propgcc.git")
+                      (url "https://github.com/parallaxinc/propgcc")
                       (commit commit)))
                 (file-name (string-append name "-" commit "-checkout"))
                 (sha256
@@ -471,7 +631,7 @@ with a layered architecture of JTAG interface and TAP support.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/totalspectrum/gcc-propeller.git")
+                      (url "https://github.com/totalspectrum/gcc-propeller")
                       (commit commit)))
                 (file-name (string-append name "-" commit "-checkout"))
                 (sha256
@@ -506,7 +666,7 @@ with a layered architecture of JTAG interface and TAP support.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/parallaxinc/propgcc.git")
+                      (url "https://github.com/parallaxinc/propgcc")
                       (commit commit)))
                 (file-name (string-append name "-" commit "-checkout"))
                 (sha256
@@ -548,7 +708,7 @@ with a layered architecture of JTAG interface and TAP support.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/parallaxinc/propgcc.git")
+                      (url "https://github.com/parallaxinc/propgcc")
                       (commit commit)))
                 (file-name (string-append name "-" commit "-checkout"))
                 (sha256
@@ -624,13 +784,14 @@ Propeller micro-controller development.")
     (name "openspin")
     (version "1.00.78")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/parallaxinc/"
-                                  "OpenSpin/archive/" version ".tar.gz"))
-              (file-name (string-append name "-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/parallaxinc/OpenSpin")
+                     (commit version)))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "1k2dbz1v604g4r2d9qhckg2m8dnhiya760mbsqfsg4waxal87yb7"))))
+                "0ghk8hj4717ydhqzx2pfs6737s1cxng6sgg2xgbkwvcfclxdbrd0"))))
     (build-system gnu-build-system)
     (arguments
      `(#:tests? #f ; no tests
@@ -666,7 +827,7 @@ code.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/parallaxinc/propgcc.git")
+                      (url "https://github.com/parallaxinc/propgcc")
                       (commit commit)))
                 (file-name (string-append name "-" commit "-checkout"))
                 (sha256
@@ -697,13 +858,14 @@ upload binaries to a Parallax Propeller micro-controller.")
     (name "spin2cpp")
     (version "3.6.4")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/totalspectrum/spin2cpp/"
-                                  "archive/v" version ".tar.gz"))
-              (file-name (string-append name "-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/totalspectrum/spin2cpp")
+                     (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "05qak187sn0xg7vhrxw27b19xhmid1b8ab8kax3gv0faavzablfw"))))
+                "0wznqvsckzzz4hdy2rpvj6jqpxw4yn7i0c7zxfm6i46k8gg9327b"))))
     (build-system gnu-build-system)
     (arguments
      `(#:tests? #f ;; The tests assume that a micro-controller is connected.
@@ -750,7 +912,7 @@ larger).")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/parallaxinc/spinsim.git")
+                      (url "https://github.com/parallaxinc/spinsim")
                       (commit commit)))
                 (file-name (string-append name "-" commit "-checkout"))
                 (sha256
@@ -806,7 +968,7 @@ simulator.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                       (url "https://github.com/puppeh/binutils-vc4.git")
+                       (url "https://github.com/puppeh/binutils-vc4")
                        (commit commit)))
                 (file-name (string-append name "-" version "-checkout"))
                 (sha256
@@ -834,7 +996,7 @@ simulator.")
           ,(origin
                 (method git-fetch)
                 (uri (git-reference
-                       (url "https://github.com/puppeh/cgen.git")
+                       (url "https://github.com/puppeh/cgen")
                        (commit "d8e2a9eb70425f180fdd5bfd032884b0855f2032")))
                 (sha256
                  (base32
@@ -858,7 +1020,7 @@ the Raspberry Pi chip.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/puppeh/gcc-vc4.git")
+                      (url "https://github.com/puppeh/gcc-vc4")
                       (commit commit)))
                 (file-name (string-append name
                                           "-"
@@ -874,30 +1036,31 @@ the Raspberry Pi chip.")
       (description "This package provides @code{gcc} for VideoCore IV,
 the Raspberry Pi chip."))))
 
-(define-public python2-libmpsse
+(define-public python-libmpsse
   (package
-    (name "python2-libmpsse")
-    (version "1.3")
+    (name "python-libmpsse")
+    (version "1.4.1")
     (source
       (origin
-        (method url-fetch)
-        (uri (string-append "https://storage.googleapis.com/"
-                            "google-code-archive-downloads/v2/"
-                            "code.google.com/libmpsse/"
-                            "libmpsse-" version ".tar.gz"))
+        (method git-fetch)
+        (uri (git-reference
+              (url "https://github.com/daym/libmpsse")
+              (commit (string-append "v" version))))
+        (file-name "libmpsse-checkout")
         (sha256
           (base32
-            "0jq7nhqq3na8675jnpfcar3pd3dp3adhhc4lw900swkla01a1wh8"))))
+            "1rypfb96k2szqgygp3jnwg2zq9kwmfz0460dsahn3r2vkzml8wn7"))))
     (build-system gnu-build-system)
     (inputs
      `(("libftdi" ,libftdi)
-       ("python" ,python-2)))
+       ("python" ,python)))
     (native-inputs
      `(("pkg-config" ,pkg-config)
        ("swig" ,swig)
        ("which" ,base:which)))
     (arguments
      `(#:tests? #f ; No tests exist.
+       #:parallel-build? #f  ; Would be buggy.
        #:make-flags
        (list (string-append "CFLAGS=-Wall -fPIC -fno-strict-aliasing -g -O2 "
                             "$(shell pkg-config --cflags libftdi1)"))
@@ -905,28 +1068,19 @@ the Raspberry Pi chip."))))
        (modify-phases %standard-phases
          (add-after 'unpack 'set-environment-up
            (lambda* (#:key inputs outputs #:allow-other-keys)
-             (chdir "src")
-             (setenv "PYDEV" (string-append (assoc-ref inputs "python")
-                             "/include/python2.7"))
-             #t))
-         (add-after 'unpack 'patch-global-variable
-           (lambda _
-             ;; fast_rw_buf was defined in a header file which was making
-             ;; the build not reproducible.
-             (substitute* "src/fast.c"
-               (("^int fast_build_block_buffer") "
-
-unsigned char fast_rw_buf[SPI_RW_SIZE + CMD_SIZE];
-int fast_build_block_buffer"))
-             (substitute* "src/mpsse.h"
-               (("unsigned char fast_rw_buf.*") "
-"))
-             #t))
+             (let ((python (assoc-ref inputs "python")))
+               (chdir "src")
+               (setenv "PYDEV" (string-append python
+                               "/include/python"
+                               ,(version-major+minor (package-version python))))
+               #t)))
          (replace 'install
-           (lambda* (#:key outputs make-flags #:allow-other-keys #:rest args)
+           (lambda* (#:key inputs outputs make-flags #:allow-other-keys #:rest args)
              (let* ((out (assoc-ref outputs "out"))
                     (out-python (string-append out
-                                               "/lib/python2.7/site-packages"))
+                                               "/lib/python"
+                                               ,(version-major+minor (package-version python))
+                                               "/site-packages"))
                     (install (assoc-ref %standard-phases 'install)))
                (install #:make-flags (cons (string-append "PYLIB=" out-python)
                                            make-flags))))))))
@@ -936,6 +1090,36 @@ int fast_build_block_buffer"))
 MPSSE (Multi-Protocol Synchronous Serial Engine) adapter by FTDI that can do
 SPI, I2C, JTAG.")
     (license license:gpl2+)))
+
+(define-public python2-libmpsse
+  (package
+    (inherit python-libmpsse)
+    (name "python2-libmpsse")
+    (arguments
+     (substitute-keyword-arguments (package-arguments python-libmpsse)
+      ((#:phases phases)
+       `(modify-phases ,phases
+         (replace 'set-environment-up
+           (lambda* (#:key inputs outputs #:allow-other-keys)
+             (let ((python (assoc-ref inputs "python")))
+               (chdir "src")
+               (setenv "PYDEV" (string-append python
+                               "/include/python"
+                               ,(version-major+minor (package-version python-2))))
+               #t)))
+         (replace 'install
+           (lambda* (#:key inputs outputs make-flags #:allow-other-keys #:rest args)
+             (let* ((out (assoc-ref outputs "out"))
+                    (out-python (string-append out
+                                               "/lib/python"
+                                               ,(version-major+minor (package-version python-2))
+                                               "/site-packages"))
+                    (install (assoc-ref %standard-phases 'install)))
+               (install #:make-flags (cons (string-append "PYLIB=" out-python)
+                                           make-flags)))))))))
+    (inputs
+     (alist-replace "python" (list python-2)
+                    (package-inputs python-libmpsse)))))
 
 (define-public picprog
   (package
@@ -971,20 +1155,20 @@ SPI, I2C, JTAG.")
          (delete 'configure))))
     (synopsis "Programs Microchip's PIC microcontrollers")
     (description "This program programs Microchip's PIC microcontrollers.")
-    (home-page "http://hyvatti.iki.fi/~jaakko/pic/picprog.html")
+    (home-page "https://hyvatti.iki.fi/~jaakko/pic/picprog.html")
     (license license:gpl3+)))
 
 (define-public fc-host-tools
   (package
     (name "fc-host-tools")
-    (version "10")
+    (version "11")
     (source (origin
               (method url-fetch)
               (uri (string-append "ftp://ftp.freecalypso.org/pub/GSM/"
                                   "FreeCalypso/fc-host-tools-r" version ".tar.bz2"))
               (sha256
                (base32
-                "0ybjqkz1cpnxni66p3valv1bva39vpwzdcc4040lqzx6py9h7h8b"))))
+                "0s87lp6gd8i8ivrdd7mnnalysr65035nambcm992rgla7sk76sj1"))))
     (build-system gnu-build-system)
     (arguments
      `(#:tests? #f                      ; No tests exist.
@@ -993,12 +1177,7 @@ SPI, I2C, JTAG.")
              (string-append "INCLUDE_INSTALL_DIR=" %output "include/rvinterf"))
        #:phases
        (modify-phases %standard-phases
-         (delete 'configure)
-         (add-after 'unpack 'handle-tarbomb
-           (lambda _
-             (chdir "..") ; url-fetch/tarbomb doesn't work for some reason.
-             #t))
-         (add-after 'handle-tarbomb 'patch-installation-paths
+         (add-after 'unpack 'patch-installation-paths
            (lambda* (#:key outputs #:allow-other-keys)
              (substitute* '("Makefile"
                             "rvinterf/etmsync/fsiomain.c"
@@ -1015,13 +1194,16 @@ SPI, I2C, JTAG.")
                 (string-append (assoc-ref outputs "out") "/lib/freecalypso/loadtools"))
                (("\\$\\{INSTALL_PREFIX\\}/loadtools")
                 (string-append (assoc-ref outputs "out") "/lib/freecalypso/loadtools"))
+               (("\\$\\{INSTALL_PREFIX\\}/target-bin")
+                (string-append (assoc-ref outputs "out") "/lib/freecalypso/target-bin"))
                (("/opt/freecalypso")
                 (assoc-ref outputs "out")))
-             #t)))))
+             #t))
+         (delete 'configure))))
     (inputs
      `(("libx11" ,libx11)))
     (synopsis "Freecalypso host tools")
-    (description "This package provides some tools for debugging Freecalypso phones.
+    (description "This package provides some tools for debugging FreeCalypso phones and the FreeCalypso FCDEV3B dev board.
 
 @enumerate
 @item fc-e1decode: Decodes a binary Melody E1 file into an ASCII source file.
@@ -1096,10 +1278,10 @@ feeding melodies to be played to it.
 that can be issued through the RVTMUX (debug trace) serial channel.
 This program is our test mode shell for sending Test Mode commands to targets
 and displaying decoded target responses.
-@item fcup-smsend Send a short message via SMS
-@item fcup-smsendmult Send multiple short messages via SMS in one go
-@item fcup-smsendpdu Send multiple short messages given in PDU format via SMS
-@item sms-pdu-decode Decode PDU format messages
+@item fcup-smsend: Send a short message via SMS
+@item fcup-smsendmult: Send multiple short messages via SMS in one go
+@item fcup-smsendpdu: Send multiple short messages given in PDU format via SMS
+@item sms-pdu-decode: Decode PDU format messages
 @end enumerate")
     (home-page "https://www.freecalypso.org/")
     (license license:public-domain)))
@@ -1110,13 +1292,14 @@ and displaying decoded target responses.
     (version "1.5.1")
     (source
      (origin
-       (method url-fetch)
-       (uri (string-append "https://github.com/texane/stlink/archive/v"
-                           version ".tar.gz"))
-       (file-name (string-append name "-" version ".tar.gz"))
+       (method git-fetch)
+       (uri (git-reference
+              (url "https://github.com/texane/stlink")
+              (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
        (sha256
         (base32
-         "01z1cz1a5xbbhd163qrqcgp4bi1k145pb80jmwdz50g7sfzmy570"))))
+         "1d5gxiqpsm8fc105cxlp27af9fk339fap5h6nay21x5a7n61jgyc"))))
     (build-system cmake-build-system)
     (arguments
      `(#:tests? #f                      ;no tests
@@ -1140,3 +1323,31 @@ raw USB commands.")
     ;; The flashloaders/stm32l0x.s and flashloaders/stm32lx.s source files are
     ;; licensed under the GPLv2+.
     (license (list license:bsd-3 license:gpl2+))))
+
+(define-public west
+  (package
+    (name "west")
+    (version "0.6.3")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "west" version))
+       (sha256
+        (base32
+         "0ql6ij1hrj2ir5wkxm96zgig5qwvfwa75w77wh2y13w6b9cqcr4b"))))
+    (propagated-inputs
+     `(("python-colorama" ,python-colorama)
+       ("python-configobj" ,python-configobj)
+       ("python-pykwalify" ,python-pykwalify)
+       ("python-pyyaml" ,python-pyyaml)))
+    (build-system python-build-system)
+    (home-page "https://github.com/zephyrproject-rtos/west")
+    (synopsis "Zephyr RTOS Project meta-tool")
+    (description "West is the swiss-army knife command line tool of the Zephyr
+project.  Its built-in commands provide a multiple repository management
+system with features inspired by Google’s Repo tool and Git submodules.  West
+simplifies configuration and is also pluggable: you can write your own west
+\"extension commands\" which add additional features to west.  Zephyr uses
+this feature to provide conveniences for building applications, flashing and
+debugging them, and more.")
+    (license license:expat)))

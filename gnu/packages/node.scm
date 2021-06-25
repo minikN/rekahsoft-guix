@@ -5,7 +5,7 @@
 ;;; Copyright © 2016 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2017 Mike Gerwitz <mtg@gnu.org>
 ;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
-;;; Copyright © 2018, 2019 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2018, 2019, 2020 Marius Bakke <mbakke@fastmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -27,6 +27,7 @@
   #:use-module (guix packages)
   #:use-module (guix derivations)
   #:use-module (guix download)
+  #:use-module (guix utils)
   #:use-module (guix build-system gnu)
   #:use-module (gnu packages)
   #:use-module (gnu packages adns)
@@ -45,14 +46,14 @@
 (define-public node
   (package
     (name "node")
-    (version "10.15.3")
+    (version "10.19.0")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://nodejs.org/dist/v" version
                                   "/node-v" version ".tar.xz"))
               (sha256
                (base32
-                "1mcijznh481s44i59p571a38bfvcxm9f8x2l0l1005aly0kdj8jf"))
+                "0sginvcsf7lrlzsnpahj4bj1f673wfvby8kaxgvzlrbb7sy229v2"))
               (modules '((guix build utils)))
               (snippet
                `(begin
@@ -74,8 +75,7 @@
                   #t))))
     (build-system gnu-build-system)
     (arguments
-     ;; TODO: Purge the bundled copies from the source.
-     '(#:configure-flags '("--shared-cares"
+     `(#:configure-flags '("--shared-cares"
                            "--shared-http-parser"
                            "--shared-libuv"
                            "--shared-nghttp2"
@@ -90,12 +90,12 @@
        (modify-phases %standard-phases
          (add-before 'configure 'patch-files
            (lambda* (#:key inputs #:allow-other-keys)
-
              ;; Fix hardcoded /bin/sh references.
              (substitute* '("lib/child_process.js"
                             "lib/internal/v8_prof_polyfill.js"
                             "test/parallel/test-child-process-spawnsync-shell.js"
-                            "test/parallel/test-stdio-closed.js")
+                            "test/parallel/test-stdio-closed.js"
+                            "test/sequential/test-child-process-emfile.js")
                (("'/bin/sh'")
                 (string-append "'" (which "sh") "'")))
 
@@ -109,18 +109,31 @@
              ;; FIXME: These tests fail in the build container, but they don't
              ;; seem to be indicative of real problems in practice.
              (for-each delete-file
-                       '("test/async-hooks/test-ttywrap.readstream.js"
-                         "test/parallel/test-util-inspect.js"
-                         "test/parallel/test-v8-serdes.js"
-                         "test/parallel/test-dgram-membership.js"
-                         "test/parallel/test-dns-cancel-reverse-lookup.js"
-                         "test/parallel/test-dns-resolveany.js"
-                         "test/parallel/test-cluster-master-error.js"
+                       '("test/parallel/test-cluster-master-error.js"
                          "test/parallel/test-cluster-master-kill.js"
-                         "test/parallel/test-net-listen-after-destroying-stdin.js"
-                         "test/parallel/test-npm-install.js"
-                         "test/sequential/test-child-process-emfile.js"
-                         "test/sequential/test-http-regr-gh-2928.js"))
+                         ;; See also <https://github.com/nodejs/node/issues/25903>.
+                         "test/sequential/test-performance.js"))
+
+             ;; This requires a DNS resolver.
+             (delete-file "test/parallel/test-dns.js")
+
+             ;; FIXME: This test fails randomly:
+             ;; https://github.com/nodejs/node/issues/31213
+             (delete-file "test/parallel/test-net-listen-after-destroying-stdin.js")
+
+             ;; FIXME: These tests fail on armhf-linux:
+             ;; https://github.com/nodejs/node/issues/31970
+             ,@(if (string-prefix? "arm" (%current-system))
+                   '((for-each delete-file
+                               '("test/parallel/test-zlib.js"
+                                 "test/parallel/test-zlib-brotli.js"
+                                 "test/parallel/test-zlib-brotli-flush.js"
+                                 "test/parallel/test-zlib-brotli-from-brotli.js"
+                                 "test/parallel/test-zlib-brotli-from-string.js"
+                                 "test/parallel/test-zlib-convenience-methods.js"
+                                 "test/parallel/test-zlib-random-byte-pipes.js"
+                                 "test/parallel/test-zlib-write-after-flush.js")))
+                   '())
 
              ;; These tests have an expiry date: they depend on the validity of
              ;; TLS certificates that are bundled with the source.  We want this
@@ -173,7 +186,7 @@
        ("icu4c" ,icu4c)
        ("libuv" ,libuv)
        ("nghttp2" ,nghttp2 "lib")
-       ("openssl" ,openssl-next)
+       ("openssl" ,openssl)
        ("zlib" ,zlib)))
     (synopsis "Evented I/O for V8 JavaScript")
     (description "Node.js is a platform built on Chrome's JavaScript runtime
@@ -183,4 +196,17 @@ perfect for data-intensive real-time applications that run across distributed
 devices.")
     (home-page "https://nodejs.org/")
     (license expat)
-    (properties '((timeout . 3600))))) ; 1 h
+    (properties '((max-silent-time . 7200)     ;2h, needed on ARM
+                  (timeout . 21600)))))        ;6h
+
+(define-public libnode
+  (package
+    (inherit node)
+    (name "libnode")
+    (arguments
+     (substitute-keyword-arguments (package-arguments node)
+       ((#:configure-flags flags ''())
+        `(cons* "--shared" "--without-npm" ,flags))
+       ((#:phases phases '%standard-phases)
+        `(modify-phases ,phases
+           (delete 'patch-npm-shebang)))))))

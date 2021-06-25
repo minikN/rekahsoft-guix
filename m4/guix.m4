@@ -1,5 +1,5 @@
 dnl GNU Guix --- Functional package management for GNU
-dnl Copyright © 2012, 2013, 2014, 2015, 2016, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+dnl Copyright © 2012, 2013, 2014, 2015, 2016, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 dnl Copyright © 2014 Mark H Weaver <mhw@netris.org>
 dnl Copyright © 2017 Efraim Flashner <efraim@flashner.co.il>
 dnl
@@ -88,7 +88,7 @@ courageous and port the GNU System distribution to it (see
   # Currently only Linux-based systems are supported, and only on some
   # platforms.
   case "$guix_system" in
-    x86_64-linux|i686-linux|armhf-linux|aarch64-linux|mips64el-linux)
+    x86_64-linux|i686-linux|armhf-linux|aarch64-linux)
       ;;
     *)
       if test "x$guix_courageous" = "xyes"; then
@@ -142,13 +142,16 @@ dnl GUIX_CHECK_GUILE_SSH
 dnl
 dnl Check whether a recent-enough Guile-SSH is available.
 AC_DEFUN([GUIX_CHECK_GUILE_SSH], [
-  dnl Check whether 'channel-send-eof' (introduced in 0.10.2) is present.
+  dnl Check whether '#:nodelay' paramater to 'make-session' (introduced in
+  dnl 0.13.0) is present.
   AC_CACHE_CHECK([whether Guile-SSH is available and recent enough],
     [guix_cv_have_recent_guile_ssh],
     [GUILE_CHECK([retval],
       [(and (@ (ssh channel) channel-send-eof)
             (@ (ssh popen) open-remote-pipe)
-	    (@ (ssh dist node) node-eval))])
+            (@ (ssh dist node) node-eval)
+            (@ (ssh auth) userauth-gssapi!)
+            ((@ (ssh session) make-session) #:nodelay #t))])
      if test "$retval" = 0; then
        guix_cv_have_recent_guile_ssh="yes"
      else
@@ -184,9 +187,8 @@ AC_DEFUN([GUIX_CHECK_GUILE_JSON], [
     [guix_cv_have_recent_guile_json],
     [GUILE_CHECK([retval],
       [(use-modules (json) (ice-9 match))
-       (match (json-string->scm \"[[] { \\\"a\\\": 42 } []]\")
-         (#(("a" . 42)) #t)
-	 (_ #f))])
+       (match (json-string->scm \"[[ { \\\"a\\\": 42 } ]]\")
+         (#((("a" . 42))) #t))])
      if test "$retval" = 0; then
        guix_cv_have_recent_guile_json="yes"
      else
@@ -194,6 +196,24 @@ AC_DEFUN([GUIX_CHECK_GUILE_JSON], [
      fi])
 ])
 
+dnl GUIX_CHECK_GUILE_GCRYPT
+dnl
+dnl Check whether a recent-enough Guile-Gcrypt is available.
+AC_DEFUN([GUIX_CHECK_GUILE_GCRYPT], [
+  dnl Check whether we're using Guile-Gcrypt 0.2.x or later.  0.2.0
+  dnl introduced the 'hash-algorithm' macro and related code.
+  AC_CACHE_CHECK([whether Guile-Gcrypt is available and recent enough],
+    [guix_cv_have_recent_guile_gcrypt],
+    [GUILE_CHECK([retval],
+      [(use-modules (gcrypt hash))
+       (equal? (hash-algorithm sha256)
+               (lookup-hash-algorithm 'sha256))])
+     if test "$retval" = 0; then
+       guix_cv_have_recent_guile_gcrypt="yes"
+     else
+       guix_cv_have_recent_guile_gcrypt="no"
+     fi])
+])
 
 dnl GUIX_TEST_ROOT_DIRECTORY
 AC_DEFUN([GUIX_TEST_ROOT_DIRECTORY], [

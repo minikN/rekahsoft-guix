@@ -28,7 +28,8 @@
 (define* (extlinux-configuration-file config entries
                                       #:key
                                       (system (%current-system))
-                                      (old-entries '()))
+                                      (old-entries '())
+                                      #:allow-other-keys)
   "Return the U-Boot configuration file corresponding to CONFIG, a
 <u-boot-configuration> object, and where the store is available at STORE-FS, a
 <file-system> object.  OLD-ENTRIES is taken to be a list of menu entries
@@ -74,7 +75,9 @@ TIMEOUT ~a~%"
                       (format port "~%"))
                    #~())))))
 
-  (computed-file "extlinux.conf" builder))
+  (computed-file "extlinux.conf" builder
+                 #:options '(#:local-build? #t
+                             #:substitutable? #f)))
 
 
 

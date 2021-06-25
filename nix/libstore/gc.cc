@@ -11,6 +11,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <climits>
 
 
 namespace nix {
@@ -339,14 +340,11 @@ Roots LocalStore::findRoots()
 
 static void addAdditionalRoots(StoreAPI & store, PathSet & roots)
 {
-    Path rootFinder = getEnv("NIX_ROOT_FINDER",
-        settings.nixLibexecDir + "/list-runtime-roots");
+    debug(format("executing `%1% gc --list-busy' to find additional roots")
+	  % settings.guixProgram);
 
-    if (rootFinder.empty()) return;
-
-    debug(format("executing `%1%' to find additional roots") % rootFinder);
-
-    string result = runProgram(rootFinder);
+    const Strings args = { "gc", "--list-busy" };
+    string result = runProgram(settings.guixProgram, false, args);
 
     StringSet paths = tokenizeString<StringSet>(result, "\n");
 
@@ -394,7 +392,14 @@ bool LocalStore::isActiveTempFile(const GCState & state,
 void LocalStore::deleteGarbage(GCState & state, const Path & path)
 {
     unsigned long long bytesFreed;
-    deletePath(path, bytesFreed);
+
+    /* When deduplication is on, store items always have at least two links:
+       the one at PATH, and one in /gnu/store/.links.  In that case, increase
+       bytesFreed when PATH has two or fewer links.  */
+    size_t linkThreshold =
+	(settings.autoOptimiseStore && isStorePath(path)) ? 2 : 1;
+
+    deletePath(path, bytesFreed, linkThreshold);
     state.results.bytesFreed += bytesFreed;
 }
 
@@ -420,7 +425,16 @@ void LocalStore::deletePathRecursive(GCState & state, const Path & path)
         throw SysError(format("getting status of %1%") % path);
     }
 
-    printMsg(lvlInfo, format("deleting `%1%'") % path);
+    if (state.options.maxFreed != ULLONG_MAX) {
+	auto freed = state.results.bytesFreed + state.bytesInvalidated;
+	double fraction = ((double) freed) / (double) state.options.maxFreed;
+	unsigned int percentage = (fraction > 1. ? 1. : fraction) * 100.;
+	printMsg(lvlInfo, format("[%1%%%] deleting '%2%'") % percentage % path);
+    } else {
+	auto freed = state.results.bytesFreed + state.bytesInvalidated;
+	freed /=  1024ULL * 1024ULL;
+	printMsg(lvlInfo, format("[%1% MiB] deleting '%2%'") % freed % path);
+    }
 
     state.results.paths.insert(path);
 
@@ -441,7 +455,10 @@ void LocalStore::deletePathRecursive(GCState & state, const Path & path)
                 throw SysError(format("unable to rename `%1%' to `%2%'") % path % tmp);
             state.bytesInvalidated += size;
         } catch (SysError & e) {
-            if (e.errNo == ENOSPC) {
+            /* In a Docker container, rename(2) returns EXDEV when the source
+               and destination are not both on the "top layer".  See:
+               https://bugs.gnu.org/41607 */
+            if (e.errNo == ENOSPC || e.errNo == EXDEV) {
                 printMsg(lvlInfo, format("note: can't create move `%1%': %2%") % path % e.msg());
                 deleteGarbage(state, path);
             }
@@ -564,14 +581,34 @@ void LocalStore::removeUnusedLinks(const GCState & state)
         if (name == "." || name == "..") continue;
         Path path = linksDir + "/" + name;
 
+#ifdef HAVE_STATX
+# define st_size stx_size
+# define st_nlink stx_nlink
+	static int statx_flags = AT_SYMLINK_NOFOLLOW | AT_STATX_DONT_SYNC;
+	struct statx st;
+
+	if (statx(AT_FDCWD, path.c_str(), statx_flags,
+		  STATX_SIZE | STATX_NLINK, &st) == -1) {
+	    if (errno == EINVAL) {
+		/* Old 3.10 kernels (CentOS 7) don't support
+		   AT_STATX_DONT_SYNC, so try again without it.  */
+		statx_flags &= ~AT_STATX_DONT_SYNC;
+		if (statx(AT_FDCWD, path.c_str(), statx_flags,
+			  STATX_SIZE | STATX_NLINK, &st) == -1)
+		    throw SysError(format("statting `%1%'") % path);
+	    } else {
+		throw SysError(format("statting `%1%'") % path);
+	    }
+	}
+#else
         struct stat st;
         if (lstat(path.c_str(), &st) == -1)
             throw SysError(format("statting `%1%'") % path);
+#endif
 
         if (st.st_nlink != 1) {
-            unsigned long long size = st.st_blocks * 512ULL;
-            actualSize += size;
-            unsharedSize += (st.st_nlink - 1) * size;
+            actualSize += st.st_size;
+            unsharedSize += (st.st_nlink - 1) * st.st_size;
             continue;
         }
 
@@ -580,13 +617,15 @@ void LocalStore::removeUnusedLinks(const GCState & state)
         if (unlink(path.c_str()) == -1)
             throw SysError(format("deleting `%1%'") % path);
 
-        state.results.bytesFreed += st.st_blocks * 512;
+        state.results.bytesFreed += st.st_size;
+#undef st_size
+#undef st_nlink
     }
 
     struct stat st;
     if (stat(linksDir.c_str(), &st) == -1)
         throw SysError(format("statting `%1%'") % linksDir);
-    long long overhead = st.st_blocks * 512ULL;
+    long long overhead = st.st_size;
 
     printMsg(lvlInfo, format("note: currently hard linking saves %.2f MiB")
         % ((unsharedSize - actualSize - overhead) / (1024.0 * 1024.0)));
@@ -624,10 +663,9 @@ void LocalStore::collectGarbage(const GCOptions & options, GCResults & results)
 
     foreach (Roots::iterator, i, rootMap) state.roots.insert(i->second);
 
-    /* Add additional roots returned by the program specified by the
-       NIX_ROOT_FINDER environment variable.  This is typically used
-       to add running programs to the set of roots (to prevent them
-       from being garbage collected). */
+    /* Add additional roots returned by 'guix gc --list-busy'.  This is
+       typically used to add running programs to the set of roots (to prevent
+       them from being garbage collected). */
     if (!options.ignoreLiveness)
         addAdditionalRoots(*this, state.roots);
 

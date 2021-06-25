@@ -1,5 +1,5 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2013, 2014, 2015 Andreas Enge <andreas@enge.fr>
 ;;; Copyright © 2015 Federico Beffa <beffa@fbengineering.ch>
 ;;; Copyright © 2016 Alex Griffin <a@ajgrf.com>
@@ -36,6 +36,7 @@
   #:use-module (srfi srfi-26)
   #:export (%mirrors
             url-fetch
+            url-fetch/executable
             url-fetch/tarbomb
             url-fetch/zipbomb
             download-to-store))
@@ -93,8 +94,9 @@
        "http://mirror.yandex.ru/mirrors/ftp.gnome.org/")
       (hackage
        "http://hackage.haskell.org/")
-      (savannah
+      (savannah           ; http://download0.savannah.gnu.org/mirmon/savannah/
        "http://download.savannah.gnu.org/releases/"
+       "http://nongnu.freemirror.org/nongnu/"
        "http://ftp.cc.uoc.gr/mirrors/nongnu.org/"
        "http://ftp.twaren.net/Unix/NonGNU/"
        "http://mirror.csclub.uwaterloo.ca/nongnu/"
@@ -131,7 +133,6 @@
        "ftp://ftp.hu.netfilter.org/"
        "ftp://www.lt.netfilter.org/pub/")
       (kernel.org
-       "http://ramses.wh2.tu-dresden.de/pub/mirrors/kernel.org/"
        "http://linux-kernel.uio.no/pub/"
        "http://kernel.osuosl.org/pub/"
        "http://ftp.be.debian.org/pub/"
@@ -140,9 +141,13 @@
       (apache             ; from http://www.apache.org/mirrors/dist.html
        "http://www.eu.apache.org/dist/"
        "http://www.us.apache.org/dist/"
-       "http://apache.belnet.be/"
+       "https://ftp.nluug.nl/internet/apache/"
+       "http://apache.mirror.iweb.ca/"
        "http://mirrors.ircam.fr/pub/apache/"
+       "http://apache.mirrors.ovh.net/ftp.apache.org/dist/"
        "http://apache-mirror.rbc.ru/pub/apache/"
+       "ftp://ftp.osuosl.org/pub/apache/"
+       "http://mirrors.ibiblio.org/apache/"
 
        ;; As a last resort, try the archive.
        "http://archive.apache.org/dist/")
@@ -183,7 +188,6 @@
        "http://mirrors.nic.cz/CPAN/"
        "http://mirror.ibcp.fr/pub/CPAN/"
        "http://ftp.ntua.gr/pub/lang/perl/"
-       "http://kvin.lv/pub/CPAN/"
        "http://mirror.as43289.net/pub/CPAN/"
        "http://cpan.cs.uu.nl/"
        "http://cpan.uib.no/"
@@ -247,7 +251,6 @@
        ;; mirrors keeping old versions at the top level
        "https://sunsite.icm.edu.pl/packages/ImageMagick/"
        ;; mirrors moving old versions to "legacy"
-       "http://mirrors-usa.go-parts.com/mirrors/ImageMagick/"
        "http://mirror.checkdomain.de/imagemagick/"
        "http://ftp.surfnet.nl/pub/ImageMagick/"
        "http://mirror.searchdaimon.com/ImageMagick"
@@ -305,7 +308,6 @@
        "http://mirror.its.dal.ca/kde/"
        "http://mirror.csclub.uwaterloo.ca/kde/"
        "http://mirror.cc.columbia.edu/pub/software/kde/"
-       "http://mirrors-usa.go-parts.com/kde"
        "http://kde.mirrors.hoobly.com/"
        "http://ftp.ussg.iu.edu/kde/"
        "http://mirrors.mit.edu/kde/"
@@ -419,8 +421,10 @@
 (define* (built-in-download file-name url
                             #:key system hash-algo hash
                             mirrors content-addressed-mirrors
+                            executable?
                             (guile 'unused))
-  "Download FILE-NAME from URL using the built-in 'download' builder.
+  "Download FILE-NAME from URL using the built-in 'download' builder.  When
+EXECUTABLE? is true, make the downloaded file executable.
 
 This is an \"out-of-band\" download in that the returned derivation does not
 explicitly depend on Guile, GnuTLS, etc.  Instead, the daemon performs the
@@ -432,6 +436,7 @@ download by itself using its own dependencies."
                     #:system system
                     #:hash-algo hash-algo
                     #:hash hash
+                    #:recursive? executable?
                     #:sources (list mirrors content-addressed-mirrors)
 
                     ;; Honor the user's proxy and locale settings.
@@ -442,7 +447,10 @@ download by itself using its own dependencies."
                     #:env-vars `(("url" . ,(object->string url))
                                  ("mirrors" . ,mirrors)
                                  ("content-addressed-mirrors"
-                                  . ,content-addressed-mirrors))
+                                  . ,content-addressed-mirrors)
+                                 ,@(if executable?
+                                       '(("executable" . "1"))
+                                       '()))
 
                     ;; Do not offload this derivation because we cannot be
                     ;; sure that the remote daemon supports the 'download'
@@ -453,11 +461,13 @@ download by itself using its own dependencies."
 (define* (url-fetch url hash-algo hash
                     #:optional name
                     #:key (system (%current-system))
-                    (guile (default-guile)))
+                    (guile (default-guile))
+                    executable?)
   "Return a fixed-output derivation that fetches URL (a string, or a list of
 strings denoting alternate URLs), which is expected to have hash HASH of type
 HASH-ALGO (a symbol).  By default, the file name is the base name of URL;
-optionally, NAME can specify a different file name.
+optionally, NAME can specify a different file name.  When EXECUTABLE? is true,
+make the downloaded file executable.
 
 When one of the URL starts with mirror://, then its host part is
 interpreted as the name of a mirror scheme, taken from %MIRROR-FILE.
@@ -488,9 +498,20 @@ in the store."
                              #:system system
                              #:hash-algo hash-algo
                              #:hash hash
+                             #:executable? executable?
                              #:mirrors %mirror-file
                              #:content-addressed-mirrors
                              %content-addressed-mirror-file)))))
+
+(define* (url-fetch/executable url hash-algo hash
+                               #:optional name
+                               #:key (system (%current-system))
+                               (guile (default-guile)))
+  "Like 'url-fetch', but make the downloaded file executable."
+  (url-fetch url hash-algo hash name
+             #:system system
+             #:guile guile
+             #:executable? #t))
 
 (define* (url-fetch/tarbomb url hash-algo hash
                             #:optional name
@@ -513,7 +534,8 @@ own.  This helper makes it easier to deal with \"tar bombs\"."
                                       (string-append "tarbomb-"
                                                      (or name file-name))
                                       #:system system
-                                      #:guile guile)))
+                                      #:guile guile))
+                      (guile (package->derivation guile system)))
     ;; Take the tar bomb, and simply unpack it as a directory.
     ;; Use ungrafted tar/gzip so that the resulting tarball doesn't depend on
     ;; whether grafts are enabled.
@@ -526,6 +548,8 @@ own.  This helper makes it easier to deal with \"tar bombs\"."
                             (chdir #$output)
                             (invoke (string-append #$tar "/bin/tar")
                                     "xf" #$drv)))
+                      #:system system
+                      #:guile-for-build guile
                       #:graft? #f
                       #:local-build? #t)))
 
@@ -548,7 +572,8 @@ own.  This helper makes it easier to deal with \"zip bombs\"."
                                       (string-append "zipbomb-"
                                                      (or name file-name))
                                       #:system system
-                                      #:guile guile)))
+                                      #:guile guile))
+                      (guile (package->derivation guile system)))
     ;; Take the zip bomb, and simply unpack it as a directory.
     ;; Use ungrafted unzip so that the resulting tarball doesn't depend on
     ;; whether grafts are enabled.
@@ -560,6 +585,8 @@ own.  This helper makes it easier to deal with \"zip bombs\"."
                             (chdir #$output)
                             (invoke (string-append #$unzip "/bin/unzip")
                                     #$drv)))
+                      #:system system
+                      #:guile-for-build guile
                       #:graft? #f
                       #:local-build? #t)))
 

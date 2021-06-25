@@ -1,9 +1,10 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2013, 2014, 2015, 2016 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2013, 2014, 2015, 2016, 2019 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2013 Andreas Enge <andreas@enge.fr>
 ;;; Copyright © 2013 Nikita Karetnikov <nikita@karetnikov.org>
 ;;; Copyright © 2016 David Craven <david@craven.ch>
 ;;; Copyright © 2019 Ivan Petkov <ivanppetkov@gmail.com>
+;;; Copyright © 2020 Jakub Kądziołka <kuba@kadziolka.net>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -35,12 +36,17 @@
   #:export (%cargo-build-system-modules
             %cargo-utils-modules
             cargo-build-system
+            %crate-base-url
             crate-url
             crate-url?
             crate-uri))
 
-(define crate-url "https://crates.io/api/v1/crates/")
-(define crate-url? (cut string-prefix? crate-url <>))
+(define %crate-base-url
+  (make-parameter "https://crates.io"))
+(define crate-url
+  (string-append (%crate-base-url) "/api/v1/crates/"))
+(define crate-url?
+  (cut string-prefix? crate-url <>))
 
 (define (crate-uri name version)
   "Return a URI string for the crate package hosted at crates.io corresponding
@@ -71,6 +77,7 @@ to NAME and VERSION."
                       (vendor-dir "guix-vendor")
                       (cargo-build-flags ''("--release"))
                       (cargo-test-flags ''("--release"))
+                      (features ''())
                       (skip-build? #f)
                       (phases '(@ (guix build cargo-build-system)
                                   %standard-phases))
@@ -99,6 +106,7 @@ to NAME and VERSION."
                     #:vendor-dir ,vendor-dir
                     #:cargo-build-flags ,cargo-build-flags
                     #:cargo-test-flags ,cargo-test-flags
+                    #:features ,features
                     #:skip-build? ,skip-build?
                     #:tests? ,(and tests? (not skip-build?))
                     #:phases ,phases

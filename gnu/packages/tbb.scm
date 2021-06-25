@@ -1,6 +1,7 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2015, 2016 Ricardo Wurmus <rekado@elephly.net>
-;;; Copyright © 2016 ng0 <ng0@n0.is>
+;;; Copyright © 2016 Nikita <nikita@n0.is>
+;;; Copyright © 2019 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -28,22 +29,33 @@
 (define-public tbb
   (package
     (name "tbb")
-    (version "2019_U8")
+    (version "2020.2")
     (source (origin
               (method git-fetch)
               (uri (git-reference
                     (url "https://github.com/01org/tbb")
-                    (commit version)))
+                    (commit (string-append "v" version))))
               (file-name (git-file-name name version))
               (sha256
                (base32
-                "0z0kh1a5g28gckcxlv3x7qqskh5fsl8knf2ypbbvk7z9ln9k3wfq"))
+                "0h8kdxikpq2v4a2h9cj33ril9kj0ig47n0vvbd92wabkn442jwar"))
               (modules '((guix build utils)))
               (snippet
                '(begin
                   (substitute* "build/common.inc"
                     (("export tbb_build_prefix.+$")
                      "export tbb_build_prefix?=guix\n"))
+
+                  ;; Don't capture the build time and kernel version.
+                  (substitute* "build/version_info_linux.sh"
+                    (("uname -srv") "uname -s")
+                    (("`date -u`") "01 Jan 1970"))
+
+                  (substitute* "build/linux.inc"
+                    (("os_kernel_version:=.*")
+                     "os_kernel_version:=5\n")
+                    (("os_version:=.*")
+                     "os_version:=1\n"))
                   #t))))
     (outputs '("out" "doc"))
     (build-system gnu-build-system)

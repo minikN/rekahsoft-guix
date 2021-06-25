@@ -2,6 +2,7 @@
 ;;; Copyright © 2018 Alex Vong <alexvong1995@gmail.com>
 ;;; Copyright © 2018 Pierre Neidhardt <mail@ambrevar.xyz>
 ;;; Copyright © 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2020 Ludovic Courtès <ludo@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -150,7 +151,7 @@ designs.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/clojure/algo.generic.git")
+             (url "https://github.com/clojure/algo.generic")
              (commit (string-append "algo.generic-" version))))
        (file-name (git-file-name name version))
        (sha256
@@ -175,7 +176,7 @@ that can be implemented for any data type.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/clojure/algo.monads.git")
+             (url "https://github.com/clojure/algo.monads")
              (commit (string-append "algo.monads-" version))))
        (file-name (git-file-name name version))
        (sha256
@@ -204,7 +205,7 @@ defining and using monads and useful monadic functions.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/clojure/core.match.git")
+                      (url "https://github.com/clojure/core.match")
                       (commit commit)))
                 (file-name (git-file-name name version))
                 (sha256
@@ -231,7 +232,7 @@ It supports Clojure 1.5.1 and later as well as ClojureScript.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/Engelberg/instaparse.git")
+                      (url "https://github.com/Engelberg/instaparse")
                       (commit commit)))
                 (file-name (git-file-name name version))
                 (sha256
@@ -282,7 +283,7 @@ tree.
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/clojure/tools.macro.git")
+             (url "https://github.com/clojure/tools.macro")
              (commit (string-append "tools.macro-" version))))
        (file-name (git-file-name name version))
        (sha256
@@ -295,4 +296,28 @@ tree.
     (synopsis "Utilities for macro writers")
     (description "Tools for writing macros.")
     (home-page "https://github.com/clojure/tools.macro")
+    (license license:epl1.0)))
+
+(define-public clojure-tools-cli
+  (package
+    (name "clojure-tools-cli")
+    (version "0.4.2")
+    (home-page "https://github.com/clojure/tools.cli")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url home-page)
+                    (commit (string-append "tools.cli-" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32 "1yqlm8lwbcjm0dp032z7vzc4bdlmc4jixznvf4adsqhvqw85hvj2"))))
+    (build-system clojure-build-system)
+    (arguments
+     '(#:source-dirs '("src/main/clojure/")
+       #:test-dirs '("src/test/clojure/")
+       #:doc-dirs '()))
+    (synopsis "Clojure library for working with command-line arguments")
+    (description
+     "The @code{tools.cli} library provides Clojure programmers with tools to
+work with command-line arguments.")
     (license license:epl1.0)))

@@ -1,8 +1,8 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2017 Arun Isaac <arunisaac@systemreboot.net>
-;;; Copyright © 2017 Ricardo Wurmus <rekado@elephly.net>
+;;; Copyright © 2017, 2019 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2017, 2018 Tobias Geerinckx-Rice <me@tobias.gr>
-;;; Copyright © 2017, 2018, 2019 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2017, 2018, 2019, 2020 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2018 Nicolas Goaziou <mail@nicolasgoaziou.fr>
 ;;;
 ;;; This file is part of GNU Guix.
@@ -25,7 +25,7 @@
   #:use-module (gnu packages)
   #:use-module (gnu packages base)
   #:use-module (gnu packages compression)
-  #:use-module (gnu packages lisp)
+  #:use-module (gnu packages lisp-xyz)
   #:use-module (gnu packages readline)
   #:use-module (guix packages)
   #:use-module (guix download)
@@ -40,14 +40,14 @@
     (version "2.7.2")
     (source
      (origin
-       (method url-fetch)
-       (uri (string-append
-             "https://github.com/mathjax/MathJax/archive/"
-             version ".tar.gz"))
-       (file-name (string-append name "-" version ".tar.gz"))
+       (method git-fetch)
+       (uri (git-reference
+              (url "https://github.com/mathjax/MathJax")
+              (commit version)))
+       (file-name (git-file-name name version))
        (sha256
         (base32
-         "1r72di4pg4i6pfhcskkxqmf1158m81ki6a7lbw6nz4zh7xw23hy4"))))
+         "127j12g7v2hx6k7r00b8cp49s7nkrwhxy6l8p03pw34xpxbgbimm"))))
     (build-system trivial-build-system)
     (arguments
      `(#:modules ((guix build utils))
@@ -55,20 +55,11 @@
        (begin
          (use-modules (guix build utils)
                       (ice-9 match))
-         (set-path-environment-variable
-          "PATH" '("bin") (map (match-lambda
-                                 ((_ . input)
-                                  input))
-                               %build-inputs))
          (let ((install-directory (string-append %output "/share/fonts/mathjax")))
            (mkdir-p install-directory)
-           (invoke "tar" "-C" install-directory "-xvf"
-                   (assoc-ref %build-inputs "source")
-                   ,(string-append "MathJax-" version "/fonts")
-                   "--strip" "2")))))
-    (native-inputs
-     `(("gzip" ,gzip)
-       ("tar" ,tar)))
+           (copy-recursively (string-append (assoc-ref %build-inputs "source")
+                                            "/fonts")
+                             install-directory)))))
     (home-page "https://www.mathjax.org/")
     (synopsis "Fonts for MathJax")
     (description "This package contains the fonts required for MathJax.")
@@ -96,10 +87,8 @@
           (list (assoc-ref %build-inputs "glibc-utf8-locales")))
          (setenv "LANG" "en_US.UTF-8")
          (let ((install-directory (string-append %output "/share/javascript/mathjax")))
-           (invoke "tar" "xvf" (assoc-ref %build-inputs "source")
-                   ,(string-append "MathJax-" (package-version font-mathjax)
-                                   "/unpacked")
-                   "--strip" "2")
+           (copy-recursively (string-append (assoc-ref %build-inputs "source") "/unpacked")
+                             "MathJax-unpacked")
            (mkdir-p install-directory)
            (symlink (string-append (assoc-ref %build-inputs "font-mathjax")
                                    "/share/fonts/mathjax")
@@ -108,8 +97,8 @@
            (for-each
             (lambda (file)
               (let ((installed (string-append install-directory
-                                              ;; remove prefix "."
-                                              (string-drop file 1))))
+                                              ;; remove prefix "./MathJax-unpacked"
+                                              (string-drop file 18))))
                 (format #t "~a -> ~a~%" file installed)
                 (cond
                  ((string-match "\\.js$" file)
@@ -144,45 +133,20 @@ be able to view it naturally and easily.")))
     (name "js-respond")
     (version "1.4.2")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/scottjehl/Respond/"
-                                  "archive/" version ".tar.gz"))
-              (file-name (string-append name "-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/scottjehl/Respond")
+                     (commit version)))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "0ds1ya2a185jp93mdn07159c2x8zczwi960ykrawpp62bwk2n93d"))))
-    (build-system trivial-build-system)
+                "00xid731rirc7sdy1gc8qal3v9g0agr2qx15hm4x97l1lcbylyn2"))))
+    (build-system minify-build-system)
     (arguments
-     `(#:modules ((guix build utils))
-       #:builder
-       (begin
-         (use-modules (guix build utils)
-                      (ice-9 match)
-                      (ice-9 popen)
-                      (srfi srfi-26))
-         (set-path-environment-variable
-          "PATH" '("bin") (map (match-lambda
-                                 ((_ . input)
-                                  input))
-                               %build-inputs))
-         (let ((install-directory (string-append %output
-                                                 "/share/javascript/respond/")))
-           (invoke "tar" "xvf"
-                   (assoc-ref %build-inputs "source")
-                   "--strip" "1")
-           (mkdir-p install-directory)
-           (let* ((file "src/respond.js")
-                  (installed (string-append install-directory "respond.min.js")))
-             (let ((minified (open-pipe* OPEN_READ "uglify-js" file)))
-               (call-with-output-file installed
-                 (cut dump-port minified <>)))))
-         #t)))
+     `(#:javascript-files '("src/matchmedia.addListener.js"
+                            "src/matchmedia.polyfill.js"
+                            "src/respond.js")))
     (home-page "https://github.com/scottjehl/Respond")
-    (native-inputs
-     `(("uglify-js" ,uglify-js)
-       ("source" ,source)
-       ("gzip" ,gzip)
-       ("tar" ,tar)))
     (synopsis "Polyfill for min/max-width CSS3 Media Queries")
     (description "The goal of this script is to provide a fast and lightweight
 script to enable responsive web designs in browsers that don't support CSS3
@@ -194,13 +158,14 @@ Media Queries.")
     (name "js-html5shiv")
     (version "3.7.3")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/aFarkas/html5shiv/"
-                                  "archive/" version ".tar.gz"))
-              (file-name (string-append name "-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/aFarkas/html5shiv")
+                     (commit version)))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "0inlbpxpqzdyi24lqagzf7l24zxg0y02xcpqs2h4npjscazzw7hg"))))
+                "0y1c5nyq0brl9fjdihhax33vks4s1ij9iv113879sg3zflmgqpd0"))))
     (build-system minify-build-system)
     (home-page "https://github.com/aFarkas/html5shiv")
     (synopsis "Enable HTML5 sectioning elements in legacy browsers")
@@ -223,7 +188,7 @@ Explorer 6-9, Safari 4.x (and iPhone 3.x), and Firefox 3.x.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/douglascrockford/JSON-js.git")
+                      (url "https://github.com/douglascrockford/JSON-js")
                       (commit commit)))
                 (file-name (string-append name "-" version "-checkout"))
                 (sha256
@@ -264,13 +229,14 @@ provided by ES5.  @code{JSONPath} is used to represent the links.")
     (name "js-strftime")
     (version "0.10.0")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/samsonjs/strftime/"
-                                  "archive/v" version ".tar.gz"))
-              (file-name (string-append name "-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url"https://github.com/samsonjs/strftime")
+                     (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "1iya43w7y26y2dp9l4d40bhjc4scb5a9mng5ng5c8hsqr82f1375"))))
+                "131nmlivazwxyba25kh9lda99749fq4xsyin6lzfalaaydviby4p"))))
     (build-system minify-build-system)
     (arguments
      `(#:javascript-files '("strftime.js")))
@@ -287,13 +253,14 @@ well as some other extensions from Ruby.")
     (name "js-highlight")
     (version "9.12.0")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/isagalaev/highlight.js/"
-                                  "archive/" version ".tar.gz"))
-              (file-name (string-append name "-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/isagalaev/highlight.js")
+                     (commit version)))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "1jjn9mj7fwq4zpr6is438bscf03b3q8jkj0k5c3fc6pkmjnhw939"))))
+                "12qz22qjpd6svj58pwgcwg2x2rzhihfdrxg6lgj39nfpaln6dris"))))
     (build-system minify-build-system)
     (arguments
      `(#:javascript-files '("src/highlight.js")))
@@ -308,14 +275,14 @@ detection.")
 (define-public js-datatables
   (package
     (name "js-datatables")
-    (version "1.10.15")
+    (version "1.10.19")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://datatables.net/releases/DataTables-"
                                   version ".zip"))
               (sha256
                (base32
-                "1y9xqyqyz7x1ls3ska71pshl2hpiy3qnw1f7wygyslbhy4ssgf57"))))
+                "0cff8a1g7pjwbjdqq0yzqd963ar7pfi4splmm6rwdzganr77rkhb"))))
     (build-system minify-build-system)
     (arguments
      `(#:javascript-files '("media/js/dataTables.bootstrap.js"
@@ -329,21 +296,44 @@ Javascript library, adding sorting, paging and filtering abilities to plain
 HTML tables with minimal effort.")
     (license license:expat)))
 
+(define-public js-requirejs
+  (package
+    (name "js-requirejs")
+    (version "2.3.6")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/requirejs/requirejs")
+                     (commit version)))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0cvd5y2mb3h6yil3niqn3gjqrzixdsxcz4rvc2f0hg4kzp5y0w86"))))
+    (build-system minify-build-system)
+    (arguments `(#:javascript-files '("require.js")))
+    (home-page "https://github.com/requirejs/requirejs/")
+    (synopsis "File and module loader for JavaScript")
+    (description "RequireJS loads plain JavaScript files as well as more
+defined modules.  It is optimized for in-browser use, including in a Web
+Worker, but it can be used in other JavaScript environments.")
+    (license license:expat)))
+
 (define-public js-selectize
   (package
     (name "js-selectize")
-    (version "0.12.4")
+    (version "0.12.6")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/selectize/selectize.js/"
-                                  "archive/v" version ".tar.gz"))
-              (file-name (string-append name "-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/selectize/selectize.js")
+                     (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "0756p49aaz34mw2dx8k1gxf210mngfrri25vkba0j7wihd2af8gn"))))
+                "15gichl8wi6yxag2ps723nxrgyan15976dzsnvw9h9py8sbyyzjn"))))
     (build-system minify-build-system)
     (arguments `(#:javascript-files '("src/selectize.js")))
-    (home-page "http://selectize.github.io/selectize.js/")
+    (home-page "https://selectize.github.io/selectize.js/")
     (synopsis "Hybrid widget between a textbox and <select> box")
     (description "Selectize is the hybrid of a textbox and @code{<select>}
 box.  It's jQuery based and it has autocomplete and native-feeling keyboard
@@ -353,15 +343,16 @@ navigation; it is useful for tagging, contact lists, etc.")
 (define-public js-es5-shim
   (package
     (name "js-es5-shim")
-    (version "4.5.9")
+    (version "4.5.13")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/es-shims/es5-shim/"
-                                  "archive/v" version ".tar.gz"))
-              (file-name (string-append name "-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/es-shims/es5-shim")
+                     (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "0yfndyijz0ykddzprpvfjb2453gzpn528klmwycwbqc1bqd3m1hl"))))
+                "142w384fbyllq4yggv173g82lw3wix4jqcg6hkhx1ymq89vvnpmh"))))
     (build-system minify-build-system)
     (arguments `(#:javascript-files
                  '("es5-sham.js"
@@ -381,13 +372,14 @@ means that these shams cause many ES5 methods to silently fail.")
     (name "js-filesaver")
     (version "1.3.8")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/eligrey/FileSaver.js/"
-                                  "archive/" version ".tar.gz"))
-              (file-name (string-append name "-" version))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/eligrey/FileSaver.js")
+                     (commit version)))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "1rkhfqs5plaj628kzj7qgm5qahy4v7ihygifidqr6g6265mil97h"))))
+                "0gvqk0hnr8fig0n4da7vj7q6z31bcyv52916xz3rbmdj3pgpiv1d"))))
     (build-system minify-build-system)
     (arguments
      `(#:phases
@@ -417,14 +409,14 @@ external server.")
 (define-public mujs
   (package
     (name "mujs")
-    (version "1.0.6")
+    (version "1.0.7")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://mujs.com/downloads/mujs-"
                                   version ".tar.xz"))
               (sha256
                (base32
-                "1q9w2dcspfp580pzx7sw7x9gbn8j0ak6dvj75wd1ml3f3q3i43df"))))
+                "1ilhay15z4k7mlzs6g2d00snivin7vp72dfw5wwpmc0x70jr31l2"))))
     (build-system gnu-build-system)
     (arguments
      '(#:phases

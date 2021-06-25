@@ -1,6 +1,8 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2018 Mathieu Othacehe <m.othacehe@gmail.com>
-;;; Copyright © 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2018, 2020 Mathieu Othacehe <m.othacehe@gmail.com>
+;;; Copyright © 2019, 2020 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2020 Florian Pelz <pelzflorian@pelzflorian.de>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -25,12 +27,16 @@
   #:use-module (guix utils)
   #:use-module (guix ui)
   #:use-module ((guix self) #:select (make-config.scm))
+  #:use-module (guix packages)
+  #:use-module (guix git-download)
+  #:use-module (gnu installer utils)
   #:use-module (gnu packages admin)
   #:use-module (gnu packages base)
   #:use-module (gnu packages bash)
   #:use-module (gnu packages connman)
   #:use-module (gnu packages cryptsetup)
   #:use-module (gnu packages disk)
+  #:use-module (gnu packages file-systems)
   #:use-module (gnu packages guile)
   #:use-module (gnu packages guile-xyz)
   #:autoload   (gnu packages gnupg) (guile-gcrypt)
@@ -56,6 +62,14 @@
     (('guix 'build _ ...) #t)
     (_ #f)))
 
+(define not-config?
+  ;; Select (guix …) and (gnu …) modules, except (guix config).
+  (match-lambda
+    (('guix 'config) #f)
+    (('guix _ ...) #t)
+    (('gnu _ ...) #t)
+    (_ #f)))
+
 (define* (build-compiled-file name locale-builder)
   "Return a file-like object that evalutes the gexp LOCALE-BUILDER and store
 its result in the scheme file NAME. The derivation will also build a compiled
@@ -70,8 +84,10 @@ version of this file."
 
   (define builder
     (with-extensions (list guile-json-3)
-      (with-imported-modules (source-module-closure
-                              '((gnu installer locale)))
+      (with-imported-modules `(,@(source-module-closure
+                                  '((gnu installer locale))
+                                  #:select? not-config?)
+                               ((guix config) => ,(make-config.scm)))
         #~(begin
             (use-modules (gnu installer locale))
 
@@ -98,11 +114,12 @@ version of this file."
          (setlocale LC_ALL locale))
 
         ;; Restart the documentation viewer so it displays the manual in
-        ;; language that corresponds to LOCALE.
-        (with-error-to-port (%make-void-port "w")
-          (lambda ()
-            (stop-service 'term-tty2)
-            (start-service 'term-tty2 (list locale)))))))
+        ;; language that corresponds to LOCALE.  Make sure that nothing is
+        ;; printed on the console.
+        (parameterize ((shepherd-message-port
+                        (%make-void-port "w")))
+          (stop-service 'term-tty2)
+          (start-service 'term-tty2 (list locale))))))
 
 (define* (compute-locale-step #:key
                               locales-name
@@ -153,11 +170,11 @@ been performed at build time."
 (define apply-keymap
   ;; Apply the specified keymap. Use the default keyboard model.
   #~(match-lambda
-      ((layout variant)
+      ((layout variant options)
        (kmscon-update-keymap (default-keyboard-model)
-                             layout variant))))
+                             layout variant options))))
 
-(define* (compute-keymap-step)
+(define* (compute-keymap-step context)
   "Return a gexp that runs the keymap-page of INSTALLER and install the
 selected keymap."
   #~(lambda (current-installer)
@@ -169,7 +186,7 @@ selected keymap."
                                    "/share/X11/xkb/rules/base.xml")))
                (lambda (models layouts)
                  ((installer-keymap-page current-installer)
-                  layouts)))))
+                  layouts '#$context)))))
         (#$apply-keymap result)
         result)))
 
@@ -178,10 +195,15 @@ selected keymap."
                       #:locales-name "locales"
                       #:iso639-languages-name "iso639-languages"
                       #:iso3166-territories-name "iso3166-territories"))
-        (keymap-step (compute-keymap-step))
         (timezone-data #~(string-append #$tzdata
                                         "/share/zoneinfo/zone.tab")))
     #~(lambda (current-installer)
+        ((installer-parameters-menu current-installer)
+         (lambda ()
+           ((installer-parameters-page current-installer)
+            (lambda _
+              (#$(compute-keymap-step 'param)
+               current-installer)))))
         (list
          ;; Ask the user to choose a locale among those supported by
          ;; the glibc.  Install the selected locale right away, so that
@@ -213,27 +235,20 @@ selected keymap."
 
          ;; The installer runs in a kmscon virtual terminal where loadkeys
          ;; won't work. kmscon uses libxkbcommon as a backend for keyboard
-         ;; input. It is possible to update kmscon current keymap by sending it
-         ;; a keyboard model, layout and variant, in a somehow similar way as
-         ;; what is done with setxkbmap utility.
+         ;; input. It is possible to update kmscon current keymap by sending
+         ;; it a keyboard model, layout, variant and options, in a somehow
+         ;; similar way as what is done with setxkbmap utility.
          ;;
          ;; So ask for a keyboard model, layout and variant to update the
-         ;; current kmscon keymap.
+         ;; current kmscon keymap.  For non-Latin layouts, we add an
+         ;; appropriate second layout and toggle via Alt+Shift.
          (installer-step
           (id 'keymap)
           (description (G_ "Keyboard mapping selection"))
           (compute (lambda _
-                     (#$keymap-step current-installer)))
+                     (#$(compute-keymap-step 'default)
+                      current-installer)))
           (configuration-formatter keyboard-layout->configuration))
-
-         ;; Run a partitioning tool allowing the user to modify
-         ;; partition tables, partitions and their mount points.
-         (installer-step
-          (id 'partition)
-          (description (G_ "Partitioning"))
-          (compute (lambda _
-                     ((installer-partition-page current-installer))))
-          (configuration-formatter user-partitions->configuration))
 
          ;; Ask the user to input a hostname for the system.
          (installer-step
@@ -265,9 +280,20 @@ selected keymap."
           (description (G_ "Services"))
           (compute (lambda _
                      ((installer-services-page current-installer))))
-	  (configuration-formatter system-services->configuration))
+          (configuration-formatter system-services->configuration))
 
-	 (installer-step
+         ;; Run a partitioning tool allowing the user to modify
+         ;; partition tables, partitions and their mount points.
+         ;; Do this last so the user has something to boot if any
+         ;; of the previous steps didn't go as expected.
+         (installer-step
+          (id 'partition)
+          (description (G_ "Partitioning"))
+          (compute (lambda _
+                     ((installer-partition-page current-installer))))
+          (configuration-formatter user-partitions->configuration))
+
+         (installer-step
           (id 'final)
           (description (G_ "Configuration file"))
           (compute
@@ -287,17 +313,19 @@ selected keymap."
   (define set-installer-path
     ;; Add the specified binary to PATH for later use by the installer.
     #~(let* ((inputs
-              '#$(append (list bash ;start subshells
-                               connman ;call connmanctl
-                               cryptsetup
-                               dosfstools ;mkfs.fat
-                               e2fsprogs ;mkfs.ext4
-                               btrfs-progs
-                               kbd ;chvt
-                               guix ;guix system init call
-                               util-linux ;mkwap
-                               shadow)
-                         (map canonical-package (list coreutils)))))
+              '#$(list bash ;start subshells
+                       connman ;call connmanctl
+                       cryptsetup
+                       dosfstools ;mkfs.fat
+                       e2fsprogs ;mkfs.ext4
+                       btrfs-progs
+                       jfsutils ;jfs_mkfs
+                       ntfs-3g ;mkfs.ntfs
+                       kbd ;chvt
+                       guix ;guix system init call
+                       util-linux ;mkwap
+                       shadow
+                       coreutils)))
         (with-output-to-port (%make-void-port "w")
           (lambda ()
             (set-path-environment-variable "PATH" '("bin" "sbin") inputs)))))
@@ -331,6 +359,7 @@ selected keymap."
                          (gnu installer services)
                          (gnu installer timezone)
                          (gnu installer user)
+                         (gnu installer utils)
                          (gnu installer newt)
                          ((gnu installer newt keymap)
                           #:select (keyboard-layout->configuration))
@@ -384,11 +413,14 @@ selected keymap."
                      ;; We did it!  Let's reboot!
                      (sync)
                      (stop-service 'root))
-                    (_                            ;installation failed
-                     ;; TODO: Honor the result of 'run-install-failed-page'.
+                    (_
+                     ;; The installation failed, exit so that it is restarted
+                     ;; by login.
                      #f)))
                 (const #f)
                 (lambda (key . args)
+                  (syslog "crashing due to uncaught exception: ~s ~s~%"
+                          key args)
                   (let ((error-file "/tmp/last-installer-error"))
                     (call-with-output-file error-file
                       (lambda (port)
@@ -409,5 +441,6 @@ selected keymap."
        ;; some reason, unicode support is not correctly installed
        ;; when calling this in 'installer-builder'.
        (setenv "LANG" "en_US.UTF-8")
-       (execl #$(program-file "installer-real" installer-builder)
+       (execl #$(program-file "installer-real" installer-builder
+                              #:guile guile-3.0-latest)
               "installer-real"))))

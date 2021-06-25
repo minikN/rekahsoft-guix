@@ -1,16 +1,18 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2014 David Thompson <davet@gnu.org>
-;;; Copyright © 2015, 2017 Ricardo Wurmus <rekado@elephly.net>
+;;; Copyright © 2015, 2017, 2019, 2020 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2015, 2016, 2017 Leo Famulari <leo@famulari.name>
 ;;; Copyright © 2016 Hartmut Goebel <h.goebel@crazy-compilers.com>
 ;;; Copyright © 2016, 2017, 2018, 2019 Marius Bakke <mbakke@fastmail.com>
 ;;; Copyright © 2017 Danny Milosavljevic <dannym+a@scratchpost.org>
-;;; Copyright © 2017, 2018 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2017, 2018, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2017 Frederick M. Muriithi <fredmanglis@gmail.com>
 ;;; Copyright © 2017 Christopher Allan Webber <cwebber@dustycloud.org>
 ;;; Copyright © 2017 Julien Lepiller <julien@lepiller.eu>
 ;;; Copyright © 2019 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2019 Nicolas Goaziou <mail@nicolasgoaziou.fr>
+;;; Copyright © 2019 Alexandros Theodotou <alex@zrythm.org>
+;;; Copyright © 2019 Brett Gilio <brettg@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -30,6 +32,7 @@
 (define-module (gnu packages sphinx)
   #:use-module (guix packages)
   #:use-module (guix download)
+  #:use-module (guix git-download)
   #:use-module (guix utils)
   #:use-module (guix build-system python)
   #:use-module ((guix licenses) #:prefix license:)
@@ -45,14 +48,14 @@
 (define-public python-sphinx
   (package
     (name "python-sphinx")
-    (version "2.1.2")
+    (version "2.3.1")
     (source
      (origin
        (method url-fetch)
        (uri (pypi-uri "Sphinx" version))
        (sha256
         (base32
-         "09y4mjmbxz94pmfr2lzf1hkx2xk0khcpb8xsqfmir4l7dds9x9zr"))))
+         "19a28nsb0w4bs6k8rdfyk6vzrcwdpvhs2wq77rgpmww59yvndrz6"))))
     (build-system python-build-system)
     (arguments
      `(#:phases
@@ -66,16 +69,16 @@
                 "@pytest.mark.skip()"))
              (invoke "make" "test"))))))
     (propagated-inputs
-     `(("python-imagesize" ,python-imagesize)
-       ("python-sphinx-alabaster-theme"
-        ,python-sphinx-alabaster-theme)
-       ("python-babel" ,python-babel)
-       ("python-snowballstemmer" ,python-snowballstemmer)
+     `(("python-babel" ,python-babel)
        ("python-docutils" ,python-docutils)
        ("python-jinja2" ,python-jinja2)
+       ("python-imagesize" ,python-imagesize)
        ("python-packaging" ,python-packaging)
        ("python-pygments" ,python-pygments)
        ("python-requests" ,python-requests)
+       ("python-snowballstemmer" ,python-snowballstemmer)
+       ("python-sphinx-alabaster-theme"
+        ,python-sphinx-alabaster-theme)
        ("python-sphinxcontrib-applehelp" ,python-sphinxcontrib-applehelp)
        ("python-sphinxcontrib-devhelp" ,python-sphinxcontrib-devhelp)
        ("python-sphinxcontrib-htmlhelp" ,python-sphinxcontrib-htmlhelp)
@@ -90,12 +93,12 @@
        ("python-mock" ,python-mock)
        ("python-nose" ,python-nose)
        ("python-pytest" ,python-pytest)))
-    (home-page "https://sphinx-doc.org/")
+    (home-page "https://www.sphinx-doc.org")
     (synopsis "Python documentation generator")
     (description "Sphinx is a tool that makes it easy to create documentation
 for Python projects or other documents consisting of multiple reStructuredText
 sources.")
-    (license license:bsd-3)
+    (license license:bsd-2)
     (properties `((python2-variant . ,(delay python2-sphinx))))))
 
 ;; Sphinx 2 does not support Python 2, so we stick with this older version here.
@@ -134,7 +137,7 @@ sources.")
                             ,python2-sphinx-alabaster-theme)
                            ("python2-babel" ,python2-babel-2.6)
                            ("python2-snowballstemmer" ,python2-snowballstemmer)
-                           ("python2-docutils" ,python2-docutils)
+                           ("python2-docutils" ,python2-docutils-0.14)
                            ("python2-jinja2" ,python2-jinja2)
                            ("python2-packaging" ,python2-packaging)
                            ("python2-pygments" ,python2-pygments)
@@ -146,13 +149,13 @@ sources.")
 (define-public python-sphinxcontrib-applehelp
   (package
     (name "python-sphinxcontrib-applehelp")
-    (version "1.0.1")
+    (version "1.0.2")
     (source (origin
               (method url-fetch)
               (uri (pypi-uri "sphinxcontrib-applehelp" version))
               (sha256
                (base32
-                "15rqmgphj4wqf4m5wnzxgmwxx5jwfzb0j0nb94ql0x5wnar0mapd"))))
+                "0n5wrn4l7x6gxvi1g7c6y72hkxgc223axz1jykipaxhfr1g76wm0"))))
     (build-system python-build-system)
     (arguments
      `(#:tests? #f))                    ;XXX: circular dependency on Sphinx
@@ -163,16 +166,42 @@ sources.")
 Apple help books.")
     (license license:bsd-2)))
 
+(define-public python-sphinx-copybutton
+  (package
+    (name "python-sphinx-copybutton")
+    (version "0.2.6")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "sphinx-copybutton" version))
+       (sha256
+        (base32
+         "0ny9jpygj93z8jyjpi4v6jjz90pmns74s389wq16igzzq2mpgfjm"))))
+    (build-system python-build-system)
+    (arguments
+     `(#:tests? #f)) ; XXX: Check requires network access.
+    (propagated-inputs
+     `(("python-flit" ,python-flit)
+       ("python-setuptools" ,python-setuptools)
+       ("python-sphinx" ,python-sphinx)
+       ("python-wheel" ,python-wheel)))
+    (home-page "https://github.com/choldgraf/sphinx-copybutton")
+    (synopsis "Sphinx extension to add \"copy\" buttons to code blocks")
+    (description
+     "This package provides a small sphinx extension to add \"copy\" buttons
+to code blocks.")
+    (license license:expat)))
+
 (define-public python-sphinxcontrib-devhelp
   (package
     (name "python-sphinxcontrib-devhelp")
-    (version "1.0.1")
+    (version "1.0.2")
     (source (origin
               (method url-fetch)
               (uri (pypi-uri "sphinxcontrib-devhelp" version))
               (sha256
                (base32
-                "0d2a57kqxl72i55rns0ly1i044y2x234b9sdi89ajc3kjdvv0r3c"))))
+                "1r1qngsbjqbg4rj93kpj44qqy7n4x5khldkr0c3ffhlnggx1lzzz"))))
     (build-system python-build-system)
     (arguments
      `(#:tests? #f))                    ;XXX: circular dependency on Sphinx
@@ -186,18 +215,18 @@ Apple help books.")
 (define-public python-sphinxcontrib-htmlhelp
   (package
     (name "python-sphinxcontrib-htmlhelp")
-    (version "1.0.2")
+    (version "1.0.3")
     (source (origin
               (method url-fetch)
               (uri (pypi-uri "sphinxcontrib-htmlhelp" version))
               (sha256
                (base32
-                "08l4x8a2l4xjqdd5rhvmfsqihmlgg4prdayj9b6pigaii6gzjw26"))))
+                "16v5jdnibwrqjdr5aqchgyzpwy3rgamwhdf4kidv5nxj65zbpxg8"))))
     (build-system python-build-system)
     (arguments
      `(#:tests? #f))                    ;XXX: circular dependency on Sphinx
     (home-page "https://github.com/sphinx-doc/sphinxcontrib-htmlhelp")
-    (synopsis "Sphinx exension for rendering HTML help files")
+    (synopsis "Sphinx extension for rendering HTML help files")
     (description
      "@code{sphinxcontrib-htmlhelp} is a Sphinx extension which renders
 HTML help files.")
@@ -221,7 +250,7 @@ HTML help files.")
     (description
      "@code{sphinxcontrib-jsmath} is a Sphinx extension which renders display
 math in HTML via JavaScript.")
-    (license license:bsd-3)))
+    (license license:bsd-2)))
 
 (define-public python-sphinxcontrib-newsfeed
   (package
@@ -246,23 +275,23 @@ Blog, News or Announcements section to a Sphinx website.")
 (define-public python-sphinxcontrib-programoutput
   (package
     (name "python-sphinxcontrib-programoutput")
-    (version "0.10")
+    (version "0.15")
     (source (origin
               (method url-fetch)
               (uri (pypi-uri "sphinxcontrib-programoutput" version))
               (sha256
                (base32
-                "153hhnlbx4688zj9wd64819ps5znc2jlyp5crkgzvn5hxgy99vpx"))))
+                "155bz0z2cz544pphkd3nk7ph83mz7nn0ql135kzi62kqmd75ppc0"))))
     (build-system python-build-system)
     (arguments
-     ;; FIXME: Many tests are failing and the upstream is gone.
+     ;; FIXME: Many tests are failing.
      '(#:tests? #f))
     (propagated-inputs
      `(("python-sphinx" ,python-sphinx)))
     (synopsis "Sphinx extension to include program output")
     (description "A Sphinx extension to literally insert the output of arbitrary
 commands into documents, helping you to keep your command examples up to date.")
-    (home-page "https://github.com/lunaryorn/sphinxcontrib-programoutput")
+    (home-page "https://github.com/NextThought/sphinxcontrib-programoutput")
     (license license:bsd-2)))
 
 (define-public python2-sphinxcontrib-programoutput
@@ -271,13 +300,13 @@ commands into documents, helping you to keep your command examples up to date.")
 (define-public python-sphinxcontrib-qthelp
   (package
     (name "python-sphinxcontrib-qthelp")
-    (version "1.0.2")
+    (version "1.0.3")
     (source (origin
               (method url-fetch)
               (uri (pypi-uri "sphinxcontrib-qthelp" version))
               (sha256
                (base32
-                "0vs09m6kf5vhiivpi5s5pks59iq0lqlsbkdycpqlysg53bhmqikr"))))
+                "0wjsp96d262shzkx7pb7pra7mmf0j8c5rz56i6x0vdsqw1z7ccsc"))))
     (build-system python-build-system)
     (arguments
      `(#:tests? #f))                    ;XXX: circular dependency on Sphinx
@@ -291,13 +320,13 @@ documents.")
 (define-public python-sphinxcontrib-serializinghtml
   (package
     (name "python-sphinxcontrib-serializinghtml")
-    (version "1.1.3")
+    (version "1.1.4")
     (source (origin
               (method url-fetch)
               (uri (pypi-uri "sphinxcontrib-serializinghtml" version))
               (sha256
                (base32
-                "09sj3nwahwr4iymg86gczbh151cfczqhf2kclbblzh2jh0zv7vy0"))))
+                "1g3pbx0g88zd9xzcrbaypa2k60axrh92vf5j76wsk0p9hv6fr87a"))))
     (build-system python-build-system)
     (arguments
      `(#:tests? #f))                    ;XXX: circular dependency on Sphinx
@@ -311,32 +340,32 @@ documents.")
 (define-public python-sphinxcontrib-svg2pdfconverter
   (package
     (name "python-sphinxcontrib-svg2pdfconverter")
-    (version "0.1.0")
+    (version "1.0.1")
     (source (origin
               (method url-fetch)
               (uri (pypi-uri "sphinxcontrib-svg2pdfconverter" version))
               (sha256
                (base32
-                "1abvbgkkii13q8nsb10r0gc5lm0p9iq1iwhfhakn5ifn6asa0183"))))
+                "1hhaxmqc7wh8gnyw5jaqckliknvk0p21y12wk3bdmncgkaf9ar8f"))))
     (build-system python-build-system)
     (propagated-inputs
      `(("python-sphinx" ,python-sphinx)))
-    (home-page "https://github.com/missinglinkelectronics/sphinxcontrib-svg2pdfconverter/releases")
+    (home-page "https://github.com/missinglinkelectronics/sphinxcontrib-svg2pdfconverter")
     (synopsis "Sphinx SVG to PDF converter extension")
-    (description "A Sphinx extension to convert SVG images to PDF in case the builder does not support
-SVG images natively (e.g. LaTeX).")
-    (license license:bsd-3)))
+    (description "A Sphinx extension to convert SVG images to PDF in case the
+builder does not support SVG images natively (e.g. LaTeX).")
+    (license license:bsd-2)))
 
 (define-public python-sphinxcontrib-websupport
   (package
     (name "python-sphinxcontrib-websupport")
-    (version "1.1.0")
+    (version "1.2.0")
     (source (origin
               (method url-fetch)
               (uri (pypi-uri "sphinxcontrib-websupport" version))
               (sha256
                (base32
-                "1ff3ix76xi1y6m99qxhaq5161ix9swwzydilvdya07mgbcvpzr4x"))))
+                "1smma7r0rhwcmbfvvkfs5djfz1qm8wbpcvp084ca6dmw2b9zplxs"))))
     (build-system python-build-system)
     (arguments
      ;; FIXME: Tests depend on Sphinx, which depends on this.
@@ -356,13 +385,14 @@ integrate Sphinx documents in web templates and to handle searches.")
     (name "python-sphinx-gallery")
     (version "0.1.13")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/sphinx-gallery/sphinx-gallery"
-                                  "/archive/v" version ".tar.gz"))
-              (file-name (string-append name "-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/sphinx-gallery/sphinx-gallery")
+                     (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "03fs99mcb1r7qp0xixqv07vcz98sk21yq19ffdysi0infdcpzfkd"))))
+                "14nbqh9krx2l2y2ylbln6l6w8iak3wac1lngvaf278y1cx7685kg"))))
     (build-system python-build-system)
     (arguments
      ;; FIXME: Tests attempt to download <https://docs.python.org/3/objects.inv>,
@@ -522,3 +552,94 @@ and several other projects.")
 
 (define-public python2-sphinx-rtd-theme
   (package-with-python2 python-sphinx-rtd-theme))
+
+(define-public python-breathe
+  (package
+    (name "python-breathe")
+    (version "4.13.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "breathe" version))
+       (sha256
+        (base32
+         "1aw749n2ry27434qd7gr99dvsrs3x3chyi9aywmhjj1g4m2j6xf6"))))
+    (build-system python-build-system)
+    (propagated-inputs
+     `(("python-docutils" ,python-docutils)
+       ("python-six" ,python-six)
+       ("python-sphinx" ,python-sphinx)))
+    (home-page "https://github.com/michaeljones/breathe")
+    (synopsis "ReStructuredText and Sphinx bridge to Doxygen")
+    (description "This package is an extension to reStructuredText and Sphinx
+to be able to read and render the Doxygen xml output.")
+    (license license:bsd-3)))
+
+(define-public python-sphinx-intl
+  (package
+    (name "python-sphinx-intl")
+    (version "2.0.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "sphinx-intl" version))
+       (sha256
+        (base32
+         "0zbf1bh23b3kza8bnjykmv2k21xmmr4gamhi3lnicnr6ypnrphr5"))))
+    (build-system python-build-system)
+    (propagated-inputs
+     `(("python-sphinx" ,python-sphinx)
+       ("python-click" ,python-click)))
+    (home-page "https://github.com/sphinx-doc/sphinx-intl")
+    (synopsis
+     "Sphinx utility that makes it easy to translate and to apply translation")
+    (description
+     "A utility tool that provides several features that make it easy to
+translate and to apply translation to Sphinx generated document.")
+    (license license:bsd-2)))
+
+(define-public python-sphinx-autobuild
+  (package
+    (name "python-sphinx-autobuild")
+    (version "0.7.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "sphinx-autobuild" version))
+       (sha256
+        (base32
+         "0kn753dyh3b1s0h77lbk704niyqc7bamvq6v3s1f6rj6i20qyf36"))))
+    (build-system python-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         ;; See https://github.com/GaretJax/sphinx-autobuild/pull/72
+         (add-after 'unpack 'use-later-port-for
+           (lambda _
+             (substitute* "requirements.txt"
+               (("port_for==.*") "port_for\n"))
+             #t))
+         (delete 'check)
+         (add-after 'install 'check
+           (lambda* (#:key inputs outputs tests? #:allow-other-keys)
+             (when tests?
+               (add-installed-pythonpath inputs outputs)
+               (invoke "pytest" "-v"))
+             #t)))))
+    (propagated-inputs
+     `(("python-argh" ,python-argh)
+       ("python-livereload" ,python-livereload)
+       ("python-pathtools" ,python-pathtools)
+       ("python-port-for" ,python-port-for)
+       ("python-pyyaml" ,python-pyyaml)
+       ("python-tornado" ,python-tornado)
+       ("python-watchdog" ,python-watchdog)))
+    (native-inputs
+     `(("python-pytest" ,python-pytest)))
+    (home-page "https://github.com/GaretJax/sphinx-autobuild")
+    (synopsis "Rebuild Sphinx documentation when a change is detected")
+    (description
+     "This package lets you watch a Sphinx directory and rebuild the
+documentation when a change is detected.  It also includes a livereload
+enabled web server.")
+    (license license:expat)))

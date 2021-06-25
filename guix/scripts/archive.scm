@@ -1,5 +1,5 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2013, 2014, 2015, 2016, 2017, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2013, 2014, 2015, 2016, 2017, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -21,7 +21,8 @@
   #:use-module (guix utils)
   #:use-module (guix combinators)
   #:use-module ((guix build utils) #:select (mkdir-p))
-  #:use-module ((guix serialization) #:select (restore-file))
+  #:use-module ((guix serialization)
+                #:select (fold-archive restore-file))
   #:use-module (guix store)
   #:use-module ((guix status) #:select (with-status-verbosity))
   #:use-module (guix grafts)
@@ -43,6 +44,7 @@
   #:use-module (srfi srfi-26)
   #:use-module (srfi srfi-37)
   #:use-module (ice-9 binary-ports)
+  #:use-module (rnrs bytevectors)
   #:export (guix-archive
             options->derivations+files))
 
@@ -55,7 +57,7 @@
   ;; Alist of default option values.
   `((system . ,(%current-system))
     (substitutes? . #t)
-    (build-hook? . #t)
+    (offload? . #t)
     (graft? . #t)
     (print-build-trace? . #t)
     (print-extended-build-trace? . #t)
@@ -76,6 +78,8 @@ Export/import one or more packages from/to the store.\n"))
       --missing          print the files from stdin that are missing"))
   (display (G_ "
   -x, --extract=DIR      extract the archive on stdin to DIR"))
+  (display (G_ "
+  -t, --list             list the files in the archive on stdin"))
   (newline)
   (display (G_ "
       --generate-key[=PARAMETERS]
@@ -137,6 +141,9 @@ Export/import one or more packages from/to the store.\n"))
          (option '("extract" #\x) #t #f
                  (lambda (opt name arg result)
                    (alist-cons 'extract arg result)))
+         (option '("list" #\t) #f #f
+                 (lambda (opt name arg result)
+                   (alist-cons 'list #t result)))
          (option '("generate-key") #f #t
                  (lambda (opt name arg result)
                    (catch 'gcry-error
@@ -176,7 +183,7 @@ Export/import one or more packages from/to the store.\n"))
                                  (alist-delete 'verbosity result)))))
          (option '(#\n "dry-run") #f #f
                  (lambda (opt name arg result)
-                   (alist-cons 'dry-run? #t (alist-cons 'graft? #f result))))
+                   (alist-cons 'dry-run? #t result)))
 
          %standard-build-options))
 
@@ -252,12 +259,7 @@ build and a list of store files to transfer."
 resulting archive to the standard output port."
   (let-values (((drv files)
                 (options->derivations+files store opts)))
-    (show-what-to-build store drv
-                        #:use-substitutes? (assoc-ref opts 'substitutes?)
-                        #:dry-run? (assoc-ref opts 'dry-run?))
-
-    (if (or (assoc-ref opts 'dry-run?)
-            (build-derivations store drv))
+    (if (build-derivations store drv)
         (export-paths store files (current-output-port)
                       #:recursive? (assoc-ref opts 'export-recursive?))
         (leave (G_ "unable to export the given packages~%")))))
@@ -319,6 +321,40 @@ the input port."
       (with-atomic-file-output %acl-file
         (cut write-acl acl <>)))))
 
+(define (list-contents port)
+  "Read a nar from PORT and print the list of files it contains to the current
+output port."
+  (define (consume-input port size)
+    (let ((bv (make-bytevector 32768)))
+      (let loop ((total size))
+        (unless (zero? total)
+          (let ((n (get-bytevector-n! port bv 0
+                                      (min total (bytevector-length bv)))))
+            (loop (- total n)))))))
+
+  (fold-archive (lambda (file type content result)
+                  (match type
+                    ('directory
+                     (format #t "D ~a~%" file))
+                    ('symlink
+                     (format #t "S ~a -> ~a~%" file content))
+                    ((or 'regular 'executable)
+                     (match content
+                       ((input . size)
+                        (format #t "~a ~60a ~10h B~%"
+                                (if (eq? type 'executable)
+                                    "x" "r")
+                                file size)
+                        (consume-input input size))))))
+                #t
+                port
+                ""))
+
+
+;;;
+;;; Entry point.
+;;;
+
 (define (guix-archive . args)
   (define (lines port)
     ;; Return lines read from PORT.
@@ -330,20 +366,22 @@ the input port."
                 (cons line result)))))
 
   (with-error-handling
-    ;; Ask for absolute file names so that .drv file names passed from the
-    ;; user to 'read-derivation' are absolute when it returns.
-    (with-fluids ((%file-port-name-canonicalization 'absolute))
-      (let ((opts (parse-command-line args %options (list %default-options))))
-        (parameterize ((%graft? (assoc-ref opts 'graft?)))
-          (cond ((assoc-ref opts 'generate-key)
-                 =>
-                 generate-key-pair)
-                ((assoc-ref opts 'authorize)
-                 (authorize-key))
-                (else
-                 (with-status-verbosity (assoc-ref opts 'verbosity)
-                   (with-store store
-                     (set-build-options-from-command-line store opts)
+    (let ((opts (parse-command-line args %options (list %default-options))))
+      (parameterize ((%graft? (assoc-ref opts 'graft?)))
+        (cond ((assoc-ref opts 'generate-key)
+               =>
+               generate-key-pair)
+              ((assoc-ref opts 'authorize)
+               (authorize-key))
+              (else
+               (with-status-verbosity (assoc-ref opts 'verbosity)
+                 (with-store store
+                   (set-build-options-from-command-line store opts)
+                   (with-build-handler
+                       (build-notifier #:use-substitutes?
+                                       (assoc-ref opts 'substitutes?)
+                                       #:dry-run?
+                                       (assoc-ref opts 'dry-run?))
                      (cond ((assoc-ref opts 'export)
                             (export-from-store store opts))
                            ((assoc-ref opts 'import)
@@ -353,6 +391,8 @@ the input port."
                                    (missing (remove (cut valid-path? store <>)
                                                     files)))
                               (format #t "~{~a~%~}" missing)))
+                           ((assoc-ref opts 'list)
+                            (list-contents (current-input-port)))
                            ((assoc-ref opts 'extract)
                             =>
                             (lambda (target)

@@ -1,3 +1,4 @@
+;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2018 Julien Lepiller <julien@lepiller.eu>
 ;;;
 ;;; This file is part of GNU Guix.
@@ -38,7 +39,14 @@
   #:use-module ((guix licenses) #:prefix license:)
   #:export (opam->guix-package
             opam-recursive-import
-            %opam-updater))
+            %opam-updater
+
+            ;; The following patterns are exported for testing purposes.
+            string-pat
+            multiline-string
+            list-pat
+            dict
+            condition))
 
 ;; Define a PEG parser for the opam format
 (define-peg-pattern comment none (and "#" (* STRCHR) "\n"))
@@ -49,7 +57,7 @@
 (define-peg-pattern COLON none ":")
 ;; A string character is any character that is not a quote, or a quote preceded by a backslash.
 (define-peg-pattern STRCHR body
-                    (or " " "!" (and (ignore "\\") "\"")
+                    (or " " "!" "\n" (and (ignore "\\") "\"")
                         (and (ignore "\\") "\\") (range #\# #\頋)))
 (define-peg-pattern operator all (or "=" "!" "<" ">"))
 
@@ -107,7 +115,7 @@
 (define (get-opam-repository)
   "Update or fetch the latest version of the opam repository and return the
 path to the repository."
-  (receive (location commit)
+  (receive (location commit _)
     (update-cached-checkout "https://github.com/ocaml/opam-repository")
     location))
 
@@ -233,24 +241,26 @@ path to the repository."
       (list dependency (list 'unquote (string->symbol dependency))))
     (ocaml-names->guix-names lst)))
 
-(define (opam-fetch name)
-  (and-let* ((repository (get-opam-repository))
+(define* (opam-fetch name #:optional (repository (get-opam-repository)))
+  (and-let* ((repository repository)
              (version (find-latest-version name repository))
              (file (string-append repository "/packages/" name "/" name "." version "/opam")))
     `(("metadata" ,@(get-metadata file))
-      ("version" . ,version))))
+      ("version" . ,(if (string-prefix? "v" version)
+                        (substring version 1)
+                        version)))))
 
-(define (opam->guix-package name)
-  (and-let* ((opam-file (opam-fetch name))
+(define* (opam->guix-package name #:key (repository (get-opam-repository)))
+  "Import OPAM package NAME from REPOSITORY (a directory name) or, if
+REPOSITORY is #f, from the official OPAM repository.  Return a 'package' sexp
+or #f on failure."
+  (and-let* ((opam-file (opam-fetch name repository))
              (version (assoc-ref opam-file "version"))
              (opam-content (assoc-ref opam-file "metadata"))
              (url-dict (metadata-ref opam-content "url"))
              (source-url (metadata-ref url-dict "src"))
              (requirements (metadata-ref opam-content "depends"))
-             (dependencies (filter
-                              (lambda (name)
-                                (not (member name '("dune" "jbuilder"))))
-                              (dependency-list->names requirements)))
+             (dependencies (dependency-list->names requirements))
              (native-dependencies (depends->native-inputs requirements))
              (inputs (dependency-list->inputs (depends->inputs requirements)))
              (native-inputs (dependency-list->inputs
@@ -262,8 +272,8 @@ path to the repository."
                                 native-dependencies))))
         ;; If one of these are required at build time, it means we
         ;; can use the much nicer dune-build-system.
-        (let ((use-dune? (or (member "dune" native-dependencies)
-                        (member "jbuilder" native-dependencies))))
+        (let ((use-dune? (or (member "dune" (append dependencies native-dependencies))
+                        (member "jbuilder" (append dependencies native-dependencies)))))
           (call-with-temporary-output-file
             (lambda (temp port)
               (and (url-fetch source-url temp)
@@ -283,7 +293,7 @@ path to the repository."
                                           'ocaml-build-system))
                        ,@(if (null? inputs)
                            '()
-                           `((inputs ,(list 'quasiquote inputs))))
+                           `((propagated-inputs ,(list 'quasiquote inputs))))
                        ,@(if (null? native-inputs)
                            '()
                            `((native-inputs ,(list 'quasiquote native-inputs))))
@@ -295,7 +305,10 @@ path to the repository."
                        (synopsis ,(metadata-ref opam-content "synopsis"))
                        (description ,(metadata-ref opam-content "description"))
                        (license #f))
-                    dependencies)))))))
+                    (filter
+                      (lambda (name)
+                        (not (member name '("dune" "jbuilder"))))
+		      dependencies))))))))
 
 (define (opam-recursive-import package-name)
   (recursive-import package-name #f

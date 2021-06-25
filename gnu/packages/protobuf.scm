@@ -3,7 +3,8 @@
 ;;; Copyright © 2016 Daniel Pimentel <d4n1@d4n1.org>
 ;;; Copyright © 2016 Leo Famulari <leo@famulari.name>
 ;;; Copyright © 2017, 2018, 2019 Ricardo Wurmus <rekado@elephly.net>
-;;; Copyright © 2017, 2018 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2017, 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2020 Maxim Cournoyer <maxim.cournoyer@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -28,13 +29,15 @@
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system python)
   #:use-module (guix build-system emacs)
+  #:use-module (guix build-system ruby)
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (gnu packages compression)
   #:use-module (gnu packages gcc)
   #:use-module (gnu packages libevent)
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages python)
-  #:use-module (gnu packages python-xyz))
+  #:use-module (gnu packages python-xyz)
+  #:use-module (gnu packages ruby))
 
 (define-public fstrm
   (package
@@ -75,7 +78,7 @@ data in motion, or as a file format for data at rest.")
 (define-public protobuf
   (package
     (name "protobuf")
-    (version "3.5.1")
+    (version "3.12.3")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://github.com/google/protobuf/releases/"
@@ -83,7 +86,7 @@ data in motion, or as a file format for data at rest.")
                                   version ".tar.gz"))
               (sha256
                (base32
-                "14j0427ykjzrd9a66c2mpk0sjcccjlsx6q8ww6hzwb6sha3vm3f2"))))
+                "0s29dj8l9j6jk04im3ivcji1x9jm42fwjmwcmli0smz0m337xyaf"))))
     (build-system gnu-build-system)
     (inputs `(("zlib" ,zlib)))
     (outputs (list "out"
@@ -112,9 +115,9 @@ yet extensible format.  Google uses Protocol Buffers for almost all of its
 internal RPC protocols and file formats.")
     (license license:bsd-3)))
 
-(define-public protobuf-next
-  (package (inherit protobuf)
-    (name "protobuf")
+;; Tensorflow requires version 3.6 specifically.
+(define-public protobuf-3.6
+  (package/inherit protobuf
     (version "3.6.1")
     (source (origin
               (method url-fetch)
@@ -124,6 +127,20 @@ internal RPC protocols and file formats.")
               (sha256
                (base32
                 "0a955bz59ihrb5wg7dwi12xajdi5pmz4bl0g147rbdwv393jwwxk"))))))
+
+;; The 3.5 series are the last versions that do not require C++ 11.
+(define-public protobuf-3.5
+  (package/inherit
+   protobuf
+   (version "3.5.1")
+   (source (origin
+              (method url-fetch)
+              (uri (string-append "https://github.com/google/protobuf/releases/"
+                                  "download/v" version "/protobuf-cpp-"
+                                  version ".tar.gz"))
+              (sha256
+               (base32
+                "14j0427ykjzrd9a66c2mpk0sjcccjlsx6q8ww6hzwb6sha3vm3f2"))))))
 
 ;; XXX Remove this old version when no other packages depend on it.
 (define-public protobuf-2
@@ -141,7 +158,7 @@ internal RPC protocols and file formats.")
 (define-public protobuf-c
   (package
     (name "protobuf-c")
-    (version "1.3.1")
+    (version "1.3.2")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://github.com/protobuf-c/protobuf-c/"
@@ -149,7 +166,7 @@ internal RPC protocols and file formats.")
                                   "/protobuf-c-" version ".tar.gz"))
               (sha256
                (base32
-                "0rr2kn7804cvhdm6lzz04gz76vy0fzj15dijbr17nv8x34x2sisi"))))
+                "0x4ybd9rfd878p2imz0hb8zxfd7l60vbdw7cg84dnysr9kqm3wjk"))))
     (build-system gnu-build-system)
     (inputs `(("protobuf" ,protobuf)))
     (native-inputs `(("pkg-config" ,pkg-config)))
@@ -166,16 +183,16 @@ code.")
 (define-public protozero
   (package
     (name "protozero")
-    (version "1.6.7")
+    (version "1.6.8")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/mapbox/protozero.git")
+             (url "https://github.com/mapbox/protozero")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "1ryvn3iwxiaih3mvyy45nbwxnhzfc8vby0xh9m6d6fpakhcpf6s3"))))
+        (base32 "1hfijpfylf1c71wa3mk70gjc88b6k1q7cxb87cwqdflw5q2x8ma6"))))
     (build-system cmake-build-system)
     (home-page "https://github.com/mapbox/protozero")
     (synopsis "Minimalistic protocol buffer decoder and encoder in C++")
@@ -189,14 +206,14 @@ encoder in C++.  The developer using protozero has to manually translate the
 (define-public python-protobuf
   (package
     (name "python-protobuf")
-    (version "3.5.2")
+    (version "3.11.3")
     (source
      (origin
        (method url-fetch)
        (uri (pypi-uri "protobuf" version))
        (sha256
         (base32
-         "1q4b1m55w4gvcbzklbk8iylaii98n4in41k27d94w8ypbwlrm1q9"))))
+         "07qby3yc2a8a1vsxnc79j687q4r68k1d3npni7bldwmd3m6rfz67"))))
     (build-system python-build-system)
     (propagated-inputs
      `(("python-six" ,python-six)))
@@ -210,10 +227,11 @@ mechanism for serializing structured data.")
 (define-public python2-protobuf
   (package-with-python2 python-protobuf))
 
-(define-public python-protobuf-next
-  (package (inherit python-protobuf)
+;; For tensorflow.
+(define-public python-protobuf-3.6
+  (package/inherit python-protobuf
     (name "python-protobuf")
-    (version (package-version protobuf-next) )
+    (version (package-version protobuf-3.6) )
     (source
      (origin
        (method url-fetch)
@@ -231,7 +249,7 @@ mechanism for serializing structured data.")
     (arguments
      `(#:phases
        (modify-phases %standard-phases
-         (add-before 'set-emacs-load-path 'change-working-directory
+         (add-before 'add-source-to-load-path 'change-working-directory
            (lambda _ (chdir "editors") #t)))))
     (home-page "https://github.com/protocolbuffers/protobuf")
     (synopsis "Protocol buffers major mode for Emacs")
@@ -239,3 +257,103 @@ mechanism for serializing structured data.")
      "This package provides an Emacs major mode for editing Protocol Buffer
 source files.")
     (license license:bsd-3)))
+
+(define-public ruby-protobuf
+  (package
+    (name "ruby-protobuf")
+    (version "3.10.3")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/ruby-protobuf/protobuf")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "1yzz7jgpp6qip5d6qhzbkf5gqaydfk3z3c1ngccwzp6w6wa75g8a"))))
+    (build-system ruby-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'do-not-use-bundler-for-tests
+           (lambda _
+             (substitute* "spec/spec_helper.rb"
+               (("Bundler\\.setup.*") ""))
+             #t))
+         (add-after 'unpack 'relax-version-requirements
+           (lambda _
+             (substitute* ((@@ (guix build ruby-build-system) first-gemspec))
+               (("'rake',.*")
+                "'rake'\n")
+               (("\"rubocop\",.*")
+                "'rubocop'\n")
+               (("\"parser\",.*")
+                "'parser'\n"))
+             #t))
+         (add-after 'unpack 'patch-protoc
+           (lambda* (#:key inputs #:allow-other-keys)
+             (let ((protoc (assoc-ref inputs "protobuf")))
+               (substitute* "lib/protobuf/tasks/compile.rake"
+                 (("\"protoc\"")
+                  (string-append "\"" protoc "/bin/protoc" "\"")))
+               #t)))
+         (add-after 'unpack 'skip-failing-test
+           ;; See: https://github.com/ruby-protobuf/protobuf/issues/419
+           (lambda _
+             (substitute* "spec/lib/protobuf/rpc/connectors/ping_spec.rb"
+               (("expect\\(::IO\\)\\.to receive\\(:select\\).*" all)
+                (string-append "        pending\n" all)))
+             #t))
+         (add-after 'replace-git-ls-files 'replace-more-git-ls-files
+           (lambda _
+             (substitute* ((@@ (guix build ruby-build-system) first-gemspec))
+               (("`git ls-files -- \\{test,spec,features\\}/*`")
+                "`find test spec features -type f | sort`")
+               (("`git ls-files -- bin/*`")
+                "`find bin -type f | sort`"))
+             #t))
+         (replace 'check
+           (lambda _
+             (invoke "rspec"))))))
+    (native-inputs
+     `(("ruby-benchmark-ips" ,ruby-benchmark-ips)
+       ("ruby-ffi-rzmq" ,ruby-ffi-rzmq)
+       ("ruby-parser" ,ruby-parser)
+       ("ruby-pry-byebug" ,ruby-pry-byebug)
+       ("ruby-pry-stack-explorer" ,ruby-pry-stack-explorer)
+       ("ruby-rake" ,ruby-rake)
+       ("ruby-rspec" ,ruby-rspec)
+       ("ruby-rubocop" ,ruby-rubocop)
+       ("ruby-ruby-prof" ,ruby-ruby-prof)
+       ("ruby-simplecov" ,ruby-simplecov)
+       ("ruby-timecop" ,ruby-timecop)
+       ("ruby-varint" ,ruby-varint)
+       ("ruby-yard" ,ruby-yard)))
+    (inputs
+     `(("protobuf" ,protobuf)))
+    (propagated-inputs
+     `(("ruby-activesupport" ,ruby-activesupport)
+       ("ruby-middleware" ,ruby-middleware)
+       ("ruby-thor" ,ruby-thor)))
+    (home-page "https://github.com/ruby-protobuf/protobuf")
+    (synopsis "Implementation of Google's Protocol Buffers in Ruby")
+    (description "Protobuf is an implementation of Google's Protocol Buffers
+in pure Ruby.")
+    (license license:expat)))
+
+;;; This is a modified ruby-protobuf package used by ruby-cucumber-messages
+;;; until https://github.com/ruby-protobuf/protobuf/pull/411 and
+;;; https://github.com/ruby-protobuf/protobuf/pull/415 are merged upstream.
+(define-public ruby-protobuf-cucumber
+  (hidden-package
+   (package
+     (inherit ruby-protobuf)
+     (name "ruby-protobuf-cucumber")
+     (version "3.10.8")
+     (source
+      (origin
+        (method url-fetch)
+        (uri (rubygems-uri "protobuf-cucumber" version))
+        (sha256
+         (base32
+          "1rd6naabhpfb1i5dr6fp5mqwaawsx0mqm73h5ycwkgbm1n2si872")))))))

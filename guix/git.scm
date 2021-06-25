@@ -1,6 +1,6 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2017 Mathieu Othacehe <m.othacehe@gmail.com>
-;;; Copyright © 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2017, 2020 Mathieu Othacehe <m.othacehe@gmail.com>
+;;; Copyright © 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -28,6 +28,8 @@
   #:use-module (guix utils)
   #:use-module (guix records)
   #:use-module (guix gexp)
+  #:use-module (guix sets)
+  #:use-module ((guix diagnostics) #:select (leave))
   #:use-module (rnrs bytevectors)
   #:use-module (ice-9 match)
   #:use-module (srfi srfi-1)
@@ -37,18 +39,21 @@
   #:export (%repository-cache-directory
             honor-system-x509-certificates!
 
+            with-repository
+            with-git-error-handling
+            false-if-git-not-found
             update-cached-checkout
+            url+commit->name
             latest-repository-commit
+            commit-difference
+            commit-relation
 
             git-checkout
             git-checkout?
             git-checkout-url
-            git-checkout-branch))
-
-;; XXX: Use this hack instead of #:autoload to avoid compilation errors.
-;; See <http://bugs.gnu.org/12202>.
-(module-autoload! (current-module)
-                  '(git submodule) '(repository-submodules))
+            git-checkout-branch
+            git-checkout-commit
+            git-checkout-recursive?))
 
 (define %repository-cache-directory
   (make-parameter (string-append (cache-directory #:ensure? #f)
@@ -110,6 +115,10 @@ the 'SSL_CERT_FILE' and 'SSL_CERT_DIR' environment variables."
                               (string-append "R:" url)
                               url))))))
 
+;; Authentication appeared in Guile-Git 0.3.0, check if it is available.
+(define auth-supported?
+  (false-if-exception (resolve-interface '(git auth))))
+
 (define (clone* url directory)
   "Clone git repository at URL into DIRECTORY.  Upon failure,
 make sure no empty directory is left behind."
@@ -121,7 +130,13 @@ make sure no empty directory is left behind."
       ;; value in Guile-Git: <https://bugs.gnu.org/29238>.
       (if (module-defined? (resolve-interface '(git))
                            'clone-init-options)
-          (clone url directory (clone-init-options))
+          (let ((auth-method (and auth-supported?
+                                  (%make-auth-ssh-agent))))
+            (clone url directory
+                   (if auth-supported?
+                       (make-clone-options
+                        #:fetch-options (make-fetch-options auth-method))
+                       (clone-init-options))))
           (clone url directory)))
     (lambda _
       (false-if-exception (rmdir directory)))))
@@ -135,48 +150,52 @@ of SHA1 string."
     (last (string-split url #\/)) ".git" "")
    "-" (string-take sha1 7)))
 
+(define (resolve-reference repository ref)
+  "Resolve the branch, commit or tag specified by REF, and return the
+corresponding Git object."
+  (let resolve ((ref ref))
+    (match ref
+      (('branch . branch)
+       (let ((oid (reference-target
+                   (branch-lookup repository branch BRANCH-REMOTE))))
+         (object-lookup repository oid)))
+      (('commit . commit)
+       (let ((len (string-length commit)))
+         ;; 'object-lookup-prefix' appeared in Guile-Git in Mar. 2018, so we
+         ;; can't be sure it's available.  Furthermore, 'string->oid' used to
+         ;; read out-of-bounds when passed a string shorter than 40 chars,
+         ;; which is why we delay calls to it below.
+         (if (< len 40)
+             (if (module-defined? (resolve-interface '(git object))
+                                  'object-lookup-prefix)
+                 (object-lookup-prefix repository (string->oid commit) len)
+                 (raise (condition
+                         (&message
+                          (message "long Git object ID is required")))))
+             (object-lookup repository (string->oid commit)))))
+      (('tag-or-commit . str)
+       (if (or (> (string-length str) 40)
+               (not (string-every char-set:hex-digit str)))
+           (resolve `(tag . ,str))              ;definitely a tag
+           (catch 'git-error
+             (lambda ()
+               (resolve `(tag . ,str)))
+             (lambda _
+               ;; There's no such tag, so it must be a commit ID.
+               (resolve `(commit . ,str))))))
+      (('tag    . tag)
+       (let ((oid (reference-name->oid repository
+                                       (string-append "refs/tags/" tag))))
+         ;; OID may point to a "tag" object, but it can also point directly
+         ;; to a "commit" object, as surprising as it may seem.  Return that
+         ;; object, whatever that is.
+         (object-lookup repository oid))))))
+
 (define (switch-to-ref repository ref)
   "Switch to REPOSITORY's branch, commit or tag specified by REF.  Return the
 OID (roughly the commit hash) corresponding to REF."
   (define obj
-    (let resolve ((ref ref))
-      (match ref
-        (('branch . branch)
-         (let ((oid (reference-target
-                     (branch-lookup repository branch BRANCH-REMOTE))))
-           (object-lookup repository oid)))
-        (('commit . commit)
-         (let ((len (string-length commit)))
-           ;; 'object-lookup-prefix' appeared in Guile-Git in Mar. 2018, so we
-           ;; can't be sure it's available.  Furthermore, 'string->oid' used to
-           ;; read out-of-bounds when passed a string shorter than 40 chars,
-           ;; which is why we delay calls to it below.
-           (if (< len 40)
-               (if (module-defined? (resolve-interface '(git object))
-                                    'object-lookup-prefix)
-                   (object-lookup-prefix repository (string->oid commit) len)
-                   (raise (condition
-                           (&message
-                            (message "long Git object ID is required")))))
-               (object-lookup repository (string->oid commit)))))
-        (('tag-or-commit . str)
-         (if (or (> (string-length str) 40)
-                 (not (string-every char-set:hex-digit str)))
-             (resolve `(tag . ,str))              ;definitely a tag
-             (catch 'git-error
-               (lambda ()
-                 (resolve `(tag . ,str)))
-               (lambda _
-                 ;; There's no such tag, so it must be a commit ID.
-                 (resolve `(commit . ,str))))))
-        (('tag    . tag)
-         (let ((oid (reference-name->oid repository
-                                         (string-append "refs/tags/" tag))))
-           ;; Get the commit that the tag at OID refers to.  This is not
-           ;; strictly needed, but it's more consistent to always return the
-           ;; OID of a commit.
-           (object-lookup repository
-                          (tag-target-id (tag-lookup repository oid))))))))
+    (resolve-reference repository ref))
 
   (reset repository obj RESET_HARD)
   (object-id obj))
@@ -197,11 +216,40 @@ dynamic extent of EXP."
   (call-with-repository directory
                         (lambda (repository) exp ...)))
 
+(define (report-git-error error)
+  "Report the given Guile-Git error."
+  ;; Prior to Guile-Git commit b6b2760c2fd6dfaa5c0fedb43eeaff06166b3134,
+  ;; errors would be represented by integers.
+  (match error
+    ((? integer? error)                           ;old Guile-Git
+     (leave (G_ "Git error ~a~%") error))
+    ((? git-error? error)                         ;new Guile-Git
+     (leave (G_ "Git error: ~a~%") (git-error-message error)))))
+
+(define-syntax-rule (with-git-error-handling body ...)
+  (catch 'git-error
+    (lambda ()
+      body ...)
+    (lambda (key err)
+      (report-git-error err))))
+
+(define (load-git-submodules)
+  "Attempt to load (git submodules), which was missing until Guile-Git 0.2.0.
+Return true on success, false on failure."
+  (match (false-if-exception (resolve-interface '(git submodule)))
+    (#f
+     (set! load-git-submodules (const #f))
+     #f)
+    (iface
+     (module-use! (resolve-module '(guix git)) iface)
+     (set! load-git-submodules (const #t))
+     #t)))
+
 (define* (update-submodules repository
                             #:key (log-port (current-error-port)))
   "Update the submodules of REPOSITORY, a Git repository object."
   ;; Guile-Git < 0.2.0 did not have (git submodule).
-  (if (false-if-exception (resolve-interface '(git submodule)))
+  (if (load-git-submodules)
       (for-each (lambda (name)
                   (let ((submodule (submodule-lookup repository name)))
                     (format log-port (G_ "updating submodule '~a'...~%")
@@ -220,23 +268,49 @@ dynamic extent of EXP."
               (G_ "Support for submodules is missing; \
 please upgrade Guile-Git.~%"))))
 
+(define-syntax-rule (false-if-git-not-found exp)
+  "Evaluate EXP, returning #false if a GIT_ENOTFOUND error is raised."
+  (catch 'git-error
+    (lambda ()
+      exp)
+    (lambda (key error . rest)
+      (if (= GIT_ENOTFOUND (git-error-code error))
+          #f
+          (apply throw key error rest)))))
+
+(define (reference-available? repository ref)
+  "Return true if REF, a reference such as '(commit . \"cabba9e\"), is
+definitely available in REPOSITORY, false otherwise."
+  (match ref
+    (('commit . commit)
+     (false-if-git-not-found
+      (->bool (commit-lookup repository (string->oid commit)))))
+    (_
+     #f)))
+
 (define* (update-cached-checkout url
                                  #:key
                                  (ref '(branch . "master"))
                                  recursive?
+                                 (check-out? #t)
+                                 starting-commit
                                  (log-port (%make-void-port "w"))
                                  (cache-directory
                                   (url-cache-directory
                                    url (%repository-cache-directory)
                                    #:recursive? recursive?)))
-  "Update the cached checkout of URL to REF in CACHE-DIRECTORY.  Return two
+  "Update the cached checkout of URL to REF in CACHE-DIRECTORY.  Return three
 values: the cache directory name, and the SHA1 commit (a string) corresponding
-to REF.
+to REF, and the relation of the new commit relative to STARTING-COMMIT (if
+provided) as returned by 'commit-relation'.
 
 REF is pair whose key is [branch | commit | tag | tag-or-commit ] and value
 the associated data: [<branch name> | <sha1> | <tag name> | <string>].
 
-When RECURSIVE? is true, check out submodules as well, if any."
+When RECURSIVE? is true, check out submodules as well, if any.
+
+When CHECK-OUT? is true, reset the cached working tree to REF; otherwise leave
+it unchanged."
   (define canonical-ref
     ;; We used to require callers to specify "origin/" for each branch, which
     ;; made little sense since the cache should be transparent to them.  So
@@ -254,11 +328,33 @@ When RECURSIVE? is true, check out submodules as well, if any."
                              (repository-open cache-directory)
                              (clone* url cache-directory))))
      ;; Only fetch remote if it has not been cloned just before.
-     (when cache-exists?
-       (remote-fetch (remote-lookup repository "origin")))
+     (when (and cache-exists?
+                (not (reference-available? repository ref)))
+       (if auth-supported?
+           (let ((auth-method (and auth-supported?
+                                   (%make-auth-ssh-agent))))
+             (remote-fetch (remote-lookup repository "origin")
+                           #:fetch-options (make-fetch-options auth-method)))
+           (remote-fetch (remote-lookup repository "origin"))))
      (when recursive?
        (update-submodules repository #:log-port log-port))
-     (let ((oid (switch-to-ref repository canonical-ref)))
+
+     ;; Note: call 'commit-relation' from here because it's more efficient
+     ;; than letting users re-open the checkout later on.
+     (let* ((oid      (if check-out?
+                          (switch-to-ref repository canonical-ref)
+                          (object-id
+                           (resolve-reference repository canonical-ref))))
+            (new      (and starting-commit
+                           (commit-lookup repository oid)))
+            (old      (and starting-commit
+                           (false-if-git-not-found
+                            (commit-lookup repository
+                                           (string->oid starting-commit)))))
+            (relation (and starting-commit
+                           (if old
+                               (commit-relation old new)
+                               'unrelated))))
 
        ;; Reclaim file descriptors and memory mappings associated with
        ;; REPOSITORY as soon as possible.
@@ -266,7 +362,7 @@ When RECURSIVE? is true, check out submodules as well, if any."
                               'repository-close!)
          (repository-close! repository))
 
-       (values cache-directory (oid->string oid))))))
+       (values cache-directory (oid->string oid) relation)))))
 
 (define* (latest-repository-commit store url
                                    #:key
@@ -299,7 +395,7 @@ Log progress and checkout info to LOG-PORT."
 
   (format log-port "updating checkout of '~a'...~%" url)
   (let*-values
-      (((checkout commit)
+      (((checkout commit _)
         (update-cached-checkout url
                                 #:recursive? recursive?
                                 #:ref ref
@@ -322,6 +418,62 @@ Log progress and checkout info to LOG-PORT."
              (git-error-message error)))))
 
 (set-exception-printer! 'git-error print-git-error)
+
+
+;;;
+;;; Commit difference.
+;;;
+
+(define* (commit-closure commit #:optional (visited (setq)))
+  "Return the closure of COMMIT as a set.  Skip commits contained in VISITED,
+a set, and adjoin VISITED to the result."
+  (let loop ((commits (list commit))
+             (visited visited))
+    (match commits
+      (()
+       visited)
+      ((head . tail)
+       (if (set-contains? visited head)
+           (loop tail visited)
+           (loop (append (commit-parents head) tail)
+                 (set-insert head visited)))))))
+
+(define* (commit-difference new old #:optional (excluded '()))
+  "Return the list of commits between NEW and OLD, where OLD is assumed to be
+an ancestor of NEW.  Exclude all the commits listed in EXCLUDED along with
+their ancestors.
+
+Essentially, this computes the set difference between the closure of NEW and
+that of OLD."
+  (let loop ((commits (list new))
+             (result '())
+             (visited (fold commit-closure
+                            (setq)
+                            (cons old excluded))))
+    (match commits
+      (()
+       (reverse result))
+      ((head . tail)
+       (if (set-contains? visited head)
+           (loop tail result visited)
+           (loop (append (commit-parents head) tail)
+                 (cons head result)
+                 (set-insert head visited)))))))
+
+(define (commit-relation old new)
+  "Return a symbol denoting the relation between OLD and NEW, two commit
+objects: 'ancestor (meaning that OLD is an ancestor of NEW), 'descendant, or
+'unrelated, or 'self (OLD and NEW are the same commit)."
+  (if (eq? old new)
+      'self
+      (let ((newest (commit-closure new)))
+        (if (set-contains? newest old)
+            'ancestor
+            (let* ((seen   (list->setq (commit-parents new)))
+                   (oldest (commit-closure old seen)))
+              (if (set-contains? oldest new)
+                  'descendant
+                  'unrelated))))))
 
 
 ;;;

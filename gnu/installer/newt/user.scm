@@ -1,6 +1,7 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2018 Mathieu Othacehe <m.othacehe@gmail.com>
-;;; Copyright © 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2019, 2020 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2019 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -22,6 +23,7 @@
   #:use-module ((gnu installer steps) #:select (&installer-step-abort))
   #:use-module (gnu installer newt page)
   #:use-module (gnu installer newt utils)
+  #:use-module (gnu installer utils)
   #:use-module (guix i18n)
   #:use-module (newt)
   #:use-module (ice-9 match)
@@ -55,7 +57,7 @@ REAL-NAME, and HOME-DIRECTORY as the initial values in the form."
          (entry-home-directory (make-entry -1 -1 entry-width
                                            #:initial-value home-directory))
          (password-visible-cb
-          (make-checkbox -1 -1 (G_ "Hide") #\x "x "))
+          (make-checkbox -1 -1 (G_ "Show") #\space "x "))
          (entry-password (make-entry -1 -1 entry-width
                                      #:flags (logior FLAG-PASSWORD
                                                      FLAG-SCROLL)))
@@ -87,7 +89,7 @@ REAL-NAME, and HOME-DIRECTORY as the initial values in the form."
 
     (add-component-callback
      entry-name
-     (lambda (component)
+     (lambda ()
        (set-entry-text entry-home-directory
                        (string-append "/home/" (entry-value entry-name)))
 
@@ -97,7 +99,7 @@ REAL-NAME, and HOME-DIRECTORY as the initial values in the form."
 
     (add-component-callback
      password-visible-cb
-     (lambda (component)
+     (lambda ()
        (set-entry-flags entry-password
                         FLAG-PASSWORD
                         FLAG-ROLE-TOGGLE)))
@@ -114,6 +116,7 @@ REAL-NAME, and HOME-DIRECTORY as the initial values in the form."
                                GRID-ELEMENT-SUBGRID entry-grid
                                GRID-ELEMENT-SUBGRID button-grid)
                               title)
+
     (let ((error-page
            (lambda ()
              (run-error-page (G_ "Empty inputs are not allowed.")
@@ -156,7 +159,7 @@ a thunk, if the confirmation doesn't match PASSWORD, and return its result."
     (run-input-page (G_ "Please confirm the password.")
                     (G_ "Password confirmation required")
                     #:allow-empty-input? #t
-                    #:input-hide-checkbox? #t))
+                    #:input-visibility-checkbox? #t))
 
   (if (string=? password confirmation)
       password
@@ -167,13 +170,13 @@ a thunk, if the confirmation doesn't match PASSWORD, and return its result."
         (try-again))))
 
 (define (run-root-password-page)
-  ;; TRANSLATORS: Leave "root" untranslated: it refers to the name of the
-  ;; system administrator account.
   (define password
+    ;; TRANSLATORS: Leave "root" untranslated: it refers to the name of the
+    ;; system administrator account.
     (run-input-page (G_ "Please choose a password for the system \
 administrator (\"root\").")
                     (G_ "System administrator password")
-                    #:input-hide-checkbox? #t))
+                    #:input-visibility-checkbox? #t))
 
   (confirm-password password run-root-password-page))
 
@@ -229,33 +232,45 @@ administrator (\"root\").")
           (set-current-component form ok-button))
 
       (receive (exit-reason argument)
-          (run-form form)
+          (run-form-with-clients form '(add-users))
         (dynamic-wind
           (const #t)
           (lambda ()
-            (when (eq? exit-reason 'exit-component)
-              (cond
-               ((components=? argument add-button)
-                (run (cons (run-user-add-page) users)))
-               ((components=? argument del-button)
-                (let* ((current-user-key (current-listbox-entry listbox))
-                       (users
-                        (map (cut assoc-ref <> 'user)
-                             (remove (lambda (element)
-                                       (equal? (assoc-ref element 'key)
-                                               current-user-key))
-                                     listbox-elements))))
-                  (run users)))
-               ((components=? argument ok-button)
-                (when (null? users)
-                  (run-error-page (G_ "Please create at least one user.")
-                                  (G_ "No user"))
-                  (run users))
-                (reverse users))
-               ((components=? argument exit-button)
-                (raise
-                 (condition
-                  (&installer-step-abort)))))))
+            (match exit-reason
+              ('exit-component
+               (cond
+                ((components=? argument add-button)
+                 (run (cons (run-user-add-page) users)))
+                ((components=? argument del-button)
+                 (let* ((current-user-key (current-listbox-entry listbox))
+                        (users
+                         (map (cut assoc-ref <> 'user)
+                              (remove (lambda (element)
+                                        (equal? (assoc-ref element 'key)
+                                                current-user-key))
+                                      listbox-elements))))
+                   (run users)))
+                ((components=? argument ok-button)
+                 (when (null? users)
+                   (run-error-page (G_ "Please create at least one user.")
+                                   (G_ "No user"))
+                   (run users))
+                 (reverse users))
+                ((components=? argument exit-button)
+                 (raise
+                  (condition
+                   (&installer-step-abort))))))
+              ('exit-fd-ready
+               ;; Read the complete user list at once.
+               (match argument
+                 ((('user ('name names) ('real-name real-names)
+                          ('home-directory homes) ('password passwords))
+                   ..1)
+                  (map (lambda (name real-name home password)
+                         (user (name name) (real-name real-name)
+                               (home-directory home)
+                               (password password)))
+                       names real-names homes passwords))))))
           (lambda ()
             (destroy-form-and-pop form))))))
 

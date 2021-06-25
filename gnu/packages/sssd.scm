@@ -1,6 +1,7 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2016, 2017 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2017, 2018 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2020 Efraim Flashner <efraim@flashner.co.il>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -81,15 +82,15 @@ fundamental object types for C.")
 (define-public sssd
   (package
     (name "sssd")
-    (version "1.16.2")
+    (version "1.16.5")
     (source (origin
               (method url-fetch)
-              (uri (string-append "http://releases.pagure.org/SSSD/sssd/"
+              (uri (string-append "https://releases.pagure.org/SSSD/sssd/"
                                   "sssd-" version ".tar.gz"))
-              (patches (search-patches "sssd-curl-compat.patch"))
               (sha256
                (base32
-                "032ppk57qs1lnvz7pb7lw9ldwm9i1yagh9fzgqgn6na3bg61ynzy"))))
+                "1h6hwibaf3xa2w6qpzjiiywmfj6zkgbz4r2isf3gd0xm6vq7n6if"))
+              (patches (search-patches "sssd-fix-samba.patch"))))
     (build-system gnu-build-system)
     (arguments
      `(#:make-flags
@@ -130,10 +131,6 @@ fundamental object types for C.")
            (lambda _
              (substitute* "src/tests/responder_socket_access-tests.c"
                (("tcase_add_test\\(tc_utils, resp_str_to_array_test\\);") ""))
-             ;; XXX: These tests fail with recent versions of ldb.  See
-             ;; <https://pagure.io/SSSD/sssd/issue/3563>.
-             (substitute* "Makefile.in"
-               (("sysdb-tests\\$\\(EXEEXT\\)") ""))
              #t)))))
     (inputs
      `(("augeas" ,augeas)
@@ -169,7 +166,7 @@ fundamental object types for C.")
        ("libxml2" ,libxml2)             ; for xmllint
        ("libxslt" ,libxslt)
        ("pkg-config" ,pkg-config)
-       ("util-linux" ,util-linux)))     ; for uuid.h, reqired for KCM
+       ("util-linux" ,util-linux "lib"))) ;for uuid.h, reqired for KCM
     (home-page "https://pagure.io/SSSD/sssd/")
     (synopsis "System security services daemon")
     (description "SSSD is a system daemon.  Its primary function is to provide

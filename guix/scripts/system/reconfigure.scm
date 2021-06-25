@@ -1,11 +1,11 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2016 Alex Kost <alezost@gmail.com>
 ;;; Copyright © 2016, 2017, 2018 Chris Marusich <cmmarusich@gmail.com>
 ;;; Copyright © 2017 Mathieu Othacehe <m.othacehe@gmail.com>
 ;;; Copyright © 2018 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2019 Christopher Baines <mail@cbaines.net>
-;;; Copyright © 2019 Jakob L. Kreuze <zerodaysfordays@sdf.lonestar.org>
+;;; Copyright © 2019 Jakob L. Kreuze <zerodaysfordays@sdf.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -33,9 +33,18 @@
   #:use-module (guix modules)
   #:use-module (guix monads)
   #:use-module (guix store)
+  #:use-module ((guix self) #:select (make-config.scm))
+  #:autoload   (guix describe) (current-profile)
+  #:use-module (guix channels)
+  #:autoload   (guix git) (update-cached-checkout)
+  #:use-module (guix i18n)
+  #:use-module (guix diagnostics)
   #:use-module (ice-9 match)
   #:use-module (srfi srfi-1)
   #:use-module (srfi srfi-11)
+  #:use-module (srfi srfi-34)
+  #:use-module (srfi srfi-35)
+  #:use-module ((guix config) #:select (%guix-package-name))
   #:export (switch-system-program
             switch-to-system
 
@@ -43,7 +52,11 @@
             upgrade-shepherd-services
 
             install-bootloader-program
-            install-bootloader))
+            install-bootloader
+
+            check-forward-update
+            ensure-forward-reconfigure
+            warn-about-backward-reconfigure))
 
 ;;; Commentary:
 ;;;
@@ -60,6 +73,14 @@
 ;;; Profile creation.
 ;;;
 
+(define not-config?
+  ;; Select (guix …) and (gnu …) modules, except (guix config).
+  (match-lambda
+    (('guix 'config) #f)
+    (('guix rest ...) #t)
+    (('gnu rest ...) #t)
+    (_ #f)))
+
 (define* (switch-system-program os #:optional profile)
   "Return an executable store item that, upon being evaluated, will create a
 new generation of PROFILE pointing to the directory of OS, switch to it
@@ -67,9 +88,11 @@ atomically, and run OS's activation script."
   (program-file
    "switch-to-system.scm"
    (with-extensions (list guile-gcrypt)
-     (with-imported-modules (source-module-closure '((guix config)
-                                                     (guix profiles)
-                                                     (guix utils)))
+     (with-imported-modules `(,@(source-module-closure
+                                 '((guix profiles)
+                                   (guix utils))
+                                 #:select? not-config?)
+                              ((guix config) => ,(make-config.scm)))
        #~(begin
            (use-modules (guix config)
                         (guix profiles)
@@ -89,7 +112,8 @@ atomically, and run OS's activation script."
   "Using EVAL, a monadic procedure taking a single G-Expression as an argument,
 create a new generation of PROFILE pointing to the directory of OS, switch to
 it atomically, and run OS's activation script."
-  (eval #~(primitive-load #$(switch-system-program os profile))))
+  (eval #~(parameterize ((current-warning-port (%make-void-port "w")))
+            (primitive-load #$(switch-system-program os profile)))))
 
 
 ;;;
@@ -136,7 +160,10 @@ canonical names (symbols)."
                      (srfi srfi-1))
 
         ;; Load the service files for any new services.
-        (load-services/safe '#$service-files)
+        ;; Silence messages coming from shepherd such as "Evaluating
+        ;; expression ..." since they are unhelpful.
+        (parameterize ((shepherd-message-port (%make-void-port "w")))
+          (load-services/safe '#$service-files))
 
         ;; Unload obsolete services and start new services.
         (for-each unload-service '#$to-unload)
@@ -162,10 +189,11 @@ services as defined by OS."
                                         (map live-service-canonical-name
                                              live-services)))
              (service-files (map shepherd-service-file target-services)))
-        (eval #~(primitive-load #$(upgrade-services-program service-files
-                                                            to-start
-                                                            to-unload
-                                                            to-restart)))))))
+        (eval #~(parameterize ((current-warning-port (%make-void-port "w")))
+                  (primitive-load #$(upgrade-services-program service-files
+                                                              to-start
+                                                              to-unload
+                                                              to-restart))))))))
 
 
 ;;;
@@ -181,10 +209,13 @@ BOOTLOADER-PACKAGE."
   (program-file
    "install-bootloader.scm"
    (with-extensions (list guile-gcrypt)
-     (with-imported-modules (source-module-closure '((gnu build bootloader)
-                                                     (gnu build install)
-                                                     (guix store)
-                                                     (guix utils)))
+     (with-imported-modules `(,@(source-module-closure
+                                 '((gnu build bootloader)
+                                   (gnu build install)
+                                   (guix store)
+                                   (guix utils))
+                                 #:select? not-config?)
+                              ((guix config) => ,(make-config.scm)))
        #~(begin
            (use-modules (gnu build bootloader)
                         (gnu build install)
@@ -192,24 +223,40 @@ BOOTLOADER-PACKAGE."
                         (guix store)
                         (guix utils)
                         (ice-9 binary-ports)
+                        (ice-9 match)
                         (srfi srfi-34)
                         (srfi srfi-35))
+
            (let* ((gc-root (string-append #$target %gc-roots-directory "/bootcfg"))
-                  (temp-gc-root (string-append gc-root ".new")))
-             (switch-symlinks temp-gc-root gc-root)
-             (install-boot-config #$bootcfg #$bootcfg-file #$target)
+                  (new-gc-root (string-append gc-root ".new")))
+             ;; #$bootcfg has dependencies.
+             ;; The bootloader magically loads the configuration from
+             ;; (string-append #$target #$bootcfg-file) (for example
+             ;; "/boot/grub/grub.cfg").
+             ;; If we didn't do something special, the garbage collector
+             ;; would remove the dependencies of #$bootcfg.
+             ;; Register #$bootcfg as a GC root.
              ;; Preserve the previous activation's garbage collector root
              ;; until the bootloader installer has run, so that a failure in
              ;; the bootloader's installer script doesn't leave the user with
              ;; a broken installation.
+             (switch-symlinks new-gc-root #$bootcfg)
+             (install-boot-config #$bootcfg #$bootcfg-file #$target)
              (when #$installer
                (catch #t
                  (lambda ()
                    (#$installer #$bootloader-package #$device #$target))
                  (lambda args
-                   (delete-file temp-gc-root)
-                   (apply throw args))))
-             (rename-file temp-gc-root gc-root)))))))
+                   (delete-file new-gc-root)
+                   (match args
+                     (('%exception exception)     ;Guile 3 SRFI-34 or similar
+                      (raise-exception exception))
+                     ((key . args)
+                      (apply throw key args))))))
+             ;; We are sure that the installation of the bootloader
+             ;; succeeded, so we can replace the old GC root by the new
+             ;; GC root now.
+             (rename-file new-gc-root gc-root)))))))
 
 (define* (install-bootloader eval configuration bootcfg
                              #:key
@@ -224,9 +271,93 @@ additional configurations specified by MENU-ENTRIES can be selected."
          (package (bootloader-package bootloader))
          (device (bootloader-configuration-target configuration))
          (bootcfg-file (bootloader-configuration-file bootloader)))
-    (eval #~(primitive-load #$(install-bootloader-program installer
-                                                          package
-                                                          bootcfg
-                                                          bootcfg-file
-                                                          device
-                                                          target)))))
+    (eval #~(parameterize ((current-warning-port (%make-void-port "w")))
+              (primitive-load #$(install-bootloader-program installer
+                                                            package
+                                                            bootcfg
+                                                            bootcfg-file
+                                                            device
+                                                            target))))))
+
+
+;;;
+;;; Downgrade detection.
+;;;
+
+(define (ensure-forward-reconfigure channel start commit relation)
+  "Raise an error if RELATION is not 'ancestor, meaning that START is not an
+ancestor of COMMIT, unless CHANNEL specifies a commit."
+  (match relation
+    ('ancestor #t)
+    ('self #t)
+    (_
+     (raise (make-compound-condition
+             (condition
+              (&message (message
+                         (format #f (G_ "\
+aborting reconfiguration because commit ~a of channel '~a' is not a descendant of ~a")
+                                 commit (channel-name channel)
+                                 start)))
+              (&fix-hint
+               (hint (G_ "Use @option{--allow-downgrades} to force
+this downgrade.")))))))))
+
+(define (warn-about-backward-reconfigure channel start commit relation)
+  "Warn about non-forward updates of CHANNEL from START to COMMIT, without
+aborting."
+  (match relation
+    ((or 'ancestor 'self)
+     #t)
+    ('descendant
+     (warning (G_ "rolling back channel '~a' from ~a to ~a~%")
+              (channel-name channel) start commit))
+    ('unrelated
+     (warning (G_ "moving channel '~a' from ~a to unrelated commit ~a~%")
+              (channel-name channel) start commit))))
+
+(define (channel-relations old new)
+  "Return a list of channel/relation pairs, where each relation is a symbol as
+returned by 'commit-relation' denoting how commits of channels in OLD relate
+to commits of channels in NEW."
+  (filter-map (lambda (old)
+                (let ((new (find (lambda (channel)
+                                   (eq? (channel-name channel)
+                                        (channel-name old)))
+                                 new)))
+                  (and new
+                       (let-values (((checkout commit relation)
+                                     (update-cached-checkout
+                                      (channel-url new)
+                                      #:ref
+                                      `(commit . ,(channel-commit new))
+                                      #:starting-commit
+                                      (channel-commit old)
+                                      #:check-out? #f)))
+                         (list new
+                               (channel-commit old) (channel-commit new)
+                               relation)))))
+              old))
+
+(define* (check-forward-update #:optional
+                               (validate-reconfigure
+                                ensure-forward-reconfigure)
+                               #:key
+                               (current-channels
+                                (system-provenance "/run/current-system")))
+  "Call VALIDATE-RECONFIGURE passing it, for each channel, the channel, the
+currently-deployed commit (from CURRENT-CHANNELS, which is as returned by
+'guix system describe' by default) and the target commit (as returned by 'guix
+describe')."
+  (define new
+    (or (and=> (current-profile) profile-channels)
+        '()))
+
+  (when (null? current-channels)
+    (warning (G_ "cannot determine provenance for current system~%")))
+  (when (and (null? new) (not (getenv "GUIX_UNINSTALLED")))
+    (warning (G_ "cannot determine provenance of ~a~%") %guix-package-name))
+
+  (for-each (match-lambda
+              ((channel old new relation)
+               (validate-reconfigure channel old new relation)))
+            (channel-relations current-channels new)))

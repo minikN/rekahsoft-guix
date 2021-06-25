@@ -1,6 +1,7 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2015, 2016, 2017 Leo Famulari <leo@famulari.name>
-;;; Copyright © 2018 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2018, 2019 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -54,29 +55,38 @@ and edited by calendar and contact clients on mobile phones or computers.
 Radicale intentionally does not fully comply with the CalDAV and CardDAV RFCs.
 Instead, it supports the CalDAV and CardDAV implementations of popular
 clients.")
-    (home-page "http://radicale.org/")
+    (home-page "https://radicale.org/")
     (license gpl3+)))
 
 (define-public vdirsyncer
   (package
     (name "vdirsyncer")
-    (version "0.16.7")
+    ;; When updating, check whether python-click-5 can be removed entirely.
+    (version "0.16.8")
     (source (origin
              (method url-fetch)
              (uri (pypi-uri name version))
              (sha256
               (base32
-               "1vqjhn2bffy2bx45a1r14crsyn2cylf5by567g44c4mhpjwwz6vc"))))
+               "1i8kp9j99rs8xdhrc1vx749zd9wznlzj0pb3s05xdm71a8pl5nxz"))))
     (build-system python-build-system)
     (arguments
-     `(#:phases (modify-phases %standard-phases
+     `(#:tests? #f ; The test suite is very flakey.
+       #:phases (modify-phases %standard-phases
         (replace 'check
-          (lambda* (#:key inputs outputs #:allow-other-keys)
+          (lambda* (#:key inputs outputs tests? #:allow-other-keys)
             (add-installed-pythonpath inputs outputs)
             (setenv "DETERMINISTIC_TESTS" "true")
             (setenv "DAV_SERVER" "radicale")
             (setenv "REMOTESTORAGE_SERVER" "skip")
-            (invoke "make" "test")))
+            (if tests?
+                (invoke "make" "test")
+                #t)))
+        (add-after 'unpack 'patch-version-call
+          (lambda _
+            (substitute* "docs/conf.py"
+              (("^release.*") (string-append "release = '" ,version "'\n")))
+            #t))
         (add-after 'install 'manpage
           (lambda* (#:key inputs outputs #:allow-other-keys)
             (invoke "make" "--directory=docs/" "man")
@@ -97,9 +107,11 @@ clients.")
        ("python-urllib3" ,python-urllib3)
        ("python-wsgi-intercept" ,python-wsgi-intercept)
        ("radicale" ,radicale)))
+    (inputs
+     `(;; XXX https://github.com/mitsuhiko/click/issues/200
+       ("python-click" ,python-click-5)))
     (propagated-inputs
      `(("python-atomicwrites" ,python-atomicwrites)
-       ("python-click" ,python-click)
        ("python-click-log" ,python-click-log)
        ("python-click-threading" ,python-click-threading)
        ("python-requests-toolbelt" ,python-requests-toolbelt)))

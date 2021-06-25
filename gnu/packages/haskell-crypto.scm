@@ -1,7 +1,7 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2015 Paul van der Walt <paul@denknerd.org>
 ;;; Copyright © 2015, 2017, 2018, 2019 Ricardo Wurmus <rekado@elephly.net>
-;;; Copyright © 2016 ng0 <ng0@n0.is>
+;;; Copyright © 2016 Nikita <nikita@n0.is>
 ;;; Copyright © 2017 rsiddharth <s@ricketyspace.net>
 ;;; Copyright © 2017, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;;
@@ -25,6 +25,8 @@
   #:use-module (gnu packages compression)
   #:use-module (gnu packages haskell)
   #:use-module (gnu packages haskell-check)
+  #:use-module (gnu packages haskell-xyz)
+  #:use-module (gnu packages tls)
   #:use-module (guix build-system haskell)
   #:use-module (guix download)
   #:use-module ((guix licenses) #:prefix license:)
@@ -34,7 +36,7 @@
 (define-public ghc-asn1-types
   (package
     (name "ghc-asn1-types")
-    (version "0.3.2")
+    (version "0.3.3")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://hackage.haskell.org/package/"
@@ -42,7 +44,7 @@
                                   version ".tar.gz"))
               (sha256
                (base32
-                "05vjchyqiy9n275cygffhn0ma7fz7jx52j0dcdm9qm8h9bziymqc"))))
+                "162lacdl9jr42pdhaj9hxqlba6hjxm6g866anna74q6v3cvw5ssp"))))
     (build-system haskell-build-system)
     (inputs
      `(("ghc-memory" ,ghc-memory)
@@ -57,7 +59,7 @@ format.")
 (define-public ghc-asn1-encoding
   (package
     (name "ghc-asn1-encoding")
-    (version "0.9.5")
+    (version "0.9.6")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://hackage.haskell.org/package/"
@@ -65,12 +67,11 @@ format.")
                                   version ".tar.gz"))
               (sha256
                (base32
-                "0adgbamyq0mj1l1hdq4zyyllay714bac1wl0rih3fv1z6vykp1hy"))))
+                "02nsr30h5yic1mk7znf0q4z3n560ip017n60hg7ya25rsfmxxy6r"))))
     (build-system haskell-build-system)
     (inputs
      `(("ghc-hourglass" ,ghc-hourglass)
-       ("ghc-asn1-types" ,ghc-asn1-types)
-       ("ghc-text" ,ghc-text)))
+       ("ghc-asn1-types" ,ghc-asn1-types)))
     (native-inputs
      `(("ghc-tasty" ,ghc-tasty)
        ("ghc-tasty-quickcheck" ,ghc-tasty-quickcheck)))
@@ -84,7 +85,7 @@ supports for high level forms of ASN1 (BER, and DER).")
 (define-public ghc-asn1-parse
   (package
     (name "ghc-asn1-parse")
-    (version "0.9.4")
+    (version "0.9.5")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://hackage.haskell.org/package/"
@@ -92,7 +93,7 @@ supports for high level forms of ASN1 (BER, and DER).")
                                   version ".tar.gz"))
               (sha256
                (base32
-                "025prsihk5g6rdv9xlfmj0zpa0wa3qjzj5i4ilzvg7f6f3sji8y6"))))
+                "17pk8y3nwv9b9i5j15qlmwi7fmq9ab2z4kfpjk2rvcrh9lsf27wg"))))
     (build-system haskell-build-system)
     (inputs
      `(("ghc-asn1-types" ,ghc-asn1-types)
@@ -211,7 +212,7 @@ that hides the C implementation.")
     (build-system haskell-build-system)
     (arguments
      `(#:cabal-revision
-       ("2" "0vyb9cfvpfxpslxvvhd48gw37i9g8ry5x63xwxd9q7xfiqhs7p3a")
+       ("4" "0gzaibjkipijwj9m9l6wrhfk5s3kdvfbhdl7cl1373cjfs41v0m3")
        #:tests? #f)) ; tests require old version of ghc-hunit (0.9)
     (native-inputs `(("ghc-base16-bytestring" ,ghc-base16-bytestring)
                      ("ghc-puremd5" ,ghc-puremd5)
@@ -239,7 +240,7 @@ that hides the C implementation.")
     (build-system haskell-build-system)
     (arguments
      `(#:cabal-revision
-       ("2" "0xas0nbq9bfdzlj6k565ibizv1cqvzfzsdj6q9pdiiwyxqblqc3m")
+       ("4" "0qb2wasfc4dpf6f9ahvhlv8njb3p3p9iwblg4032ssi95cg85718")
        #:tests? #f)) ; tests require old version of ghc-hunit (0.9)
     (native-inputs `(("ghc-base16-bytestring" ,ghc-base16-bytestring)
                      ("ghc-sha" ,ghc-sha)
@@ -273,7 +274,7 @@ the C implementation.")
     (build-system haskell-build-system)
     (arguments
      `(#:cabal-revision
-       ("1" "19birnmwga1yh82l4jqc3fygqkqcf5y8dlldnxfswngkzc3rvwp3")
+       ("3" "1arhz4y792kx439s2zv9x291gvvl2zxcfx9sq0nxsjlz7c3hpyp1")
        #:tests? #f)) ; tests require old version of ghc-hunit (0.9)
     (inputs
      `(("ghc-base16-bytestring" ,ghc-base16-bytestring)))
@@ -357,7 +358,7 @@ are implemented as FFI bindings to efficient code from zlib.")
 (define-public ghc-entropy
   (package
     (name "ghc-entropy")
-    (version "0.4.1.4")
+    (version "0.4.1.5")
     (source
      (origin
        (method url-fetch)
@@ -365,7 +366,7 @@ are implemented as FFI bindings to efficient code from zlib.")
                            "entropy-" version "/"
                            "entropy-" version ".tar.gz"))
        (sha256
-        (base32 "1fgf47l9klwn1xssbcbq6by651vikd8hlfxhiwd5bqzxr1jnlgrf"))))
+        (base32 "0szf8hi1pi8g0kxnkcymh65gk1b0niyl1nnkckzdqyar87qal0jm"))))
     (build-system haskell-build-system)
     (home-page "https://github.com/TomMD/entropy")
     (synopsis "Provides platform independent entropy source for Haskell")
@@ -776,3 +777,58 @@ Ephemeral (Elliptic curve and regular) Diffie Hellman key exchanges, and many
 extensions.")
     (license license:bsd-3)))
 
+(define-public ghc-hsopenssl
+  (package
+    (name "ghc-hsopenssl")
+    (version "0.11.4.17")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "https://hackage.haskell.org/package/"
+                           "HsOpenSSL/HsOpenSSL-" version ".tar.gz"))
+       (sha256
+        (base32
+         "0qivl9clmybfglwxqp2sq308rv4ia4rhwshcsc8b029bvpp0mpsi"))))
+    (build-system haskell-build-system)
+    (inputs
+     `(("ghc-network" ,ghc-network)
+       ("openssl" ,openssl)))
+    (home-page "https://github.com/vshabanov/HsOpenSSL")
+    (synopsis "Partial OpenSSL binding for Haskell")
+    (description "HsOpenSSL is an OpenSSL binding for Haskell.  It can
+generate RSA and DSA keys, read and write PEM files, generate message
+digests, sign and verify messages, encrypt and decrypt messages.  It has
+also some capabilities of creating SSL clients and servers.  This
+package is in production use by a number of Haskell based systems and
+stable.  You may also be interested in the tls package,
+@uref{http://hackage.haskell.org/package/tls}, which is a pure Haskell
+implementation of SSL.")
+    (license license:public-domain)))
+
+(define-public ghc-openssl-streams
+  (package
+    (name "ghc-openssl-streams")
+    (version "1.2.2.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "https://hackage.haskell.org/package/"
+                           "openssl-streams/openssl-streams-"
+                           version ".tar.gz"))
+       (sha256
+        (base32
+         "0rplym6ayydkpr7x9mw3l13p0vzzfzzxw244d7sd3jcvaxpv0rmr"))))
+    (build-system haskell-build-system)
+    (inputs
+     `(("ghc-hsopenssl" ,ghc-hsopenssl)
+       ("ghc-io-streams" ,ghc-io-streams)
+       ("ghc-network" ,ghc-network)))
+    (native-inputs
+     `(("ghc-hunit" ,ghc-hunit)
+       ("ghc-test-framework" ,ghc-test-framework)
+       ("ghc-test-framework-hunit" ,ghc-test-framework-hunit)))
+    (home-page "https://hackage.haskell.org/package/openssl-streams")
+    (synopsis "OpenSSL network support for io-streams")
+    (description "This library contains io-streams routines for secure
+networking using OpenSSL (by way of HsOpenSSL).")
+    (license license:bsd-3)))

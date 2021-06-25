@@ -23,7 +23,6 @@
   #:use-module (guix base32)
   #:use-module (guix memoization)
   #:use-module (gcrypt hash)
-  #:use-module (guix memoization)
   #:use-module (guix tests)
   #:use-module (guix build-system python)
   #:use-module ((guix build utils) #:select (delete-file-recursively which mkdir-p))
@@ -38,18 +37,21 @@
     \"license\": \"GNU LGPL\",
     \"summary\": \"summary\",
     \"home_page\": \"http://example.com\",
+    \"classifiers\": [],
+    \"download_url\": \"\"
   },
+  \"urls\": [],
   \"releases\": {
     \"1.0.0\": [
       {
         \"url\": \"https://example.com/foo-1.0.0.egg\",
-        \"packagetype\": \"bdist_egg\",
+        \"packagetype\": \"bdist_egg\"
       }, {
         \"url\": \"https://example.com/foo-1.0.0.tar.gz\",
-        \"packagetype\": \"sdist\",
+        \"packagetype\": \"sdist\"
       }, {
         \"url\": \"https://example.com/foo-1.0.0-py2.py3-none-any.whl\",
-        \"packagetype\": \"bdist_wheel\",
+        \"packagetype\": \"bdist_wheel\"
       }
     ]
   }
@@ -117,6 +119,7 @@ Provides-Extra: testing
 Requires-Dist: pytest (>=3.1.0); extra == 'testing'
 ")
 
+
 (test-begin "pypi")
 
 (test-equal "guix-package->pypi-name, old URL style"

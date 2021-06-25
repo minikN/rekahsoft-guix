@@ -1,9 +1,9 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2015, 2016, 2017, 2018, 2019 Ricardo Wurmus <rekado@elephly.net>
-;;; Copyright © 2016 Efraim Flashner <efraim@flashner.co.il>
-;;; Copyright © 2016, 2017 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2015, 2016, 2017, 2018, 2019, 2020 Ricardo Wurmus <rekado@elephly.net>
+;;; Copyright © 2016, 2020 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2016, 2017, 2020 Marius Bakke <mbakke@fastmail.com>
 ;;; Copyright © 2016 Hartmut Goebel <h.goebel@crazy-compilers.com>
-;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018 Kei Kebreau <kkebreau@posteo.net>
 ;;; Copyright © 2018 Mark Meyer <mark@ofosos.org>
 ;;; Copyright © 2018 Ben Woodcroft <donttrustben@gmail.com>
@@ -11,6 +11,10 @@
 ;;; Copyright © 2018 Julien Lepiller <julien@lepiller.eu>
 ;;; Copyright © 2018 Björn Höfling <bjoern.hoefling@bjoernhoefling.de>
 ;;; Copyright © 2019 Nicolas Goaziou <mail@nicolasgoaziou.fr>
+;;; Copyright © 2019, 2020 Guillaume Le Vaillant <glv@posteo.net>
+;;; Copyright © 2019 Brett Gilio <brettg@gnu.org>
+;;; Copyright © 2020 Konrad Hinsen <konrad.hinsen@fastmail.net>
+;;; Copyright © 2020 Edouard Klein <edk@beaver-labs.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -66,14 +70,15 @@
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages protobuf)
   #:use-module (gnu packages python)
+  #:use-module (gnu packages python-science)
   #:use-module (gnu packages python-web)
   #:use-module (gnu packages python-xyz)
+  #:use-module (gnu packages rpc)
   #:use-module (gnu packages serialization)
   #:use-module (gnu packages sphinx)
   #:use-module (gnu packages statistics)
   #:use-module (gnu packages sqlite)
   #:use-module (gnu packages swig)
-  #:use-module (gnu packages tls)
   #:use-module (gnu packages web)
   #:use-module (gnu packages xml)
   #:use-module (gnu packages xorg)
@@ -88,7 +93,7 @@
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/libfann/fann.git")
+                      (url "https://github.com/libfann/fann")
                       (commit commit)))
                 (file-name (string-append name "-" version "-checkout"))
                 (sha256
@@ -106,9 +111,9 @@
       (home-page "http://leenissen.dk/fann/wp/")
       (synopsis "Fast Artificial Neural Network")
       (description
-       "FANN is a free open source neural network library, which implements
-multilayer artificial neural networks in C with support for both fully
-connected and sparsely connected networks.")
+       "FANN is a neural network library, which implements multilayer
+artificial neural networks in C with support for both fully connected and
+sparsely connected networks.")
       (license license:lgpl2.1))))
 
 (define-public libsvm
@@ -139,7 +144,7 @@ connected and sparsely connected networks.")
                                    "svm-predict"
                                    "svm-scale")))
                      #t)))))
-    (home-page "http://www.csie.ntu.edu.tw/~cjlin/libsvm/")
+    (home-page "https://www.csie.ntu.edu.tw/~cjlin/libsvm/")
     (synopsis "Library for Support Vector Machines")
     (description
      "LIBSVM is a machine learning library for support vector
@@ -193,7 +198,7 @@ classification.")
                 (uri (svn-reference
                       (url "http://svn.code.sf.net/p/ghmm/code/trunk")
                       (revision svn-revision)))
-                (file-name (string-append name "-" version))
+                (file-name (string-append name "-" version "-checkout"))
                 (sha256
                  (base32
                   "0qbq1rqp94l530f043qzp8aw5lj7dng9wq0miffd7spd1ff638wq"))))
@@ -201,6 +206,8 @@ classification.")
       (arguments
        `(#:imported-modules (,@%gnu-build-system-modules
                              (guix build python-build-system))
+         #:modules          ((guix build python-build-system)
+                             ,@%gnu-build-system-modules)
          #:phases
          (modify-phases %standard-phases
            (add-after 'unpack 'enter-dir
@@ -210,8 +217,7 @@ classification.")
              (assoc-ref %standard-phases 'check))
            (add-before 'check 'fix-PYTHONPATH
              (lambda* (#:key inputs outputs #:allow-other-keys)
-               (let ((python-version ((@@ (guix build python-build-system)
-                                           get-python-version)
+               (let ((python-version (python-version
                                       (assoc-ref inputs "python"))))
                  (setenv "PYTHONPATH"
                          (string-append (getenv "PYTHONPATH")
@@ -251,10 +257,7 @@ classification.")
                   (string-append indent
                                  "@unittest.skip(\"Disabled by Guix\")\n"
                                  line)))
-               #t))
-           (add-after 'disable-broken-tests 'autogen
-             (lambda _
-               (invoke "bash" "autogen.sh"))))))
+               #t)))))
       (inputs
        `(("python" ,python-2) ; only Python 2 is supported
          ("libxml2" ,libxml2)))
@@ -312,7 +315,7 @@ networks) based on simulation of (stochastic) flow in graphs.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/fhcrc/mcl.git")
+             (url "https://github.com/fhcrc/mcl")
              (commit version)))
        (file-name (git-file-name name version))
        (sha256
@@ -563,12 +566,12 @@ optimizing, and searching weighted finite-state transducers (FSTs).")
     ;; Non-portable SSE instructions are used so building fails on platforms
     ;; other than x86_64.
     (supported-systems '("x86_64-linux"))
-    (home-page "http://shogun-toolbox.org/")
+    (home-page "https://shogun-toolbox.org/")
     (synopsis "Machine learning toolbox")
     (description
      "The Shogun Machine learning toolbox provides a wide range of unified and
-efficient Machine Learning (ML) methods.  The toolbox seamlessly allows to
-combine multiple data representations, algorithm classes, and general purpose
+efficient Machine Learning (ML) methods.  The toolbox seamlessly
+combines multiple data representations, algorithm classes, and general purpose
 tools.  This enables both rapid prototyping of data pipelines and extensibility
 in terms of new algorithms.")
     (license license:gpl3+)))
@@ -581,7 +584,7 @@ in terms of new algorithms.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/ReactiveX/RxCpp.git")
+             (url "https://github.com/ReactiveX/RxCpp")
              (commit (string-append "v" version))))
        (sha256
         (base32 "1rdpa3jlc181jd08nk437aar085h28i45s6nzrv65apb3xyyz0ij"))
@@ -710,14 +713,14 @@ than 8 bits, and at the end only some significant 8 bits are kept.")
 (define-public dlib
   (package
     (name "dlib")
-    (version "19.7")
+    (version "19.20")
     (source (origin
               (method url-fetch)
               (uri (string-append
                     "http://dlib.net/files/dlib-" version ".tar.bz2"))
               (sha256
                (base32
-                "1mljz02kwkrbggyncxv5fpnyjdybw2qihaacb3js8yfkw12vwpc2"))
+                "139jyi19qz37wwmmy48gil9d1kkh2r3w3bwdzabha6ayxmba96nz"))
               (modules '((guix build utils)))
               (snippet
                '(begin
@@ -777,7 +780,7 @@ than 8 bits, and at the end only some significant 8 bits are kept.")
     (inputs
      `(("giflib" ,giflib)
        ("lapack" ,lapack)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libpng" ,libpng)
        ("libx11" ,libx11)
        ("openblas" ,openblas)
@@ -795,17 +798,17 @@ computing environments.")
 (define-public python-scikit-learn
   (package
     (name "python-scikit-learn")
-    (version "0.20.3")
+    (version "0.22.1")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/scikit-learn/scikit-learn.git")
+             (url "https://github.com/scikit-learn/scikit-learn")
              (commit version)))
        (file-name (git-file-name name version))
        (sha256
         (base32
-         "08aaby5zphfxy83mggg35bwyka7wk91l2qijh8kk0bl08dikq8dl"))))
+         "1xqxv210gsmjw094vc5ghq2y9lmm74qkk22pq6flcjzj51b86jxf"))))
     (build-system python-build-system)
     (arguments
      `(#:phases
@@ -837,16 +840,61 @@ computing environments.")
        ("python-cython" ,python-cython)))
     (propagated-inputs
      `(("python-numpy" ,python-numpy)
-       ("python-scipy" ,python-scipy)))
-    (home-page "http://scikit-learn.org/")
+       ("python-scipy" ,python-scipy)
+       ("python-joblib" ,python-joblib)))
+    (home-page "https://scikit-learn.org/")
     (synopsis "Machine Learning in Python")
     (description
      "Scikit-learn provides simple and efficient tools for data mining and
 data analysis.")
+    (properties `((python2-variant . ,(delay python2-scikit-learn))))
     (license license:bsd-3)))
 
+;; scikit-learn 0.22 and later only supports Python 3, so we stick with
+;; an older version here.
 (define-public python2-scikit-learn
-  (package-with-python2 python-scikit-learn))
+  (let ((base (package-with-python2 (strip-python2-variant python-scikit-learn))))
+    (package
+      (inherit base)
+      (version "0.20.4")
+      (source (origin
+                (method git-fetch)
+                (uri (git-reference
+                      (url "https://github.com/scikit-learn/scikit-learn")
+                      (commit version)))
+                (file-name (git-file-name "python-scikit-learn" version))
+                (sha256
+                 (base32
+                  "08zbzi8yx5wdlxfx9jap61vg1malc9ajf576w7a0liv6jvvrxlpj")))))))
+
+(define-public python-scikit-rebate
+  (package
+    (name "python-scikit-rebate")
+    (version "0.6")
+    (source (origin
+              (method url-fetch)
+              (uri (pypi-uri "skrebate" version))
+              (sha256
+               (base32
+                "1h7qs9gjxpzqabzhb8rmpv3jpmi5iq41kqdibg48299h94iikiw7"))))
+    (build-system python-build-system)
+    ;; Pandas is only needed to run the tests.
+    (native-inputs
+     `(("python-pandas" ,python-pandas)))
+    (propagated-inputs
+     `(("python-numpy" ,python-numpy)
+       ("python-scipy" ,python-scipy)
+       ("python-scikit-learn" ,python-scikit-learn)
+       ("python-joblib" ,python-joblib)))
+    (home-page "https://epistasislab.github.io/scikit-rebate/")
+    (synopsis "Relief-based feature selection algorithms for Python")
+    (description "Scikit-rebate is a scikit-learn-compatible Python
+implementation of ReBATE, a suite of Relief-based feature selection algorithms
+for Machine Learning.  These algorithms excel at identifying features that are
+predictive of the outcome in supervised learning problems, and are especially
+good at identifying feature interactions that are normally overlooked by
+standard feature selection algorithms.")
+    (license license:expat)))
 
 (define-public python-autograd
   (let* ((commit "442205dfefe407beffb33550846434baa90c4de7")
@@ -896,14 +944,14 @@ main intended application of Autograd is gradient-based optimization.")
     (name "lightgbm")
     (version "2.0.12")
     (source (origin
-              (method url-fetch)
-              (uri (string-append
-                    "https://github.com/Microsoft/LightGBM/archive/v"
-                    version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/Microsoft/LightGBM")
+                     (commit (string-append "v" version))))
               (sha256
                (base32
-                "132zf0yk0545mg72hyzxm102g3hpb6ixx9hnf8zd2k55gas6cjj1"))
-              (file-name (string-append name "-" version ".tar.gz"))))
+                "0jlvyn7k81dzrh9ij3zw576wbgiwmmr26rzpdxjn1dbpc3njpvzi"))
+              (file-name (git-file-name name version))))
     (native-inputs
      `(("python-pytest" ,python-pytest)
        ("python-nose" ,python-nose)))
@@ -918,8 +966,8 @@ main intended application of Autograd is gradient-based optimization.")
        #:phases
        (modify-phases %standard-phases
          (replace 'check
-           (lambda* (#:key outputs #:allow-other-keys)
-             (with-directory-excursion ,(string-append "../LightGBM-" version)
+           (lambda _
+             (with-directory-excursion "../source"
                (invoke "pytest" "tests/c_api_test/test_.py")))))))
     (build-system cmake-build-system)
     (home-page "https://github.com/Microsoft/LightGBM")
@@ -943,21 +991,26 @@ the following advantages:
     (name "vowpal-wabbit")
     (version "8.5.0")
     (source (origin
-              (method url-fetch)
-              (uri (string-append
-                    "https://github.com/JohnLangford/vowpal_wabbit/archive/"
-                    version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/JohnLangford/vowpal_wabbit")
+                     (commit version)))
               (sha256
                (base32
-                "0clp2kb7rk5sckhllxjr5a651awf4s8dgzg4659yh4hf5cqnf0gr"))
-              (file-name (string-append name "-" version ".tar.gz"))))
+                "04bwzk6ifgnz3fmzid8b7avxf9n5pnx9xcjm61nkjng1vv0bpj8x"))
+              (file-name (git-file-name name version))))
     (inputs
      `(("boost" ,boost)
        ("zlib" ,zlib)))
     (arguments
      `(#:configure-flags
        (list (string-append "--with-boost="
-                            (assoc-ref %build-inputs "boost")))))
+                            (assoc-ref %build-inputs "boost")))
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'make-files-writable
+           (lambda _
+             (for-each make-file-writable (find-files "." ".*")) #t)))))
     (build-system gnu-build-system)
     (home-page "https://github.com/JohnLangford/vowpal_wabbit")
     (synopsis "Fast machine learning library for online learning")
@@ -1003,20 +1056,20 @@ association studies (GWAS) on extremely large data sets.")
 
 ;; There have been no proper releases yet.
 (define-public kaldi
-  (let ((commit "2f95609f0bb085bd3a1dc5eb0a39f3edea59e606")
-        (revision "1"))
+  (let ((commit "d4791c0f3fc1a09c042dac365e120899ee2ad21e")
+        (revision "2"))
     (package
       (name "kaldi")
       (version (git-version "0" revision commit))
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/kaldi-asr/kaldi.git")
+                      (url "https://github.com/kaldi-asr/kaldi")
                       (commit commit)))
                 (file-name (git-file-name name version))
                 (sha256
                  (base32
-                  "082qh3pfi7hvncylp4xsmkfahbd7gb0whdfa4rwrx7fxk9rdh3kz"))))
+                  "07k80my6f19mhrkwbzhjsnpf9871wmrwkl0ym468i830w67qyjrz"))))
       (build-system gnu-build-system)
       (arguments
        `(#:test-target "test"
@@ -1114,20 +1167,20 @@ written in C++.")
       (license license:asl2.0))))
 
 (define-public gst-kaldi-nnet2-online
-  (let ((commit "617e43e73c7cc45eb9119028c02bd4178f738c4a")
-        (revision "1"))
+  (let ((commit "cb227ef43b66a9835c14eb0ad39e08ee03c210ad")
+        (revision "2"))
     (package
       (name "gst-kaldi-nnet2-online")
       (version (git-version "0" revision commit))
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/alumae/gst-kaldi-nnet2-online.git")
+                      (url "https://github.com/alumae/gst-kaldi-nnet2-online")
                       (commit commit)))
                 (file-name (git-file-name name version))
                 (sha256
                  (base32
-                  "0xh3w67b69818s6ib02ara4lw7wamjdmh4jznvkpzrs4skbs9jx9"))))
+                  "1i6ffwiavxx07ri0lxix6s8q0r31x7i4xxvhys5jxkixf5q34w8g"))))
       (build-system gnu-build-system)
       (arguments
        `(#:tests? #f                    ; there are none
@@ -1146,16 +1199,16 @@ written in C++.")
            (replace 'configure
              (lambda* (#:key inputs #:allow-other-keys)
                (let ((glib (assoc-ref inputs "glib")))
-                 (setenv "CXXFLAGS" "-std=c++11 -fPIC")
+                 (setenv "CXXFLAGS" "-fPIC")
                  (setenv "CPLUS_INCLUDE_PATH"
                          (string-append glib "/include/glib-2.0:"
                                         glib "/lib/glib-2.0/include:"
                                         (assoc-ref inputs "gstreamer")
-                                        "/include/gstreamer-1.0:"
-                                        (getenv "CPLUS_INCLUDE_PATH"))))
+                                        "/include/gstreamer-1.0")))
                (substitute* "Makefile"
                  (("include \\$\\(KALDI_ROOT\\)/src/kaldi.mk") "")
-                 (("\\$\\(error Cannot find") "#"))))
+                 (("\\$\\(error Cannot find") "#"))
+               #t))
            (add-before 'build 'build-depend
              (lambda* (#:key make-flags #:allow-other-keys)
                (apply invoke "make" "depend" make-flags)))
@@ -1185,20 +1238,21 @@ automatically.")
       (license license:asl2.0))))
 
 (define-public kaldi-gstreamer-server
-  (let ((commit "1735ba49c5dc0ebfc184e45105fc600cd9f1f508")
-        (revision "1"))
+  ;; This is the tip of the py3 branch
+  (let ((commit "f68cab490be7eb0da2af1475fbc16655f50a60cb")
+        (revision "2"))
     (package
       (name "kaldi-gstreamer-server")
       (version (git-version "0" revision commit))
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/alumae/kaldi-gstreamer-server.git")
+                      (url "https://github.com/alumae/kaldi-gstreamer-server")
                       (commit commit)))
                 (file-name (git-file-name name version))
                 (sha256
                  (base32
-                  "0j701m7lbwmzqxsfanj882v7881hrbmpqybbczbxqpcbg8q34w0k"))))
+                  "17lh1368vkg8ngrcbn2phvigzlmalrqg6djx2gg61qq1a0nj87dm"))))
       (build-system gnu-build-system)
       (arguments
        `(#:tests? #f ; there are no tests that can be run automatically
@@ -1214,6 +1268,14 @@ automatically.")
                ;; are reproducible.
                (setenv "PYTHONHASHSEED" "0")
                (with-directory-excursion "kaldigstserver"
+                 ;; See https://github.com/alumae/kaldi-gstreamer-server/issues/232
+                 (substitute* "master_server.py"
+                   (("\\.replace\\('\\\\.*") ")"))
+
+                 ;; This is a Python 2 file
+                 (delete-file "decoder_test.py")
+                 (delete-file "test-buffer.py")
+
                  (for-each (lambda (file)
                              (apply invoke
                                     `("python"
@@ -1264,56 +1326,16 @@ exec ~a ~a/~a \"$@\"~%"
                  #t))))))
       (inputs
        `(("gst-kaldi-nnet2-online" ,gst-kaldi-nnet2-online)
-         ("python2" ,python-2)
-         ("python2-futures" ,python2-futures)
-         ("python2-pygobject" ,python2-pygobject)
-         ("python2-pyyaml" ,python2-pyyaml)
-         ("python2-tornado" ,python2-tornado)
-         ("python2-ws4py" ,python2-ws4py-for-kaldi-gstreamer-server)))
+         ("python" ,python-wrapper)
+         ("python-pygobject" ,python-pygobject)
+         ("python-pyyaml" ,python-pyyaml)
+         ("python-tornado" ,python-tornado-6)))
       (home-page "https://github.com/alumae/kaldi-gstreamer-server")
       (synopsis "Real-time full-duplex speech recognition server")
       (description "This is a real-time full-duplex speech recognition server,
 based on the Kaldi toolkit and the GStreamer framework and implemented in
 Python.")
       (license license:bsd-2))))
-
-(define-public grpc
-  (package
-    (name "grpc")
-    (version "1.16.1")
-    (source (origin
-              (method git-fetch)
-              (uri (git-reference
-                    (url "https://github.com/grpc/grpc.git")
-                    (commit (string-append "v" version))))
-              (file-name (git-file-name name version))
-              (sha256
-               (base32
-                "1jimqz3115f9pli5w6ik9wi7mjc7ix6y7yrq4a1ab9fc3dalj7p2"))))
-    (build-system cmake-build-system)
-    (arguments
-     `(#:tests? #f ; no test target
-       #:configure-flags
-       (list "-DgRPC_ZLIB_PROVIDER=package"
-             "-DgRPC_CARES_PROVIDER=package"
-             "-DgRPC_SSL_PROVIDER=package"
-             "-DgRPC_PROTOBUF_PROVIDER=package")))
-    (inputs
-     `(("c-ares" ,c-ares-next)
-       ("openssl" ,openssl)
-       ("zlib" ,zlib)))
-    (native-inputs
-     `(("protobuf" ,protobuf-next)
-       ("python" ,python-wrapper)))
-    (home-page "https://grpc.io")
-    (synopsis "High performance universal RPC framework")
-    (description "gRPC is a modern open source high performance @dfn{Remote
-Procedure Call} (RPC) framework that can run in any environment.  It can
-efficiently connect services in and across data centers with pluggable support
-for load balancing, tracing, health checking and authentication.  It is also
-applicable in last mile of distributed computing to connect devices, mobile
-applications and browsers to backend services.")
-    (license license:asl2.0)))
 
 ;; Note that Tensorflow includes a "third_party" directory, which seems to not
 ;; only contain modified subsets of upstream library source code, but also
@@ -1329,7 +1351,7 @@ applications and browsers to backend services.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/tensorflow/tensorflow.git")
+             (url "https://github.com/tensorflow/tensorflow")
              (commit (string-append "v" version))))
        (file-name (string-append "tensorflow-" version "-checkout"))
        (sha256
@@ -1380,7 +1402,11 @@ applications and browsers to backend services.")
        (list "CC=gcc")
        #:modules ((ice-9 ftw)
                   (guix build utils)
-                  (guix build cmake-build-system))
+                  (guix build cmake-build-system)
+                  ((guix build python-build-system)
+                   #:select (python-version)))
+       #:imported-modules (,@%cmake-build-system-modules
+                            (guix build python-build-system))
        #:phases
        (modify-phases %standard-phases
          (add-after 'unpack 'set-source-file-times-to-1980
@@ -1405,6 +1431,12 @@ applications and browsers to backend services.")
              ;; optional package.
              (substitute* "tensorflow/tools/pip_package/setup.py"
                ((".*'tensorboard >.*") ""))
+
+             ;; Fix the build with python-3.8, taken from rejected upstream patch:
+             ;; https://github.com/tensorflow/tensorflow/issues/34197
+             (substitute* (find-files "tensorflow/python" ".*\\.cc$")
+               (("(nullptr,)(\\ +/. tp_print)" _ _ tp_print)
+                (string-append "NULL,   " tp_print)))
              #t))
          (add-after 'python3.7-compatibility 'chdir
            (lambda _ (chdir "tensorflow/contrib/cmake") #t))
@@ -1594,23 +1626,29 @@ INSTALL_RPATH " (assoc-ref outputs "out") "/lib)\n")))
              (invoke "make" "tf_python_build_pip_package")
              #t))
          (add-after 'build-pip-package 'install-python
-           (lambda* (#:key outputs #:allow-other-keys)
+           (lambda* (#:key inputs outputs #:allow-other-keys)
              (let ((out (assoc-ref outputs "out"))
-                   (wheel (car (find-files "../build/tf_python/dist/" "\\.whl$"))))
+                   (wheel (car (find-files "../build/tf_python/dist/" "\\.whl$")))
+                   (python-version (python-version
+                                     (assoc-ref inputs "python"))))
                (invoke "python" "-m" "pip" "install" wheel
                        (string-append "--prefix=" out))
 
                ;; XXX: broken RUNPATH, see fix-python-build phase.
                (delete-file
                 (string-append
-                 out "/lib/python3.7/site-packages/tensorflow/contrib/"
+                 out "/lib/python" python-version
+                 "/site-packages/tensorflow/contrib/"
                  "seq2seq/python/ops/lib_beam_search_ops.so"))
                #t))))))
     (native-inputs
      `(("pkg-config" ,pkg-config)
-       ("protobuf:native" ,protobuf-next) ; protoc
-       ("protobuf:src" ,(package-source protobuf-next))
+       ("protobuf:native" ,protobuf-3.6) ; protoc
+       ("protobuf:src" ,(package-source protobuf-3.6))
        ("eigen:src" ,(package-source eigen-for-tensorflow))
+       ;; install_pip_packages.sh wants setuptools 39.1.0 specifically.
+       ("python-setuptools" ,python-setuptools-for-tensorflow)
+
        ;; The commit hashes and URLs for third-party source code are taken
        ;; from "tensorflow/workspace.bzl".
        ("boringssl-src"
@@ -1643,7 +1681,7 @@ INSTALL_RPATH " (assoc-ref outputs "out") "/lib)\n")))
            (origin
              (method git-fetch)
              (uri (git-reference
-                   (url "https://github.com/google/double-conversion.git")
+                   (url "https://github.com/google/double-conversion")
                    (commit commit)))
              (file-name
               (git-file-name "double-conversion"
@@ -1688,7 +1726,7 @@ INSTALL_RPATH " (assoc-ref outputs "out") "/lib)\n")))
            (origin
              (method git-fetch)
              (uri (git-reference
-                   (url "https://github.com/google/highwayhash.git")
+                   (url "https://github.com/google/highwayhash")
                    (commit commit)))
              (file-name (string-append "highwayhash-0-" revision
                                        (string-take commit 7)
@@ -1733,23 +1771,24 @@ INSTALL_RPATH " (assoc-ref outputs "out") "/lib)\n")))
        ("python-gast" ,python-gast)
        ("python-grpcio" ,python-grpcio)
        ("python-numpy" ,python-numpy)
-       ("python-protobuf" ,python-protobuf-next)
+       ("python-protobuf" ,python-protobuf-3.6)
        ("python-six" ,python-six)
        ("python-termcolo" ,python-termcolor)
        ("python-wheel" ,python-wheel)))
     (inputs
-     `(("c-ares" ,c-ares-next)
+     `(("c-ares" ,c-ares)
        ("eigen" ,eigen-for-tensorflow)
        ("gemmlowp" ,gemmlowp-for-tensorflow)
        ("lmdb" ,lmdb)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libpng" ,libpng)
        ("giflib" ,giflib)
-       ("grpc" ,grpc)
+       ("grpc" ,grpc-1.16.1 "static")
+       ("grpc:bin" ,grpc-1.16.1)
        ("jsoncpp" ,jsoncpp-for-tensorflow)
        ("snappy" ,snappy)
        ("sqlite" ,sqlite)
-       ("protobuf" ,protobuf-next)
+       ("protobuf" ,protobuf-3.6)
        ("python" ,python-wrapper)
        ("zlib" ,zlib)))
     (home-page "https://tensorflow.org")
@@ -1777,11 +1816,12 @@ advanced research.")
     (build-system python-build-system)
     (propagated-inputs
      `(("ipython" ,python-ipython)
-       ("nose" ,python-nose)
        ("numpy" ,python-numpy)
        ("pandas" ,python-pandas)
        ("scipy" ,python-scipy)))
-    (home-page "http://github.com/interpretable-ml/iml")
+    (native-inputs
+     `(("nose" ,python-nose)))
+    (home-page "https://github.com/interpretable-ml/iml")
     (synopsis "Interpretable Machine Learning (iML) package")
     (description "Interpretable ML (iML) is a set of data type objects,
 visualizations, and interfaces that can be used by any method designed to
@@ -1857,6 +1897,7 @@ with image data, text data, and sequence data.")
      (origin
        (method url-fetch)
        (uri (pypi-uri "Keras" version))
+       (patches (search-patches "python-keras-integration-test.patch"))
        (sha256
         (base32
          "1j8bsqzh49vjdxy6l1k4iwax5vpjzniynyd041xjavdzvfii1dlh"))))
@@ -1921,3 +1962,68 @@ that:
 @item Runs seamlessly on CPU and GPU.
 @end itemize\n")
     (license license:expat)))
+
+(define-public gloo
+  (let ((version "0.0.0") ; no proper version tag
+        (commit "ca528e32fea9ca8f2b16053cff17160290fc84ce")
+        (revision "0"))
+    (package
+      (name "gloo")
+      (version (git-version version revision commit))
+      (source
+       (origin
+         (method git-fetch)
+         (uri (git-reference
+               (url "https://github.com/facebookincubator/gloo")
+               (commit commit)))
+         (file-name (git-file-name name version))
+         (sha256
+          (base32
+           "1q9f80zy75f6njrzrqkmhc0g3qxs4gskr7ns2jdqanxa2ww7a99w"))))
+      (build-system cmake-build-system)
+      (native-inputs
+       `(("googletest" ,googletest)))
+      (arguments
+       `(#:configure-flags '("-DBUILD_TEST=1")
+         #:phases
+         (modify-phases %standard-phases
+           (replace 'check
+             (lambda _
+               (invoke "make" "gloo_test")
+               #t)))))
+      (synopsis "Collective communications library")
+      (description
+       "Gloo is a collective communications library.  It comes with a
+number of collective algorithms useful for machine learning applications.
+These include a barrier, broadcast, and allreduce.")
+      (home-page "https://github.com/facebookincubator/gloo")
+      (license license:bsd-3))))
+
+(define-public python-umap-learn
+  (package
+    (name "python-umap-learn")
+    (version "0.3.10")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "umap-learn" version))
+       (sha256
+        (base32
+         "02ada2yy6km6zgk2836kg1c97yrcpalvan34p8c57446finnpki1"))))
+    (build-system python-build-system)
+    (native-inputs
+     `(("python-joblib" ,python-joblib)
+       ("python-nose" ,python-nose)))
+    (propagated-inputs
+     `(("python-numba" ,python-numba)
+       ("python-numpy" ,python-numpy)
+       ("python-scikit-learn" ,python-scikit-learn)
+       ("python-scipy" ,python-scipy)))
+    (home-page "https://github.com/lmcinnes/umap")
+    (synopsis
+     "Uniform Manifold Approximation and Projection")
+    (description
+     "Uniform Manifold Approximation and Projection is a dimension reduction
+technique that can be used for visualisation similarly to t-SNE, but also for
+general non-linear dimension reduction.")
+    (license license:bsd-3)))

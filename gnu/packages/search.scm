@@ -3,7 +3,7 @@
 ;;; Copyright © 2015, 2016 Eric Bavier <bavier@member.fsf.org>
 ;;; Copyright © 2017 Thomas Danckaert <post@thomasdanckaert.be>
 ;;; Copyright © 2017 Ricardo Wurmus <rekado@elephly.net>
-;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018 Adam Massmann <massmannak@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
@@ -49,17 +49,17 @@
 (define-public xapian
   (package
     (name "xapian")
-    (version "1.4.11")
+    (version "1.4.16")
     ;; Note: When updating Xapian, remember to update xapian-bindings below.
     (source (origin
               (method url-fetch)
               (uri (string-append "https://oligarchy.co.uk/xapian/" version
                                   "/xapian-core-" version ".tar.xz"))
               (sha256
-               (base32 "01xwqljnp5afjf9097lyfbqc6x5bcqszfdkn9l1j86imwbrv45lz"))))
+               (base32 "0w5znrf9l5ahbxwg04358nzv0xsqnk42isah46j3jzpjkzsg4ds9"))))
     (build-system gnu-build-system)
     (inputs `(("zlib" ,zlib)
-              ("util-linux" ,util-linux)))
+              ("util-linux" ,util-linux "lib")))
     (arguments
      `(#:phases
        (modify-phases %standard-phases
@@ -94,7 +94,7 @@ rich set of boolean query operators.")
                                   "/xapian-bindings-" version ".tar.xz"))
               (sha256
                (base32
-                "13bi2vr5d39ys49nlwmsv64ik5pdwkz28bh08hyylrhanb45d8wx"))))
+                "06v2prlzwgbcsgjpmd7x2qczcp6dn7836h21bq3gmlnd2mnyr4c7"))))
     (build-system gnu-build-system)
     (arguments
      `(#:configure-flags '("--with-python3")
@@ -104,9 +104,10 @@ rich set of boolean query operators.")
                             "/lib/python" ,(version-major+minor
                                             (package-version python))
                             "/site-packages/xapian"))))
+    (native-inputs
+     `(("python-sphinx" ,python-sphinx))) ;for documentation
     (inputs
      `(("python" ,python)
-       ("python-sphinx" ,python-sphinx) ; for documentation
        ("xapian" ,xapian)
        ("zlib" ,zlib)))
     (synopsis "Python bindings for the Xapian search engine library")
@@ -248,7 +249,7 @@ for parsing HTML files.")
      `(#:configure-flags (list (string-append "LDFLAGS=-Wl,-rpath="
                                               (assoc-ref %outputs "out")
                                               "/lib"))))
-    (home-page "http://fallabs.com/hyperestraier")
+    (home-page "https://fallabs.com/hyperestraier")
     (synopsis "Full-text search system")
     (description "Hyper Estraier can be used to integrate full-text
 search into applications, using either the provided command line and CGI

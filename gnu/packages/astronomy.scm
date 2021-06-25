@@ -1,8 +1,10 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2016 John Darrington <jmd@gnu.org>
-;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
-;;; Copyright © 2018, 2019 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018, 2019, 2020 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2019 by Amar Singh <nly@disroot.org>
+;;; Copyright © 2020 R Veera Kumar <vkor@vkten.in>
+;;; Copyright © 2020 Guillaume Le Vaillant <glv@posteo.net>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -25,22 +27,28 @@
   #:use-module (guix download)
   #:use-module (guix git-download)
   #:use-module (guix utils)
-  #:use-module (gnu packages autotools)
-  #:use-module (gnu packages image)
-  #:use-module (gnu packages compression)
-  #:use-module (gnu packages gettext)
-  #:use-module (gnu packages version-control)
-  #:use-module (gnu packages pkg-config)
-  #:use-module (gnu packages xiph)
-  #:use-module (gnu packages pretty-print)
+  #:use-module (gnu packages)
   #:use-module (gnu packages algebra)
-  #:use-module (gnu packages lua)
-  #:use-module (gnu packages perl)
+  #:use-module (gnu packages autotools)
+  #:use-module (gnu packages compression)
+  #:use-module (gnu packages curl)
+  #:use-module (gnu packages fontutils)
+  #:use-module (gnu packages gettext)
   #:use-module (gnu packages gl)
-  #:use-module (gnu packages qt)
-  #:use-module (gnu packages gtk)
+  #:use-module (gnu packages glib)
   #:use-module (gnu packages gnome)
+  #:use-module (gnu packages gtk)
+  #:use-module (gnu packages image)
+  #:use-module (gnu packages lua)
   #:use-module (gnu packages maths)
+  #:use-module (gnu packages netpbm)
+  #:use-module (gnu packages perl)
+  #:use-module (gnu packages pkg-config)
+  #:use-module (gnu packages pretty-print)
+  #:use-module (gnu packages qt)
+  #:use-module (gnu packages version-control)
+  #:use-module (gnu packages xiph)
+  #:use-module (gnu packages xorg)
   #:use-module (guix build-system cmake)
   #:use-module (guix build-system gnu)
   #:use-module (srfi srfi-1))
@@ -81,15 +89,15 @@ in FITS files.")
 (define-public wcslib
   (package
     (name "wcslib")
-    (version "6.2")
+    (version "6.4")
     (source
      (origin
        (method url-fetch)
        (uri (string-append
-             "ftp://ftp.atnf.csiro.au/pub/software/wcslib/wcslib" version
+             "ftp://ftp.atnf.csiro.au/pub/software/wcslib/wcslib-" version
              ".tar.bz2"))
        (sha256
-        (base32 "01fqckazhbfqqhyr0wd9vcks1m2afmsh83l981alxg2r54jgwkdv"))))
+        (base32 "003h23m6d5wcs29v2vbnl63f3z35k5x70lpsqlz5c9bp1bvizh8k"))))
     (inputs
      `(("cfitsio" ,cfitsio)))
     (build-system gnu-build-system)
@@ -120,7 +128,7 @@ header.")
 (define-public gnuastro
   (package
     (name "gnuastro")
-    (version "0.9")
+    (version "0.12")
     (source
      (origin
        (method url-fetch)
@@ -128,18 +136,20 @@ header.")
                            version ".tar.lz"))
        (sha256
         (base32
-         "1c1894ixz3l8p1nmzkysgl9lz8vpqbfw1dd404kh6lvrpml7jzig"))))
+         "0ypk1c72q778cixfa52vjxzbd5m4qc6hfjgnipy16sfa7mnspmyf"))))
+    (build-system gnu-build-system)
+    (arguments
+     '(#:configure-flags '("--disable-static")))
     (inputs
      `(("cfitsio" ,cfitsio)
        ("gsl" ,gsl)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libtiff" ,libtiff)
        ("wcslib" ,wcslib)
        ("zlib" ,zlib)))
     (native-inputs
      `(("libtool" ,libtool)
        ("lzip" ,lzip)))
-    (build-system gnu-build-system)
     (home-page "https://www.gnu.org/software/gnuastro/")
     (synopsis "Astronomy utilities")
     (description "The GNU Astronomy Utilities (Gnuastro) is a suite of
@@ -149,7 +159,7 @@ programs for the manipulation and analysis of astronomical data.")
 (define-public stellarium
   (package
     (name "stellarium")
-    (version "0.19.1")
+    (version "0.20.2")
     (source
      (origin
        (method url-fetch)
@@ -157,7 +167,7 @@ programs for the manipulation and analysis of astronomical data.")
                            "/releases/download/v" version
                            "/stellarium-" version ".tar.gz"))
        (sha256
-        (base32 "0s7v5iyhah258k83kvy2a91a3mdf34r150lcar4mmdsrrcmas98g"))))
+        (base32 "16symz212vjvhfabh39a68qf7d0rm574c6djlibj2qd1q9jgj3j0"))))
     (build-system cmake-build-system)
     (inputs
      `(("qtbase" ,qtbase)
@@ -168,7 +178,7 @@ programs for the manipulation and analysis of astronomical data.")
        ("zlib" ,zlib)))
     (native-inputs
      `(("gettext" ,gettext-minimal)     ; xgettext is used at compile time
-       ("perl" ,perl)                   ; For pod2man
+       ("perl" ,perl)                   ; for pod2man
        ("qtbase" ,qtbase)               ; Qt MOC is needed at compile time
        ("qttools" ,qttools)))
     (arguments
@@ -181,7 +191,7 @@ programs for the manipulation and analysis of astronomical data.")
        #:phases (modify-phases %standard-phases
                   (add-before 'check 'set-offscreen-display
                     (lambda _
-                      ;; make Qt render "offscreen", required for tests
+                      ;; Make Qt render "offscreen", required for tests.
                       (setenv "QT_QPA_PLATFORM" "offscreen")
                       (setenv "HOME" "/tmp")
                       #t)))))
@@ -218,7 +228,7 @@ objects.")
        `(("glu" ,glu)
          ("glew" ,glew)
          ("libtheora" ,libtheora)
-         ("libjpeg" ,libjpeg)
+         ("libjpeg" ,libjpeg-turbo)
          ("libpng" ,libpng)
          ;; maybe required?
          ("mesa" ,mesa)
@@ -289,3 +299,95 @@ Mechanics, Astrometry and Astrodynamics library.")
     (license (list license:lgpl2.0+
                    license:gpl2+)))) ; examples/transforms.c & lntest/*.c
 
+(define-public xplanet
+  (package
+    (name "xplanet")
+    (version "1.3.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+        (string-append
+         "mirror://sourceforge/xplanet/xplanet/"
+         version "/xplanet-" version ".tar.gz"))
+       (sha256
+        (base32 "1rzc1alph03j67lrr66499zl0wqndiipmj99nqgvh9xzm1qdb023"))
+       (patches
+        (search-patches
+         "xplanet-1.3.1-cxx11-eof.patch"
+         "xplanet-1.3.1-libdisplay_DisplayOutput.cpp.patch"
+         "xplanet-1.3.1-libimage_gif.c.patch"
+         "xplanet-1.3.1-xpUtil-Add2017LeapSecond.cpp.patch"))))
+    (build-system gnu-build-system)
+    (native-inputs
+     `(("pkg-config" ,pkg-config)))
+    (inputs
+     `(("libx11" ,libx11)
+       ("libxscrnsaver" ,libxscrnsaver)
+       ("libice" ,libice)
+       ("freetype" ,freetype)
+       ("pango" ,pango)
+       ("giflib" ,giflib)
+       ("libjpeg", libjpeg-turbo)
+       ("libpng" ,libpng)
+       ("libtiff" ,libtiff)
+       ("netpbm" ,netpbm)
+       ("zlib" ,zlib)))
+    (arguments
+     `(#:configure-flags
+       (let ((netpbm (assoc-ref %build-inputs "netpbm")))
+         (append (list
+                  ;; Give correct path for pnm.h header to configure script
+                  (string-append "CPPFLAGS=-I" netpbm "/include/netpbm")
+                  ;; no nasa jpl cspice support
+                  "--without-cspice" )))))
+    (home-page "http://xplanet.sourceforge.net/")
+    (synopsis "Planetary body renderer")
+    (description
+     "Xplanet renders an image of a planet into an X window or file.
+All of the major planets and most satellites can be drawn and different map
+projections are also supported, including azimuthal, hemisphere, Lambert,
+Mercator, Mollweide, Peters, polyconic, orthographic and rectangular.")
+    (license license:gpl2+)))
+
+(define-public gpredict
+  (package
+    (name "gpredict")
+    (version "2.2.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "https://github.com/csete/gpredict/releases"
+                           "/download/v" version
+                           "/gpredict-" version ".tar.bz2"))
+       (sha256
+        (base32 "0hwf97kng1zy8rxyglw04x89p0bg07zq30hgghm20yxiw2xc8ng7"))))
+    (build-system gnu-build-system)
+    (native-inputs
+     `(("intltool" ,intltool)
+       ("gettext" ,gettext-minimal)
+       ("pkg-config" ,pkg-config)))
+    (inputs
+     `(("curl" ,curl)
+       ("glib" ,glib)
+       ("goocanvas" ,goocanvas)
+       ("gtk+" ,gtk+)))
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'fix-tests
+           (lambda _
+             ;; Remove reference to non-existent file.
+             (substitute* "po/POTFILES.in"
+               (("src/gtk-sat-tree\\.c")
+                ""))
+             #t)))))
+    (synopsis "Satellite tracking and orbit prediction application")
+    (description
+     "Gpredict is a real-time satellite tracking and orbit prediction
+application.  It can track a large number of satellites and display their
+position and other data in lists, tables, maps, and polar plots (radar view).
+Gpredict can also predict the time of future passes for a satellite, and
+provide you with detailed information about each pass.")
+    (home-page "http://gpredict.oz9aec.net/index.php")
+    (license license:gpl2+)))

@@ -1,3 +1,4 @@
+#include "config.h"
 #include "shared.hh"
 #include "local-store.hh"
 #include "util.hh"
@@ -580,8 +581,14 @@ static void performOp(bool trusted, unsigned int clientVersion,
             settings.set("build-max-silent-time", std::to_string(readInt(from)));
         }
 
-        if (GET_PROTOCOL_MINOR(clientVersion) >= 2)
+        if (GET_PROTOCOL_MINOR(clientVersion) >= 2) {
+#ifdef HAVE_DAEMON_OFFLOAD_HOOK
             settings.useBuildHook = readInt(from) != 0;
+#else
+	    readInt(from);			  // ignore the user's setting
+#endif
+	}
+
         if (GET_PROTOCOL_MINOR(clientVersion) >= 4) {
             settings.buildVerbosity = (Verbosity) readInt(from);
             logType = (LogType) readInt(from);
@@ -590,8 +597,12 @@ static void performOp(bool trusted, unsigned int clientVersion,
         if (GET_PROTOCOL_MINOR(clientVersion) >= 6
             && GET_PROTOCOL_MINOR(clientVersion) < 0x61)
             settings.set("build-cores", std::to_string(readInt(from)));
-        if (GET_PROTOCOL_MINOR(clientVersion) >= 10)
-            settings.set("build-use-substitutes", readInt(from) ? "true" : "false");
+        if (GET_PROTOCOL_MINOR(clientVersion) >= 10) {
+	    if (settings.useSubstitutes)
+		settings.set("build-use-substitutes", readInt(from) ? "true" : "false");
+	    else
+		readInt(from);			// substitutes remain disabled
+	}
         if (GET_PROTOCOL_MINOR(clientVersion) >= 12) {
             unsigned int n = readInt(from);
             for (unsigned int i = 0; i < n; i++) {
@@ -602,6 +613,17 @@ static void performOp(bool trusted, unsigned int clientVersion,
                     || name == "build-repeat"
                     || name == "multiplexed-build-output")
                     settings.set(name, value);
+		else if (name == "user-name"
+                         && settings.clientUid == (uid_t) -1) {
+                    /* Create the user profile.  This is necessary if
+                       clientUid = -1, for instance because the client
+                       connected over TCP.  */
+                    struct passwd *pw = getpwnam(value.c_str());
+                    if (pw != NULL)
+                        store->createUser(value, pw->pw_uid);
+                    else
+                        printMsg(lvlInfo, format("user name %1% not found") % value);
+		}
                 else
                     settings.set(trusted ? name : "untrusted-" + name, value);
             }
@@ -720,7 +742,7 @@ static void performOp(bool trusted, unsigned int clientVersion,
 }
 
 
-static void processConnection(bool trusted)
+static void processConnection(bool trusted, uid_t userId)
 {
     canSendStderr = false;
     _writeToStderr = tunnelStderr;
@@ -766,6 +788,15 @@ static void processConnection(bool trusted)
 
         /* Open the store. */
         store = std::shared_ptr<StoreAPI>(new LocalStore(reserveSpace));
+
+	if (userId != (uid_t) -1) {
+            /* Create the user profile.  */
+            struct passwd *pw = getpwuid(userId);
+            if (pw != NULL && pw->pw_name != NULL)
+                store->createUser(pw->pw_name, userId);
+            else
+                printMsg(lvlInfo, format("user with UID %1% not found") % userId);
+	}
 
         stopWork();
         to.flush();
@@ -952,7 +983,7 @@ static void acceptConnection(int fdSocket)
                 /* Handle the connection. */
                 from.fd = remote;
                 to.fd = remote;
-                processConnection(trusted);
+                processConnection(trusted, clientUid);
 
                 exit(0);
             }, false, "unexpected build daemon error: ", true);

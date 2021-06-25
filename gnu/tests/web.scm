@@ -1,5 +1,5 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2017 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2017, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2017, 2019 Christopher Baines <mail@cbaines.net>
 ;;; Copyright © 2017, 2018 Clément Lassieur <clement@lassieur.org>
 ;;; Copyright © 2018 Pierre-Antoine Rouby <pierre-antoine.rouby@inria.fr>
@@ -109,6 +109,9 @@ HTTP-PORT."
                      ((#t) #t)
                      ((pid) (number? pid))))))
              marionette))
+
+          (test-assert "HTTP port ready"
+            (wait-for-tcp-port #$forwarded-port marionette))
 
           ;; Retrieve the index.html file we put in /srv.
           (test-equal "http-get"
@@ -518,42 +521,43 @@ HTTP-PORT."
 ;;; Patchwork
 ;;;
 
-(define patchwork-initial-database-setup-service
-  (match-lambda
-    (($ <patchwork-database-configuration>
-        engine name user password host port)
+(define (patchwork-initial-database-setup-service configuration)
+  (define start-gexp
+    #~(lambda ()
+        (let ((pid (primitive-fork))
+              (postgres (getpwnam "postgres")))
+          (if (eq? pid 0)
+              (dynamic-wind
+                (const #t)
+                (lambda ()
+                  (setgid (passwd:gid postgres))
+                  (setuid (passwd:uid postgres))
+                  (primitive-exit
+                   (if (and
+                        (zero?
+                         (system* #$(file-append postgresql "/bin/createuser")
+                                  #$(patchwork-database-configuration-user
+                                      configuration)))
+                        (zero?
+                         (system* #$(file-append postgresql "/bin/createdb")
+                                  "-O"
+                                  #$(patchwork-database-configuration-user
+                                      configuration)
+                                  #$(patchwork-database-configuration-name
+                                      configuration))))
+                       0
+                       1)))
+                (lambda ()
+                  (primitive-exit 1)))
+              (zero? (cdr (waitpid pid)))))))
 
-     (define start-gexp
-       #~(lambda ()
-           (let ((pid (primitive-fork))
-                 (postgres (getpwnam "postgres")))
-             (if (eq? pid 0)
-                 (dynamic-wind
-                   (const #t)
-                   (lambda ()
-                     (setgid (passwd:gid postgres))
-                     (setuid (passwd:uid postgres))
-                     (primitive-exit
-                      (if (and
-                           (zero?
-                            (system* #$(file-append postgresql "/bin/createuser")
-                                     #$user))
-                           (zero?
-                            (system* #$(file-append postgresql "/bin/createdb")
-                                     "-O" #$user #$name)))
-                          0
-                          1)))
-                   (lambda ()
-                     (primitive-exit 1)))
-                 (zero? (cdr (waitpid pid)))))))
-
-     (shepherd-service
-      (requirement '(postgres))
-      (provision '(patchwork-postgresql-user-and-database))
-      (start start-gexp)
-      (stop #~(const #f))
-      (respawn? #f)
-      (documentation "Setup patchwork database.")))))
+  (shepherd-service
+   (requirement '(postgres))
+   (provision '(patchwork-postgresql-user-and-database))
+   (start start-gexp)
+   (stop #~(const #f))
+   (respawn? #f)
+   (documentation "Setup patchwork database.")))
 
 (define (patchwork-os patchwork)
   (simple-operating-system

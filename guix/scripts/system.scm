@@ -1,10 +1,11 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2016 Alex Kost <alezost@gmail.com>
 ;;; Copyright © 2016, 2017, 2018 Chris Marusich <cmmarusich@gmail.com>
-;;; Copyright © 2017 Mathieu Othacehe <m.othacehe@gmail.com>
+;;; Copyright © 2017, 2019 Mathieu Othacehe <m.othacehe@gmail.com>
 ;;; Copyright © 2018 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2019 Christopher Baines <mail@cbaines.net>
+;;; Copyright © 2020 Jan (janneke) Nieuwenhuizen <janneke@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -27,6 +28,7 @@
   #:use-module ((guix status) #:select (with-status-verbosity))
   #:use-module (guix store)
   #:autoload   (guix store database) (register-path)
+  #:use-module (guix describe)
   #:use-module (guix grafts)
   #:use-module (guix gexp)
   #:use-module (guix derivations)
@@ -36,9 +38,11 @@
   #:use-module (guix records)
   #:use-module (guix profiles)
   #:use-module (guix scripts)
+  #:use-module (guix channels)
   #:use-module (guix scripts build)
   #:autoload   (guix scripts package) (delete-generations
                                        delete-matching-generations)
+  #:autoload   (guix scripts pull) (channel-commit-hyperlink)
   #:use-module (guix graph)
   #:use-module (guix scripts graph)
   #:use-module (guix scripts system reconfigure)
@@ -51,9 +55,11 @@
   #:autoload   (gnu build linux-modules)
                  (device-module-aliases matching-modules)
   #:use-module (gnu system linux-initrd)
+  #:use-module (gnu image)
   #:use-module (gnu system)
   #:use-module (gnu bootloader)
   #:use-module (gnu system file-systems)
+  #:use-module (gnu system image)
   #:use-module (gnu system mapped-devices)
   #:use-module (gnu system linux-container)
   #:use-module (gnu system uuid)
@@ -68,6 +74,7 @@
   #:use-module (srfi srfi-34)
   #:use-module (srfi srfi-35)
   #:use-module (srfi srfi-37)
+  #:use-module (ice-9 format)
   #:use-module (ice-9 match)
   #:use-module (rnrs bytevectors)
   #:export (guix-system
@@ -255,7 +262,7 @@ expression in %STORE-MONAD."
       (lambda ()
         (guard (c ((shepherd-error? c)
                    (values (report-shepherd-error c) store)))
-          (values (run-with-store store (begin mbody ...))
+          (values (run-with-store store (mbegin %store-monad mbody ...))
                   store)))
       (lambda (key proc format-string format-args errno . rest)
         (warning (G_ "while talking to shepherd: ~a~%")
@@ -286,22 +293,6 @@ on service '~a':~%")
          (report-error (G_ "shepherd error~%")))
         ((not error)                              ;not an error
          #t)))
-
-(define (call-with-service-upgrade-info new-services mproc)
-  "Call MPROC, a monadic procedure in %STORE-MONAD, passing it the list of
-names of services to load (upgrade), and the list of names of services to
-unload."
-  (match (current-services)
-    ((services ...)
-     (let-values (((to-unload to-restart)
-                   (shepherd-service-upgrade services new-services)))
-       (mproc to-restart
-              (map (compose first live-service-provision)
-                   to-unload))))
-    (#f
-     (with-monad %store-monad
-       (warning (G_ "failed to obtain list of shepherd services~%"))
-       (return #f)))))
 
 (define-syntax-rule (unless-file-not-found exp)
   (catch 'system-error
@@ -384,12 +375,14 @@ STORE is an open connection to the store."
                              (bootloader bootloader)))
 
          ;; Make the specified system generation the default entry.
-         (params (profile-boot-parameters %system-profile (list number)))
+         (params (first (profile-boot-parameters %system-profile
+                                                 (list number))))
          (old-generations
           (delv number (reverse (generation-numbers %system-profile))))
          (old-params (profile-boot-parameters
                        %system-profile old-generations))
-         (entries (map boot-parameters->menu-entry params))
+         (entries (cons (boot-parameters->menu-entry params)
+                        (boot-parameters-bootloader-menu-entries params)))
          (old-entries (map boot-parameters->menu-entry old-params)))
     (run-with-store store
       (mlet* %store-monad
@@ -399,7 +392,6 @@ STORE is an open connection to the store."
                       #:old-entries old-entries)))
            (drvs -> (list bootcfg)))
         (mbegin %store-monad
-          (show-what-to-build* drvs)
           (built-derivations drvs)
           ;; Only install bootloader configuration file.
           (install-bootloader local-eval bootloader-config bootcfg
@@ -457,6 +449,16 @@ list of services."
 (define* (display-system-generation number
                                     #:optional (profile %system-profile))
   "Display a summary of system generation NUMBER in a human-readable format."
+  (define (display-channel channel)
+    (format #t     "    ~a:~%" (channel-name channel))
+    (format #t (G_ "      repository URL: ~a~%") (channel-url channel))
+    (when (channel-branch channel)
+      (format #t (G_ "      branch: ~a~%") (channel-branch channel)))
+    (format #t (G_ "      commit: ~a~%")
+            (if (supports-hyperlinks?)
+                (channel-commit-hyperlink channel)
+                (channel-commit channel))))
+
   (unless (zero? number)
     (let* ((generation  (generation-file-name profile number))
            (params      (read-boot-parameters-file generation))
@@ -466,7 +468,11 @@ list of services."
            (root-device (if (bytevector? root)
                             (uuid->string root)
                             root))
-           (kernel      (boot-parameters-kernel params)))
+           (kernel      (boot-parameters-kernel params))
+           (multiboot-modules (boot-parameters-multiboot-modules params)))
+      (define-values (channels config-file)
+        (system-provenance generation))
+
       (display-generation profile number)
       (format #t (G_ "  file name: ~a~%") generation)
       (format #t (G_ "  canonical file name: ~a~%") (readlink* generation))
@@ -486,14 +492,26 @@ list of services."
               (cond ((uuid? root-device) 0)
                     ((file-system-label? root-device) 1)
                     (else 2))
-              (cond ((uuid? root-device)
-                     (uuid->string root-device))
-                    ((file-system-label? root-device)
-                     (file-system-label->string root-device))
-                    (else
-                     root-device)))
+              (file-system-device->string root-device))
 
-      (format #t (G_ "  kernel: ~a~%") kernel))))
+      (format #t (G_ "  kernel: ~a~%") kernel)
+
+      (match multiboot-modules
+        (() #f)
+        (((modules . _) ...)
+         (format #t (G_ "  multiboot: ~a~%")
+                 (string-join modules "\n    "))))
+
+      (unless (null? channels)
+        ;; TRANSLATORS: Here "channel" is the same terminology as used in
+        ;; "guix describe" and "guix pull --channels".
+        (format #t (G_ "  channels:~%"))
+        (for-each display-channel channels))
+      (when config-file
+        (format #t (G_ "  configuration file: ~a~%")
+                (if (supports-hyperlinks?)
+                    (file-hyperlink config-file)
+                    config-file))))))
 
 (define* (list-generations pattern #:optional (profile %system-profile))
   "Display in a human-readable format all the system generations matching
@@ -524,6 +542,8 @@ any, are available.  Raise an error if they're not."
               (and (file-system-mount? fs)
                    (not (member (file-system-type fs)
                                 %pseudo-file-system-types))
+                   ;; Don't try to validate network file systems.
+                   (not (string-prefix? "nfs" (file-system-type fs)))
                    (not (memq 'bind-mount (file-system-flags fs)))))
             file-systems))
 
@@ -545,16 +565,14 @@ any, are available.  Raise an error if they're not."
   (define fail? #f)
 
   (define (file-system-location* fs)
-    (location->string
-     (source-properties->location
-      (file-system-location fs))))
+    (and=> (file-system-location fs)
+           source-properties->location))
 
   (let-syntax ((error (syntax-rules ()
                         ((_ args ...)
                          (begin
                            (set! fail? #t)
-                           (format (current-error-port)
-                                   args ...))))))
+                           (report-error args ...))))))
     (for-each (lambda (fs)
                 (catch 'system-error
                   (lambda ()
@@ -562,9 +580,9 @@ any, are available.  Raise an error if they're not."
                   (lambda args
                     (let ((errno  (system-error-errno args))
                           (device (file-system-device fs)))
-                      (error (G_ "~a: error: device '~a' not found: ~a~%")
-                             (file-system-location* fs) device
-                             (strerror errno))
+                      (error (file-system-location* fs)
+                             (G_ "device '~a' not found: ~a~%")
+                             device (strerror errno))
                       (unless (string-prefix? "/" device)
                         (display-hint (format #f (G_ "If '~a' is a file system
 label, write @code{(file-system-label ~s)} in your @code{device} field.")
@@ -574,13 +592,14 @@ label, write @code{(file-system-label ~s)} in your @code{device} field.")
                 (let ((label (file-system-label->string
                               (file-system-device fs))))
                   (unless (find-partition-by-label label)
-                    (error (G_ "~a: error: file system with label '~a' not found~%")
-                           (file-system-location* fs) label))))
+                    (error (file-system-location* fs)
+                           (G_ "file system with label '~a' not found~%")
+                           label))))
               labeled)
     (for-each (lambda (fs)
                 (unless (find-partition-by-uuid (file-system-device fs))
-                  (error (G_ "~a: error: file system with UUID '~a' not found~%")
-                         (file-system-location* fs)
+                  (error (file-system-location* fs)
+                         (G_ "file system with UUID '~a' not found~%")
                          (uuid->string (file-system-device fs)))))
               uuid)
 
@@ -640,7 +659,7 @@ checking this by themselves in their 'check' procedure."
 ;;; Action.
 ;;;
 
-(define* (system-derivation-for-action os action
+(define* (system-derivation-for-action os base-image action
                                        #:key image-size file-system-type
                                        full-boot? container-shared-network?
                                        mappings)
@@ -664,27 +683,22 @@ checking this by themselves in their 'check' procedure."
                                                 (* 70 (expt 2 20)))
                                             #:mappings mappings))
     ((disk-image)
-     (system-disk-image os
-                        #:name (match file-system-type
-                                 ("iso9660" "image.iso")
-                                 (_         "disk-image"))
-                        #:disk-image-size image-size
-                        #:file-system-type file-system-type))
+     (lower-object
+      (system-image
+       (image
+        (inherit base-image)
+        (size image-size)
+        (operating-system os)))))
     ((docker-image)
-     (system-docker-image os))))
+     (system-docker-image os #:shared-network? container-shared-network?))))
 
 (define (maybe-suggest-running-guix-pull)
   "Suggest running 'guix pull' if this has never been done before."
-  ;; The reason for this is that the 'guix' binding that we see here comes
-  ;; from either ~/.config/latest or, if it's missing, from the
-  ;; globally-installed Guix, which is necessarily older.  See
-  ;; <http://lists.gnu.org/archive/html/guix-devel/2014-08/msg00057.html> for
-  ;; a discussion.
-  (define latest
-    (string-append (config-directory) "/current"))
-
-  (unless (file-exists? latest)
-    (warning (G_ "~a not found: 'guix pull' was never run~%") latest)
+  ;; Check whether we're running a 'guix pull'-provided 'guix' command.  When
+  ;; 'current-profile' returns #f, we may be running the globally-installed
+  ;; 'guix' and thus run the risk of deploying an older 'guix'.  See
+  ;; <https://lists.gnu.org/archive/html/guix-devel/2014-08/msg00057.html>
+  (unless (or (current-profile) (getenv "GUIX_UNINSTALLED"))
     (warning (G_ "Consider running 'guix pull' before 'reconfigure'.~%"))
     (warning (G_ "Failing to do that may downgrade your system!~%"))))
 
@@ -720,7 +734,10 @@ and TARGET arguments."
      (return (primitive-eval (lowered-gexp-sexp lowered))))))
 
 (define* (perform-action action os
-                         #:key skip-safety-checks?
+                         #:key
+                         (validate-reconfigure ensure-forward-reconfigure)
+                         save-provenance?
+                         skip-safety-checks?
                          install-bootloader?
                          dry-run? derivations-only?
                          use-substitutes? bootloader-target target
@@ -761,7 +778,8 @@ static checks."
          (operating-system-bootcfg os menu-entries)))
 
   (when (eq? action 'reconfigure)
-    (maybe-suggest-running-guix-pull))
+    (maybe-suggest-running-guix-pull)
+    (check-forward-update validate-reconfigure))
 
   ;; Check whether the declared file systems exist.  This is better than
   ;; instantiating a broken configuration.  Assume that we can only check if
@@ -774,7 +792,9 @@ static checks."
       (check-initrd-modules os)))
 
   (mlet* %store-monad
-      ((sys       (system-derivation-for-action os action
+      ((target*   (current-target-system))
+       (image ->  (find-image file-system-type target*))
+       (sys       (system-derivation-for-action os image action
                                                 #:file-system-type file-system-type
                                                 #:image-size image-size
                                                 #:full-boot? full-boot?
@@ -784,15 +804,14 @@ static checks."
        ;; For 'init' and 'reconfigure', always build BOOTCFG, even if
        ;; --no-bootloader is passed, because we then use it as a GC root.
        ;; See <http://bugs.gnu.org/21068>.
-       (drvs      (mapm %store-monad lower-object
-                        (if (memq action '(init reconfigure))
-                            (list sys bootcfg)
-                            (list sys))))
+       (drvs      (mapm/accumulate-builds lower-object
+                                          (if (memq action '(init reconfigure))
+                                              (list sys bootcfg)
+                                              (list sys))))
        (%         (if derivations-only?
                       (return (for-each (compose println derivation-file-name)
                                         drvs))
-                      (maybe-build drvs #:dry-run? dry-run?
-                                   #:use-substitutes? use-substitutes?))))
+                      (built-derivations drvs))))
 
     (if (or dry-run? derivations-only?)
         (return #f)
@@ -813,7 +832,10 @@ static checks."
                   (info (G_ "bootloader successfully installed on '~a'~%")
                         (bootloader-configuration-target bootloader))))
                (with-shepherd-error-handling
-                  (upgrade-shepherd-services local-eval os))))
+                 (upgrade-shepherd-services local-eval os)
+                 (return (format #t (G_ "\
+To complete the upgrade, run 'herd restart SERVICE' to stop,
+upgrade, and restart each service that was not automatically restarted.\n"))))))
             ((init)
              (newline)
              (format #t (G_ "initializing operating system under '~a'...~%")
@@ -873,6 +895,8 @@ Some ACTIONS support additional ARGS.\n"))
   (display (G_ "\
    roll-back        switch to the previous operating system configuration\n"))
   (display (G_ "\
+   describe         describe the current system\n"))
+  (display (G_ "\
    list-generations list the system generations\n"))
   (display (G_ "\
    switch-generation switch to an existing operating system configuration\n"))
@@ -904,6 +928,9 @@ Some ACTIONS support additional ARGS.\n"))
   -e, --expression=EXPR  consider the operating-system EXPR evaluates to
                          instead of reading FILE, when applicable"))
   (display (G_ "
+      --allow-downgrades for 'reconfigure', allow downgrades to earlier
+                         channel revisions"))
+  (display (G_ "
       --on-error=STRATEGY
                          apply STRATEGY (one of nothing-special, backtrace,
                          or debug) when an error occurs while reading FILE"))
@@ -916,7 +943,11 @@ Some ACTIONS support additional ARGS.\n"))
   (display (G_ "
       --no-bootloader    for 'init', do not install a bootloader"))
   (display (G_ "
+      --save-provenance  save provenance information"))
+  (display (G_ "
       --share=SPEC       for 'vm', share host file system according to SPEC"))
+  (display (G_ "
+      --expose=SPEC      for 'vm', expose host file system according to SPEC"))
   (display (G_ "
   -N, --network          for 'container', allow containers to access the network"))
   (display (G_ "
@@ -924,11 +955,11 @@ Some ACTIONS support additional ARGS.\n"))
                          and 'build', make FILE a symlink to the result, and
                          register it as a garbage collector root"))
   (display (G_ "
-      --expose=SPEC      for 'vm', expose host file system according to SPEC"))
-  (display (G_ "
       --full-boot        for 'vm', make a full boot sequence"))
   (display (G_ "
       --skip-checks      skip file system and initrd module safety checks"))
+  (display (G_ "
+      --target=TRIPLET   cross-build for TRIPLET--e.g., \"armel-linux-gnu\""))
   (display (G_ "
   -v, --verbosity=LEVEL  use the given verbosity LEVEL"))
   (newline)
@@ -954,6 +985,11 @@ Some ACTIONS support additional ARGS.\n"))
          (option '(#\d "derivation") #f #f
                  (lambda (opt name arg result)
                    (alist-cons 'derivations-only? #t result)))
+         (option '("allow-downgrades") #f #f
+                 (lambda (opt name arg result)
+                   (alist-cons 'validate-reconfigure
+                               warn-about-backward-reconfigure
+                               result)))
          (option '("on-error") #t #f
                  (lambda (opt name arg result)
                    (alist-cons 'on-error (string->symbol arg)
@@ -975,6 +1011,9 @@ Some ACTIONS support additional ARGS.\n"))
          (option '("full-boot") #f #f
                  (lambda (opt name arg result)
                    (alist-cons 'full-boot? #t result)))
+         (option '("save-provenance") #f #f
+                 (lambda (opt name arg result)
+                   (alist-cons 'save-provenance? #t result)))
          (option '("skip-checks") #f #f
                  (lambda (opt name arg result)
                    (alist-cons 'skip-safety-checks? #t result)))
@@ -992,7 +1031,7 @@ Some ACTIONS support additional ARGS.\n"))
 
          (option '(#\n "dry-run") #f #f
                  (lambda (opt name arg result)
-                   (alist-cons 'dry-run? #t (alist-cons 'graft? #f result))))
+                   (alist-cons 'dry-run? #t result)))
          (option '(#\v "verbosity") #t #f
                  (lambda (opt name arg result)
                    (let ((level (string->number* arg)))
@@ -1002,6 +1041,10 @@ Some ACTIONS support additional ARGS.\n"))
                  (lambda (opt name arg result)
                    (alist-cons 'system arg
                                (alist-delete 'system result eq?))))
+         (option '("target") #t #f
+                 (lambda (opt name arg result)
+                   (alist-cons 'target arg
+                               (alist-delete 'target result eq?))))
          (option '(#\r "root") #t #f
                  (lambda (opt name arg result)
                    (alist-cons 'gc-root arg result)))
@@ -1010,14 +1053,16 @@ Some ACTIONS support additional ARGS.\n"))
 (define %default-options
   ;; Alist of default option values.
   `((system . ,(%current-system))
+    (target . #f)
     (substitutes? . #t)
-    (build-hook? . #t)
+    (offload? . #t)
     (print-build-trace? . #t)
     (print-extended-build-trace? . #t)
     (multiplexed-build-output? . #t)
     (graft? . #t)
     (debug . 0)
     (verbosity . #f)                              ;default
+    (validate-reconfigure . ,ensure-forward-reconfigure)
     (file-system-type . "ext4")
     (image-size . guess)
     (install-bootloader? . #t)))
@@ -1038,28 +1083,37 @@ resulting from command-line parsing."
              file-or-exp))
     obj)
 
+  (define save-provenance?
+    (or (assoc-ref opts 'save-provenance?)
+        (memq action '(init reconfigure))))
+
   (let* ((file        (match args
                         (() #f)
                         ((x . _) x)))
          (expr        (assoc-ref opts 'expression))
          (system      (assoc-ref opts 'system))
-         (os          (ensure-operating-system
-                       (or file expr)
-                       (cond
-                        ((and expr file)
-                         (leave
-                          (G_ "both file and expression cannot be specified~%")))
-                        (expr
-                         (read/eval expr))
-                        (file
-                         (load* file %user-module
-                                #:on-error (assoc-ref opts 'on-error)))
-                        (else
-                         (leave (G_ "no configuration specified~%"))))))
+         (target      (assoc-ref opts 'target))
+         (transform   (if save-provenance?
+                          (cut operating-system-with-provenance <> file)
+                          identity))
+         (os          (transform
+                       (ensure-operating-system
+                        (or file expr)
+                        (cond
+                         ((and expr file)
+                          (leave
+                           (G_ "both file and expression cannot be specified~%")))
+                         (expr
+                          (read/eval expr))
+                         (file
+                          (load* file %user-module
+                                 #:on-error (assoc-ref opts 'on-error)))
+                         (else
+                          (leave (G_ "no configuration specified~%")))))))
 
          (dry?        (assoc-ref opts 'dry-run?))
          (bootloader? (assoc-ref opts 'install-bootloader?))
-         (target      (match args
+         (target-file (match args
                         ((first second) second)
                         (_ #f)))
          (bootloader-target
@@ -1070,41 +1124,48 @@ resulting from command-line parsing."
     (with-store store
       (set-build-options-from-command-line store opts)
 
-      (run-with-store store
-        (mbegin %store-monad
-          (set-guile-for-build (default-guile))
-          (case action
-            ((extension-graph)
-             (export-extension-graph os (current-output-port)))
-            ((shepherd-graph)
-             (export-shepherd-graph os (current-output-port)))
-            (else
-             (unless (memq action '(build init))
-               (warn-about-old-distro #:suggested-command
-                                      "guix system reconfigure"))
+      (with-build-handler (build-notifier #:use-substitutes?
+                                          (assoc-ref opts 'substitutes?)
+                                          #:dry-run?
+                                          (assoc-ref opts 'dry-run?))
+        (run-with-store store
+          (mbegin %store-monad
+            (set-guile-for-build (default-guile))
+            (case action
+              ((extension-graph)
+               (export-extension-graph os (current-output-port)))
+              ((shepherd-graph)
+               (export-shepherd-graph os (current-output-port)))
+              (else
+               (unless (memq action '(build init))
+                 (warn-about-old-distro #:suggested-command
+                                        "guix system reconfigure"))
 
-             (perform-action action os
-                             #:dry-run? dry?
-                             #:derivations-only? (assoc-ref opts
-                                                            'derivations-only?)
-                             #:use-substitutes? (assoc-ref opts 'substitutes?)
-                             #:skip-safety-checks?
-                             (assoc-ref opts 'skip-safety-checks?)
-                             #:file-system-type (assoc-ref opts 'file-system-type)
-                             #:image-size (assoc-ref opts 'image-size)
-                             #:full-boot? (assoc-ref opts 'full-boot?)
-                             #:container-shared-network?
-                             (assoc-ref opts 'container-shared-network?)
-                             #:mappings (filter-map (match-lambda
-                                                      (('file-system-mapping . m)
-                                                       m)
-                                                      (_ #f))
-                                                    opts)
-                             #:install-bootloader? bootloader?
-                             #:target target
-                             #:bootloader-target bootloader-target
-                             #:gc-root (assoc-ref opts 'gc-root)))))
-        #:system system))
+               (perform-action action os
+                               #:dry-run? dry?
+                               #:derivations-only? (assoc-ref opts
+                                                              'derivations-only?)
+                               #:use-substitutes? (assoc-ref opts 'substitutes?)
+                               #:skip-safety-checks?
+                               (assoc-ref opts 'skip-safety-checks?)
+                               #:validate-reconfigure
+                               (assoc-ref opts 'validate-reconfigure)
+                               #:file-system-type (assoc-ref opts 'file-system-type)
+                               #:image-size (assoc-ref opts 'image-size)
+                               #:full-boot? (assoc-ref opts 'full-boot?)
+                               #:container-shared-network?
+                               (assoc-ref opts 'container-shared-network?)
+                               #:mappings (filter-map (match-lambda
+                                                        (('file-system-mapping . m)
+                                                         m)
+                                                        (_ #f))
+                                                      opts)
+                               #:install-bootloader? bootloader?
+                               #:target target-file
+                               #:bootloader-target bootloader-target
+                               #:gc-root (assoc-ref opts 'gc-root)))))
+          #:target target
+          #:system system)))
     (warn-about-disk-space)))
 
 (define (resolve-subcommand name)
@@ -1116,6 +1177,11 @@ resulting from command-line parsing."
 (define (process-command command args opts)
   "Process COMMAND, one of the 'guix system' sub-commands.  ARGS is its
 argument list and OPTS is the option alist."
+  (define-syntax-rule (with-store* store exp ...)
+    (with-store store
+      (set-build-options-from-command-line store opts)
+      exp ...))
+
   (case command
     ;; The following commands do not need to use the store, and they do not need
     ;; an operating system configuration file.
@@ -1125,6 +1191,12 @@ argument list and OPTS is the option alist."
                       ((pattern) pattern)
                       (x (leave (G_ "wrong number of arguments~%"))))))
        (list-generations pattern)))
+    ((describe)
+     (match (generation-number %system-profile)
+       (0
+        (error (G_ "no system generation, nothing to describe~%")))
+       (generation
+        (display-system-generation generation))))
     ((search)
      (apply (resolve-subcommand "search") args))
     ;; The following commands need to use the store, but they do not need an
@@ -1134,22 +1206,20 @@ argument list and OPTS is the option alist."
                       (() #f)
                       ((pattern) pattern)
                       (x (leave (G_ "wrong number of arguments~%"))))))
-       (with-store store
+       (with-store* store
          (delete-matching-generations store %system-profile pattern)
          (reinstall-bootloader store (generation-number %system-profile)))))
     ((switch-generation)
      (let ((pattern (match args
                       ((pattern) pattern)
                       (x (leave (G_ "wrong number of arguments~%"))))))
-       (with-store store
-         (set-build-options-from-command-line store opts)
+       (with-store* store
          (switch-to-system-generation store pattern))))
     ((roll-back)
      (let ((pattern (match args
                       (() "")
                       (x (leave (G_ "wrong number of arguments~%"))))))
-       (with-store store
-         (set-build-options-from-command-line store opts)
+       (with-store* store
          (roll-back-system store))))
     ;; The following commands need to use the store, and they also
     ;; need an operating system configuration file.
@@ -1164,7 +1234,8 @@ argument list and OPTS is the option alist."
           (case action
             ((build container vm vm-image disk-image reconfigure init
               extension-graph shepherd-graph
-              list-generations delete-generations roll-back
+              list-generations describe
+              delete-generations roll-back
               switch-generation search docker-image)
              (alist-cons 'action action result))
             (else (leave (G_ "~a: unknown action~%") action))))))
@@ -1216,7 +1287,7 @@ argument list and OPTS is the option alist."
           (process-command command args opts))))))
 
 ;;; Local Variables:
-;;; eval: (put 'call-with-service-upgrade-info 'scheme-indent-function 1)
+;;; eval: (put 'with-store* 'scheme-indent-function 1)
 ;;; End:
 
 ;;; system.scm ends here

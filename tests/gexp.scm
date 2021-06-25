@@ -1,5 +1,5 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -78,7 +78,8 @@
                         (mkdir-p out)
                         (call-with-output-file (string-append out "/hg2g.scm")
                           (lambda (port)
-                            (write '(define-module (hg2g)
+                            (define defmod 'define-module) ;fool Geiser
+                            (write `(,defmod (hg2g)
                                       #:export (the-answer))
                                    port)
                             (write '(define the-answer 42) port)))))))))
@@ -169,6 +170,14 @@
     (with-directory-excursion directory
         (let ((file (local-file "../guix/base32.scm")))
           (local-file-absolute-file-name file)))))
+
+(test-equal "local-file, non-literal relative file name"
+  (canonicalize-path (search-path %load-path "guix/base32.scm"))
+  (let ((directory (dirname (search-path %load-path
+                                         "guix/build-system/gnu.scm"))))
+    (with-directory-excursion directory
+      (let ((file (local-file (string-copy "../base32.scm"))))
+        (local-file-absolute-file-name file)))))
 
 (test-assertm "local-file, #:select?"
   (mlet* %store-monad ((select? -> (lambda (file stat)
@@ -275,6 +284,112 @@
          (match (gexp-inputs exp)
            (((thing "out"))
             (eq? thing file))))))
+
+(test-assert "file-append, raw store item"
+  (let* ((obj   (plain-file "example.txt" "Hello!"))
+         (a     (file-append obj "/a"))
+         (b     (file-append a "/b"))
+         (c     (file-append b "/c"))
+         (exp   #~(list #$c))
+         (item  (run-with-store %store (lower-object obj)))
+         (lexp  (run-with-store %store (lower-gexp exp))))
+    (and (equal? (lowered-gexp-sexp lexp)
+                 `(list ,(string-append item "/a/b/c")))
+         (equal? (lowered-gexp-sources lexp)
+                 (list item))
+         (null? (lowered-gexp-inputs lexp)))))
+
+(test-assertm "with-parameters for %current-system"
+  (mlet* %store-monad ((system -> (match (%current-system)
+                                    ("aarch64-linux" "x86_64-linux")
+                                    (_               "aarch64-linux")))
+                       (drv    (package->derivation coreutils system))
+                       (obj -> (with-parameters ((%current-system system))
+                                 coreutils))
+                       (result (lower-object obj)))
+    (return (string=? (derivation-file-name drv)
+                      (derivation-file-name result)))))
+
+(test-assertm "with-parameters for %current-target-system"
+  (mlet* %store-monad ((target -> "riscv64-linux-gnu")
+                       (drv    (package->cross-derivation coreutils target))
+                       (obj -> (with-parameters
+                                   ((%current-target-system target))
+                                 coreutils))
+                       (result (lower-object obj)))
+    (return (string=? (derivation-file-name drv)
+                      (derivation-file-name result)))))
+
+(test-assert "with-parameters + file-append"
+  (let* ((system (match (%current-system)
+                   ("aarch64-linux" "x86_64-linux")
+                   (_               "aarch64-linux")))
+         (drv    (package-derivation %store coreutils system))
+         (param  (make-parameter 7))
+         (exp    #~(here we go #$(with-parameters ((%current-system system)
+                                                   (param 42))
+                                   (if (= (param) 42)
+                                       (file-append coreutils "/bin/touch")
+                                       %bootstrap-guile)))))
+    (match (gexp->sexp* exp)
+      (('here 'we 'go (? string? result))
+       (string=? result
+                 (string-append (derivation->output-path drv)
+                                "/bin/touch"))))))
+(test-equal "let-system"
+  (list `(begin ,(%current-system) #t) '(system-binding) '()
+        'low '() '())
+  (let* ((exp #~(begin
+                  #$(let-system system system)
+                  #t))
+         (low (run-with-store %store (lower-gexp exp))))
+    (list (lowered-gexp-sexp low)
+          (match (gexp-inputs exp)
+            (((($ (@@ (guix gexp) <system-binding>)) "out"))
+             '(system-binding))
+            (x x))
+          (gexp-native-inputs exp)
+          'low
+          (lowered-gexp-inputs low)
+          (lowered-gexp-sources low))))
+
+(test-equal "let-system, target"
+  (list `(list ,(%current-system) #f)
+        `(list ,(%current-system) "aarch64-linux-gnu"))
+  (let ((exp #~(list #$@(let-system (system target)
+                          (list system target)))))
+    (list (gexp->sexp* exp)
+          (gexp->sexp* exp "aarch64-linux-gnu"))))
+
+(test-equal "let-system, ungexp-native, target"
+  `(here it is: ,(%current-system) #f)
+  (let ((exp #~(here it is: #+@(let-system (system target)
+                                 (list system target)))))
+    (gexp->sexp* exp "aarch64-linux-gnu")))
+
+(test-equal "let-system, nested"
+  (list `(system* ,(string-append "qemu-system-" (%current-system))
+                  "-m" "256")
+        '()
+        '(system-binding))
+  (let ((exp #~(system*
+                #+(let-system (system target)
+                    (file-append (@@ (gnu packages virtualization)
+                                     qemu)
+                                 "/bin/qemu-system-"
+                                 system))
+                "-m" "256")))
+    (list (match (gexp->sexp* exp)
+            (('system* command rest ...)
+             `(system* ,(and (string-prefix? (%store-prefix) command)
+                             (basename command))
+                       ,@rest))
+            (x x))
+          (gexp-inputs exp)
+          (match (gexp-native-inputs exp)
+            (((($ (@@ (guix gexp) <system-binding>)) "out"))
+             '(system-binding))
+            (x x)))))
 
 (test-assert "ungexp + ungexp-native"
   (let* ((exp    (gexp (list (ungexp-native %bootstrap-guile)
@@ -871,6 +986,30 @@
                    (eq? (derivation-input-derivation (lowered-gexp-guile lexp))
                         (%guile-for-build)))))))
 
+(test-assertm "lower-gexp, raw-derivation-file"
+  (mlet* %store-monad ((thing -> (program-file "prog" #~(display "hi!")))
+                       (exp -> #~(list #$(raw-derivation-file thing)))
+                       (drv  (lower-object thing))
+                       (lexp (lower-gexp exp #:effective-version "2.0")))
+    (return (and (equal? `(list ,(derivation-file-name drv))
+                         (lowered-gexp-sexp lexp))
+                 (equal? (list (derivation-file-name drv))
+                         (lowered-gexp-sources lexp))
+                 (null? (lowered-gexp-inputs lexp))))))
+
+(test-eq "lower-gexp, non-self-quoting input"
+  +
+  (guard (c ((gexp-input-error? c)
+             (gexp-error-invalid-input c)))
+    (run-with-store %store
+      (lower-gexp #~(foo #$+)))))
+
+(test-equal "lower-gexp, character literal"
+  '(#\+)
+  (lowered-gexp-sexp
+   (run-with-store %store
+     (lower-gexp #~(#\+)))))
+
 (test-assertm "gexp->derivation #:references-graphs"
   (mlet* %store-monad
       ((one (text-file "one" (random-text)))
@@ -1136,6 +1275,24 @@
                        (equal? `(list "foo" ,text)
                                (call-with-input-file out read)))))))))
 
+(test-assertm "raw-derivation-file"
+  (let* ((exp #~(let ((drv #$(raw-derivation-file coreutils)))
+                  (when (file-exists? drv)
+                    (symlink drv #$output)))))
+    (mlet* %store-monad ((dep    (lower-object coreutils))
+                         (drv    (gexp->derivation "drv-ref" exp))
+                         (out -> (derivation->output-path drv)))
+      (mbegin %store-monad
+        (built-derivations (list drv))
+        (mlet %store-monad ((refs (references* out)))
+          (return (and (member (derivation-file-name dep)
+                               (derivation-sources drv))
+                       (not (member (derivation-file-name dep)
+                                    (map derivation-input-path
+                                         (derivation-inputs drv))))
+                       (equal? (readlink out) (derivation-file-name dep))
+                       (equal? refs (list (derivation-file-name dep))))))))))
+
 (test-assert "text-file*"
   (run-with-store %store
     (mlet* %store-monad
@@ -1280,6 +1437,56 @@
               (ungexp-native-splicing (list x y z))))
   '#~(foo #$bar #$baz:out #$(chbouib 42) #$@(list x y z)
           #+foo #+foo:out #+(chbouib 42) #+@(list x y z)))
+
+(test-assertm "gexp->file, cross-compilation"
+  (mlet* %store-monad ((target -> "aarch64-linux-gnu")
+                       (exp    -> (gexp (list (ungexp coreutils))))
+                       (xdrv      (gexp->file "foo" exp #:target target))
+                       (refs      (references*
+                                   (derivation-file-name xdrv)))
+                       (xcu       (package->cross-derivation coreutils
+                                                             target))
+                       (cu        (package->derivation coreutils)))
+    (return (and (member (derivation-file-name xcu) refs)
+                 (not (member (derivation-file-name cu) refs))))))
+
+(test-assertm "gexp->file, cross-compilation with default target"
+  (mlet* %store-monad ((target -> "aarch64-linux-gnu")
+                       (_         (set-current-target target))
+                       (exp    -> (gexp (list (ungexp coreutils))))
+                       (xdrv      (gexp->file "foo" exp))
+                       (refs      (references*
+                                   (derivation-file-name xdrv)))
+                       (xcu       (package->cross-derivation coreutils
+                                                             target))
+                       (cu        (package->derivation coreutils)))
+    (return (and (member (derivation-file-name xcu) refs)
+                 (not (member (derivation-file-name cu) refs))))))
+
+(test-assertm "gexp->script, cross-compilation"
+  (mlet* %store-monad ((target -> "aarch64-linux-gnu")
+                       (exp    -> (gexp (list (ungexp coreutils))))
+                       (xdrv      (gexp->script "foo" exp #:target target))
+                       (refs      (references*
+                                   (derivation-file-name xdrv)))
+                       (xcu       (package->cross-derivation coreutils
+                                                             target))
+                       (cu        (package->derivation coreutils)))
+    (return (and (member (derivation-file-name xcu) refs)
+                 (not (member (derivation-file-name cu) refs))))))
+
+(test-assertm "gexp->script, cross-compilation with default target"
+  (mlet* %store-monad ((target -> "aarch64-linux-gnu")
+                       (_         (set-current-target target))
+                       (exp    -> (gexp (list (ungexp coreutils))))
+                       (xdrv      (gexp->script "foo" exp))
+                       (refs      (references*
+                                   (derivation-file-name xdrv)))
+                       (xcu       (package->cross-derivation coreutils
+                                                             target))
+                       (cu        (package->derivation coreutils)))
+    (return (and (member (derivation-file-name xcu) refs)
+                 (not (member (derivation-file-name cu) refs))))))
 
 (test-end "gexp")
 

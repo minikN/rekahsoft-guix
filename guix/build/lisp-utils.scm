@@ -186,13 +186,17 @@ asdf:system-depends-on.  First load the system's ASD-FILE."
       (_ system))))
 
 (define* (generate-system-definition system
-                                     #:key version dependencies)
+                                     #:key version dependencies component?)
   `(asdf:defsystem
     ,(normalize-string system)
-    :class asdf/bundle:prebuilt-system
+    ,@(if component?
+          '(:class asdf/bundle:prebuilt-system)
+          '())
     :version ,version
     :depends-on ,dependencies
-    :components ((:compiled-file ,(compiled-system system)))
+    ,@(if component?
+          `(:components ((:compiled-file ,(compiled-system system))))
+          '())
     ,@(if (string=? "ecl" (%lisp-type))
           `(:lib ,(string-append system ".a"))
           '())))
@@ -220,12 +224,19 @@ Also load TEST-ASD-FILE if necessary."
   "Return a lisp keyword for the concatenation of STRINGS."
   (string->symbol (apply string-append ":" strings)))
 
-(define (generate-executable-for-system type system)
+(define* (generate-executable-for-system type system #:key compress?)
   "Use LISP to generate an executable, whose TYPE can be 'asdf:image-op or
 'asdf:program-op.  The latter will always be standalone.  Depends on having
 created a \"SYSTEM-exec\" system which contains the entry program."
   (lisp-eval-program
    `((require :asdf)
+     ;; Only SBCL supports compression as of 2019-09-02.
+     ,(if (and compress? (string=? (%lisp-type) "sbcl"))
+          '(defmethod asdf:perform ((o asdf:image-op) (c asdf:system))
+                      (uiop:dump-image (asdf:output-file o c)
+                                       :executable t
+                                       :compression t))
+          '())
      (asdf:operate ',type ,(string-append system "-exec")))))
 
 (define (generate-executable-wrapper-system system dependencies)
@@ -304,14 +315,24 @@ system to find its dependencies, as described by GENERATE-DEPENDENCY-LINKS."
                            lisp-input-map)
                 (map dependency-name dependencies)))
 
+  ;; Ensure directory exists, which might not be the case for an .asd without components.
+  (mkdir-p (dirname asd-file))
   (call-with-output-file asd-file
     (lambda (port)
       (display
        (replace-escaped-macros
         (format #f "~y~%~y~%"
-                (generate-system-definition system
-                                            #:version version
-                                            #:dependencies dependencies)
+                (generate-system-definition
+                 system
+                 #:version version
+                 #:dependencies dependencies
+                 ;; Some .asd don't have components, and thus they don't generate any .fasl.
+                 #:component? (match (%lisp-type)
+                                ("sbcl" (pair? (find-files (dirname asd-file)
+                                                           "--system\\.fasl$")))
+                                ("ecl" (pair? (find-files (dirname asd-file)
+                                                          "\\.fasb$")))
+                                (_ (error "The LISP provided is not supported at this time."))))
                 (generate-dependency-links registry system)))
        port))))
 
@@ -339,6 +360,7 @@ which are not nested."
                         (dependency-prefixes (list (library-output outputs)))
                         (dependencies (list (basename program)))
                         entry-program
+                        compress?
                         #:allow-other-keys)
   "Generate an executable program containing all DEPENDENCIES, and which will
 execute ENTRY-PROGRAM.  The result is placed in PROGRAM.  When executed, it
@@ -350,6 +372,7 @@ retained."
                        #:dependencies dependencies
                        #:dependency-prefixes dependency-prefixes
                        #:entry-program entry-program
+                       #:compress? compress?
                        #:type 'asdf:program-op)
   (let* ((name (basename program))
          (bin-directory (dirname program)))
@@ -382,6 +405,7 @@ DEPENDENCY-PREFIXES to ensure references to those libraries are retained."
                               dependency-prefixes
                               entry-program
                               type
+                              compress?
                               #:allow-other-keys)
   "Generate an executable by using asdf operation TYPE, containing whithin the
 image all DEPENDENCIES, and running ENTRY-PROGRAM in the case of an
@@ -405,7 +429,7 @@ references to those libraries are retained."
                `(((,bin-directory :**/ :*.*.*)
                   (,bin-directory :**/ :*.*.*)))))))
 
-    (generate-executable-for-system type name)
+    (generate-executable-for-system type name #:compress? compress?)
 
     (let* ((after-store-prefix-index
             (string-index out-file #\/

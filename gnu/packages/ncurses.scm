@@ -2,11 +2,12 @@
 ;;; Copyright © 2012, 2013, 2014, 2015, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2014, 2016 Mark H Weaver <mhw@netris.org>
 ;;; Copyright © 2015, 2017 Leo Famulari <leo@famulari.name>
-;;; Copyright © 2016 ng0 <ng0@n0.is>
+;;; Copyright © 2016 Nikita <nikita@n0.is>
 ;;; Copyright © 2016 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2016 Jan Nieuwenhuizen <janneke@gnu.org>
-;;; Copyright © 2017 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2017, 2019, 2020 Marius Bakke <mbakke@fastmail.com>
 ;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2020 Michael Rohleder <mike@rohleder.de>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -40,7 +41,7 @@
 (define-public ncurses
   (package
     (name "ncurses")
-    (version "6.1")
+    (version "6.2")
     (source (origin
               (method url-fetch)
               (uri (string-append "mirror://gnu/ncurses/ncurses-"
@@ -48,7 +49,7 @@
                                   ".tar.gz"))
               (sha256
                (base32
-                "05qdmbmrrn88ii9f66rkcmcyzp1kb1ymkx7g040lfkd1nkp7w1da"))))
+                "17bcm2z1rdx5gmzj5fb8cp7f28aw5b4g2z4qvvqg3yg0fq66wc1h"))))
     (build-system gnu-build-system)
     (outputs '("out"
                "doc"))                ;1 MiB of man pages
@@ -84,8 +85,7 @@
                (copy-file (assoc-ref (or native-inputs inputs) "rollup-patch")
                           (string-append (getcwd) "/rollup-patch.sh.bz2"))
                (invoke "bzip2" "-d" "rollup-patch.sh.bz2")
-               (invoke "sh" "rollup-patch.sh")
-               #t))
+               (invoke "sh" "rollup-patch.sh")))
            (remove-shebang-phase
             '(lambda _
                ;; To avoid retaining a reference to the bootstrap Bash via the
@@ -185,6 +185,12 @@
               ;; around this.
               ,@(if (%current-target-system) '("--disable-stripping") '())
 
+              ;; Do not assume a default search path in ld, even if it is only to
+              ;; filter it out in ncurses-config.  Mainly because otherwise it ends
+              ;; up using the libdir from binutils, which makes little sense and
+              ;; causes an unnecessary runtime dependency.
+              "cf_cv_ld_searchpath=/no-ld-searchpath"
+
               ;; MinGW: Use term-driver created for the MinGW port.
               ,@(if (target-mingw?) '("--enable-term-driver") '()))))
          #:tests? #f                  ; no "check" target
@@ -194,7 +200,7 @@
                       ,post-install-phase)
                     (add-before 'configure 'patch-makefile-SHELL
                       ,patch-makefile-phase)
-                    (add-after 'unpack 'remove-unneeded-shebang
+                    (add-before 'patch-source-shebangs 'remove-unneeded-shebang
                       ,remove-shebang-phase)))))
     (native-inputs
      `(,@(if (%current-target-system)
@@ -231,7 +237,7 @@ ncursesw library provides wide character support.")
 (define-public dialog
   (package
     (name "dialog")
-    (version "1.3-20190211")
+    (version "1.3-20200228")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -239,7 +245,7 @@ ncursesw library provides wide character support.")
                     version ".tgz"))
               (sha256
                (base32
-                "1lx0bvradzx1zl7znlrsnyljcs596r7wamkhyq37ikbxsy4y5h29"))))
+                "1n8zbkigbzxw8gkw7qhzwzdyc7rbc7a0jcfy9z8ib7pf3qfw9y4z"))))
     (build-system gnu-build-system)
     (arguments
      `(#:tests? #f))                    ; no test suite

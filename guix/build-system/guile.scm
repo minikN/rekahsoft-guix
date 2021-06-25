@@ -29,6 +29,10 @@
   #:export (%guile-build-system-modules
             guile-build-system))
 
+(define %scheme-file-regexp
+  ;; Regexp to match Scheme files.
+  "\\.(scm|sls)$")
+
 (define %guile-build-system-modules
   ;; Build-side modules imported by default.
   `((guix build guile-build-system)
@@ -36,6 +40,7 @@
 
 (define* (lower name
                 #:key source inputs native-inputs outputs system target
+                (implicit-inputs? #t)
                 #:allow-other-keys
                 #:rest arguments)
   "Return a bag for NAME."
@@ -45,7 +50,8 @@
   ;; procedures like 'package-for-guile-2.0' unchanged and simple.
 
   (define private-keywords
-    '(#:target #:inputs #:native-inputs))
+    '(#:target #:inputs #:native-inputs
+      #:implicit-inputs?))
 
   (bag
     (name name)
@@ -56,8 +62,10 @@
                           `(("source" ,source))
                           '())
                     ,@native-inputs
-                    ,@(map (cute assoc <> (standard-packages))
-                           '("tar" "gzip" "bzip2" "xz" "locales"))))
+                    ,@(if implicit-inputs?
+                          (map (cute assoc <> (standard-packages))
+                               '("tar" "gzip" "bzip2" "xz" "locales"))
+                          '())))
     (outputs outputs)
     (build (if target guile-cross-build guile-build))
     (arguments (strip-keyword-arguments private-keywords arguments))))
@@ -76,6 +84,7 @@
                       (system (%current-system))
                       (source-directory ".")
                       not-compiled-file-regexp
+                      (scheme-file-regexp %scheme-file-regexp)
                       (compile-flags %compile-flags)
                       (imported-modules %guile-build-system-modules)
                       (modules '((guix build guile-build-system)
@@ -93,6 +102,7 @@
                                 (source
                                  source))
                     #:source-directory ,source-directory
+                    #:scheme-file-regexp ,scheme-file-regexp
                     #:not-compiled-file-regexp ,not-compiled-file-regexp
                     #:compile-flags ,compile-flags
                     #:phases ,phases

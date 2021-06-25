@@ -2,10 +2,13 @@
 ;;; Copyright © 2013 Cyril Roelandt <tipecaml@gmail.com>
 ;;; Copyright © 2014 Kevin Lemonnier <lemonnierk@ulrar.net>
 ;;; Copyright © 2015, 2017 Ludovic Courtès <ludo@gnu.org>
-;;; Copyright © 2015, 2016, 2017, 2018, 2019 Efraim Flashner <efraim@flashner.co.il>
-;;; Copyright © 2016 ng0 <ng0@n0.is>
+;;; Copyright © 2015, 2016, 2017, 2018, 2019, 2020 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2016 Nikita <nikita@n0.is>
 ;;; Copyright © 2017 Marius Bakke <mbakke@fastmail.com>
-;;; Copyright © 2017, 2018 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2017, 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2020 Oleg Pykhalov <go.wigust@gmail.com>
+;;; Copyright © 2020 Vinicius Monego <monego@posteo.net>
+;;; Copyright © 2020 Jakub Kądziołka <kuba@kadziolka.net>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -25,10 +28,13 @@
 (define-module (gnu packages irc)
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (guix download)
+  #:use-module (guix git-download)
   #:use-module (guix packages)
   #:use-module (guix build-system cmake)
+  #:use-module (guix build-system glib-or-gtk)
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system python)
+  #:use-module (guix build-system qt)
   #:use-module (gnu packages)
   #:use-module (gnu packages admin)
   #:use-module (gnu packages aspell)
@@ -44,9 +50,12 @@
   #:use-module (gnu packages file)
   #:use-module (gnu packages gettext)
   #:use-module (gnu packages glib)
+  #:use-module (gnu packages gnome)
   #:use-module (gnu packages gnupg)
+  #:use-module (gnu packages gtk)
   #:use-module (gnu packages guile)
   #:use-module (gnu packages lua)
+  #:use-module (gnu packages lxqt)
   #:use-module (gnu packages ncurses)
   #:use-module (gnu packages kde)
   #:use-module (gnu packages kde-frameworks)
@@ -58,6 +67,7 @@
   #:use-module (gnu packages ruby)
   #:use-module (gnu packages qt)
   #:use-module (gnu packages tcl)
+  #:use-module (gnu packages textutils)
   #:use-module (gnu packages time)
   #:use-module (gnu packages tls)
   #:use-module (gnu packages web)
@@ -76,15 +86,14 @@
         (sha256
          (base32
           "0mg8jydc70vlylppzich26q4s40kr78r3ysfyjwisfvlg2byxvs8"))
+        (patches (search-patches "quassel-qt-514-compat.patch"))
         (modules '((guix build utils)))
-        ;; We don't want to install the bundled scripts.
+        ;; We don't want to install the bundled inxi script.
         (snippet
          '(begin
-            (delete-file-recursively "data/scripts")
-            (substitute* "data/CMakeLists.txt"
-              (("NOT WIN32") "WIN32"))
+            (delete-file "data/scripts/inxi")
             #t))))
-    (build-system cmake-build-system)
+    (build-system qt-build-system)
     (arguments
       ;; The three binaries are not mutually exlusive, and are all built
       ;; by default.
@@ -100,8 +109,7 @@
          (add-after 'unpack 'patch-inxi-reference
            (lambda* (#:key inputs #:allow-other-keys)
              (let ((inxi (string-append (assoc-ref inputs "inxi") "/bin/inxi")))
-               (substitute* "src/common/aliasmanager.cpp"
-                 ((" inxi ") (string-append " " inxi " ")))
+               (symlink inxi "data/scripts/inxi")
                #t))))
        #:tests? #f)) ; no test target
     (native-inputs
@@ -110,10 +118,12 @@
        ("qttools" ,qttools)))
     (inputs
      `(("inxi" ,inxi-minimal)
+       ("libdbusmenu-qt" ,libdbusmenu-qt)
        ("qca" ,qca)
        ("qtbase" ,qtbase)
        ("qtmultimedia" ,qtmultimedia)
        ("qtscript" ,qtscript)
+       ("qtsvg" ,qtsvg)
        ("snorenotify" ,snorenotify)
        ("zlib" ,zlib)))
     (home-page "https://quassel-irc.org/")
@@ -127,7 +137,7 @@ irssi, but graphical.")
 (define-public irssi
   (package
     (name "irssi")
-    (version "1.1.3")
+    (version "1.2.2")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://github.com/irssi/irssi/"
@@ -135,7 +145,7 @@ irssi, but graphical.")
                                   version ".tar.xz"))
               (sha256
                (base32
-                "0jq8zjdhdjxkjbfl4g4nfr1ninyfxffa27lm8vcyrihhhkrn65yf"))))
+                "0y3mhnyr7x8ir8dlj83vbnchpfld28vdfni9yhpvls45j460c9v7"))))
     (build-system gnu-build-system)
     (arguments
      `(#:phases
@@ -148,7 +158,10 @@ irssi, but graphical.")
                        (string-append "--prefix=" out)
                        (string-append "--with-proxy")
                        (string-append "--with-socks")
-                       (string-append "--with-bot"))))))))
+                       (string-append "--with-bot")))))
+         (add-before 'check 'set-home
+           (lambda _
+             (setenv "HOME" (getcwd)))))))
     (inputs
      `(("glib" ,glib)
        ("ncurses" ,ncurses)
@@ -166,35 +179,40 @@ SILC and ICB protocols via plugins.")
 (define-public weechat
   (package
     (name "weechat")
-    (version "2.5")
+    (version "2.8")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://weechat.org/files/src/weechat-"
                                   version ".tar.xz"))
               (sha256
                (base32
-                "09sc5lf7z70x3iw87q4zh8rbyngsw89pwnzs5jk195zzqdspgj2j"))
-              (patches (search-patches "weechat-python.patch"))))
+                "1301lrb3xnm9dcw3av82rkqjzqxxwwhrq0p6i37h6fxdxnas4gjm"))))
     (build-system cmake-build-system)
     (native-inputs
      `(("gettext" ,gettext-minimal)
        ("pkg-config" ,pkg-config)
        ;; For tests.
        ("cpputest" ,cpputest)))
-    (inputs `(("ncurses" ,ncurses)
-              ("libgcrypt" ,libgcrypt "out")
-              ("zlib" ,zlib)
-              ("aspell" ,aspell)
-              ("curl" ,curl)
-              ("gnutls" ,gnutls)
-              ("guile" ,guile-2.0)
-              ("lua" ,lua-5.1)
-              ("python" ,python-2)
-              ("perl" ,perl)
-              ("tcl" ,tcl)))
+    (inputs
+     `(("aspell" ,aspell)
+       ("curl" ,curl)
+       ("gnutls" ,gnutls)
+       ("libgcrypt" ,libgcrypt "out")
+       ("ncurses" ,ncurses)
+       ("zlib" ,zlib)
+
+       ;; Scripting language plug-ins.
+       ("guile" ,guile-3.0)
+       ("lua" ,lua-5.1)
+       ("perl" ,perl)
+       ("python" ,python)
+       ("tcl" ,tcl)))
     (arguments
      `(#:configure-flags
-       (list "-DENABLE_TESTS=ON")       ; ‘make test’ fails otherwise
+       (list "-DENABLE_JAVASCRIPT=OFF"
+             "-DENABLE_PHP=OFF"
+             "-DENABLE_RUBY=OFF"
+             "-DENABLE_TESTS=ON")       ; ‘make test’ fails otherwise
        ;; Tests hang indefinately on non-Intel platforms.
        #:tests? ,(if (any (cute string-prefix? <> (or (%current-target-system)
                                                       (%current-system)))
@@ -214,14 +232,7 @@ SILC and ICB protocols via plugins.")
              (substitute* "tests/scripts/test-scripts.cpp"
                ((".*\\{ \"(javascript|php|ruby)\", " all)
                 (string-append "// SKIP" all)))
-             #t))
-         (add-after 'install 'wrap
-           (lambda* (#:key inputs outputs #:allow-other-keys)
-             (let ((out (assoc-ref outputs "out"))
-                   (py2 (assoc-ref inputs "python")))
-               (wrap-program (string-append out "/bin/weechat")
-                 `("PATH" ":" prefix (,(string-append py2 "/bin"))))
-               #t))))))
+             #t)))))
     (synopsis "Extensible chat client")
     (description "WeeChat (Wee Enhanced Environment for Chat) is an
 @dfn{Internet Relay Chat} (IRC) client, which is designed to be light and fast.
@@ -232,6 +243,49 @@ Everything in WeeChat can be done with the keyboard, though it also supports
 using a mouse.  It is customizable and extensible with plugins and scripts.")
     (home-page "https://www.weechat.org/")
     (license license:gpl3)))
+
+(define-public srain
+  (package
+    (name "srain")
+    (version "1.1.1")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/SrainApp/srain")
+             (commit version)))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "1ypaxdnag61smd8vy4rzl8sarwxa85543nzp0c9zfq02jqmz1gah"))))
+    (arguments
+     `(#:tests? #f ;there are no tests
+       #:phases
+       (modify-phases %standard-phases
+         (add-before 'install 'fix-permissions
+           ;; Make po folder writable for gettext to install translations.
+           (lambda _
+             (for-each make-file-writable
+                       (find-files "po" "." #:directories? #t)))))))
+    (build-system glib-or-gtk-build-system)
+    (native-inputs
+     `(("gettext" ,gettext-minimal)
+       ("glib:bin" ,glib "bin")
+       ("pkg-config" ,pkg-config)))
+    (inputs
+     `(("glib-networking" ,glib-networking)
+       ("gsettings-desktop-schemas" ,gsettings-desktop-schemas)
+       ("gtk+" ,gtk+)
+       ("libconfig" ,libconfig)
+       ("libsecret" ,libsecret)
+       ("libsoup" ,libsoup)
+       ("openssl" ,openssl)))
+    (home-page "https://srain.im")
+    (synopsis "Modern IRC client written in GTK")
+    (description
+     "Srain is an IRC client written in GTK.  It aims to be modern and easy to
+use while still remaining useful to power users.  It also has partial support
+for the IRCv3 protocol.")
+    (license license:gpl3+)))
 
 (define-public ircii
   (package
@@ -333,14 +387,13 @@ using a mouse.  It is customizable and extensible with plugins and scripts.")
 (define-public limnoria
   (package
     (name "limnoria")
-    (version "2017.10.01")
+    (version "2019.11.22")
     (source
      (origin
        (method url-fetch)
        (uri (pypi-uri "limnoria" version))
        (sha256
-        (base32
-         "1hd8h257x7a0s4rvb4aqvfi77qfcyv6jaz70nndg7y6p4yhvjmy6"))))
+        (base32 "0853xk1ps3v6lkmfx50wv56vynnzpl84v66hxnhl8i34zl36kk3c"))))
     (build-system python-build-system)
     (inputs
      `(("python-pytz" ,python-pytz)

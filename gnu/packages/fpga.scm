@@ -1,7 +1,7 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2016 Danny Milosavljevic <dannym@scratchpost.org>
 ;;; Copyright © 2016, 2017 Theodoros Foradis <theodoros@foradis.org>
-;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2019 Amin Bandali <bandali@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
@@ -44,6 +44,9 @@
   #:use-module (gnu packages gperf)
   #:use-module (gnu packages gawk)
   #:use-module (gnu packages version-control)
+  #:use-module (gnu packages qt)
+  #:use-module (gnu packages boost)
+  #:use-module (gnu packages algebra)
   #:use-module (gnu packages libftdi))
 
 (define-public abc
@@ -51,15 +54,15 @@
        (revision "1"))
   (package
     (name "abc")
-    (version (string-append "0.0-" revision "-" (string-take commit 9)))
+    (version (git-version "0.0" revision commit))
     (source (origin
               (method url-fetch)
               (uri
                (string-append "https://bitbucket.org/alanmi/abc/get/" commit ".zip"))
               (file-name (string-append name "-" version "-checkout.zip"))
               (sha256
-                (base32
-                   "1syygi1x40rdryih3galr4q8yg1w5bvdzl75hd27v1xq0l5bz3d0"))))
+               (base32
+                "1syygi1x40rdryih3galr4q8yg1w5bvdzl75hd27v1xq0l5bz3d0"))))
     (build-system gnu-build-system)
     (native-inputs
      `(("unzip" ,unzip)))
@@ -75,7 +78,7 @@
              (let* ((out (assoc-ref outputs "out"))
                     (out-bin (string-append out "/bin")))
                (install-file "abc" out-bin)))))))
-    (home-page "http://people.eecs.berkeley.edu/~alanmi/abc/")
+    (home-page "https://people.eecs.berkeley.edu/~alanmi/abc/")
     (synopsis "Sequential logic synthesis and formal verification")
     (description "ABC is a program for sequential logic synthesis and
 formal verification.")
@@ -85,20 +88,20 @@ formal verification.")
 (define-public iverilog
   (package
     (name "iverilog")
-    (version "10.2")
+    (version "10.3")
     (source (origin
               (method url-fetch)
               (uri
                (string-append "ftp://ftp.icarus.com/pub/eda/verilog/v10/"
                               "verilog-" version ".tar.gz"))
               (sha256
-                (base32
-                   "0075x5nsxwkrgn7b3635il9kw7mslckaji518pdmwdrdn7fxppln"))))
+               (base32
+                "1vv88ckvfwq7mrysyjnilsrcrzm9d173kp9w5ivwh6rdw7klbgc6"))))
     (build-system gnu-build-system)
     (native-inputs
      `(("flex" ,flex)
        ("bison" ,bison)
-       ("ghostscript" ,ghostscript))) ; ps2pdf
+       ("ghostscript" ,ghostscript)))   ; ps2pdf
     (home-page "http://iverilog.icarus.com/")
     (synopsis "FPGA Verilog simulation and synthesis tool")
     (description "Icarus Verilog is a Verilog simulation and synthesis tool.
@@ -120,16 +123,16 @@ For synthesis, the compiler generates netlists in the desired format.")
 (define-public yosys
   (package
     (name "yosys")
-    (version "0.8")
+    (version "0.9")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/cliffordwolf/yosys.git")
+                    (url "https://github.com/cliffordwolf/yosys")
                     (commit (string-append "yosys-" version))
                     (recursive? #t))) ; for the ‘iverilog’ submodule
               (sha256
                 (base32
-                   "1qwbp8gynlklawzvpa4gdn2x0hs8zln0s3kxjqkhfcjfxffdcpvv"))
+                   "0lb9r055h8y1vj2z8gm4ip0v06j5mk7f9zx9gi67kkqb7g4rhjli"))
               (file-name (git-file-name name version))
               (modules '((guix build utils)))
               (snippet
@@ -212,20 +215,20 @@ For synthesis, the compiler generates netlists in the desired format.")
     (license license:isc)))
 
 (define-public icestorm
-  (let ((commit "c0cbae88ab47a3879aacf80d53b6a85710682a6b")
-        (revision "2"))
+  (let ((commit "0ec00d892a91cc68e45479b46161f649caea2933")
+        (revision "3"))
    (package
     (name "icestorm")
-    (version (string-append "0.0-" revision "-" (string-take commit 9)))
+    (version (git-version "0.0" revision commit))
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                     (url "https://github.com/cliffordwolf/icestorm.git")
+                     (url "https://github.com/cliffordwolf/icestorm")
                      (commit commit)))
-              (file-name (string-append name "-" version "-checkout"))
+              (file-name (git-file-name name version))
               (sha256
                 (base32
-                   "0bqm0rpywm64yvbq75klpyzb1g9sdsp1kvdlyqg4hvm8jw9w8lya"))))
+                   "1qlh99fafb7xga702k64fmc9m700nsddrfgcq4x8qn8fplsb64f1"))))
     (build-system gnu-build-system)
     (arguments
      `(#:tests? #f ; no unit tests that don't need an FPGA exist.
@@ -256,6 +259,42 @@ For synthesis, the compiler generates netlists in the desired format.")
 Includes the actual FTDI connector.")
     (license license:isc))))
 
+(define-public nextpnr-ice40
+  (let [(commit "c192ba261d77ad7f0a744fb90b01e4a5b63938c4")
+        (revision "0")]
+  (package
+    (name "nextpnr-ice40")
+    (version (git-version "0.0.0" revision commit))
+    (source
+      (origin
+        (method git-fetch)
+        (uri (git-reference
+               (url "git://github.com/YosysHQ/nextpnr")
+               (commit commit)))
+        (file-name (git-file-name name version))
+        (sha256
+          (base32
+            "0g2ar1z89b31qw5vgqj2rrcv9rzncs94184dgcsrz19p866654mf"))))
+    (inputs
+      `(("qtbase" ,qtbase)
+        ("boost" ,boost-with-python3)
+        ("yosys" ,yosys)
+        ("eigen" ,eigen)
+        ("python" ,python)
+        ("icestorm" ,icestorm)))
+    (build-system cmake-build-system)
+    (arguments
+      `(#:configure-flags `("-DARCH=ice40"
+                            ,(string-append "-DICEBOX_ROOT="
+                                            (assoc-ref %build-inputs "icestorm")
+                                            "/share/icebox"))
+        #:tests? #f))
+    (synopsis "Place-and-Route tool for FPGAs")
+    (description "Nextpnr aims to be a vendor neutral, timing driven,
+FOSS FPGA place and route tool.")
+    (home-page "https://github.com/YosysHQ/nextpnr")
+    (license license:expat))))
+
 (define-public arachne-pnr
   (let ((commit "840bdfdeb38809f9f6af4d89dd7b22959b176fdd")
         (revision "2"))
@@ -265,9 +304,9 @@ Includes the actual FTDI connector.")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                     (url "https://github.com/YosysHQ/arachne-pnr.git")
+                     (url "https://github.com/YosysHQ/arachne-pnr")
                      (commit commit)))
-              (file-name (string-append name "-" version "-checkout"))
+              (file-name (git-file-name name version))
               (sha256
                 (base32
                    "1dqvjvgvsridybishv4pnigw9gypxh7r7nrqp9z9qq92v7c5rxzl"))))
@@ -301,14 +340,17 @@ Includes the actual FTDI connector.")
 (define-public gtkwave
   (package
     (name "gtkwave")
-    (version "3.3.101")
-    (source (origin
-              (method url-fetch)
-              (uri (string-append "http://gtkwave.sourceforge.net/"
-                                  "gtkwave-" version ".tar.gz"))
-              (sha256
-               (base32
-                "1j6capxwgi8aj3sgqg1r7161icni9y8y93g1rl3bzd3s40jcyhsz"))))
+    (version "3.3.104")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (list (string-append "mirror://sourceforge/gtkwave/"
+                                 "gtkwave-" version "/"
+                                 "gtkwave-" version ".tar.gz")
+                  (string-append "http://gtkwave.sourceforge.net/"
+                                 "gtkwave-" version ".tar.gz")))
+       (sha256
+        (base32 "0kw9a33gx60kn069yhx5pyk39x1z3pwaj8l1qqwq943v62lx23fj"))))
     (build-system gnu-build-system)
     (native-inputs
      `(("gperf" ,gperf)

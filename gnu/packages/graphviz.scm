@@ -1,11 +1,13 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2013, 2015 Ludovic Courtès <ludo@gnu.org>
-;;; Copyright © 2015 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2015, 2020 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2016 Theodoros Foradis <theodoros@foradis.org>
 ;;; Copyright © 2017, 2018, 2019 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2017, 2018 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2017 Gábor Boskovits <boskovits@gmail.com>
 ;;; Copyright © 2018 Mathieu Lirzin <mthl@gnu.org>
+;;; Copyright © 2020 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2020 Vincent Legoll <vincent.legoll@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -55,15 +57,15 @@
 (define-public graphviz
   (package
     (name "graphviz")
-    (version "2.40.1")
+    (version "2.42.3")
     (source (origin
               (method url-fetch)
               (uri (string-append
-                    "http://www.graphviz.org/pub/graphviz/ARCHIVE/graphviz-"
-                    version ".tar.gz"))
+                    "https://www2.graphviz.org/Packages/stable/portable_source/"
+                    "graphviz-" version ".tar.gz"))
               (sha256
                (base32
-                "08d4ygkxz2f553bxj6087da56a23kx1khv0j8ycxa102vvx1hlna"))))
+                "1pbswjbx3fjdlsxcm7cmlsl5bvaa3d6gcnr0cr8x3c8pag13zbwg"))))
     (build-system gnu-build-system)
     (arguments
      ;; FIXME: rtest/rtest.sh is a ksh script (!).  Add ksh as an input.
@@ -96,17 +98,17 @@
        ("gts" ,gts)
        ("gd" ,gd)                                 ; FIXME: Our GD is too old
        ("guile" ,guile-2.0)                       ;Guile bindings
-       ("swig" ,swig)
        ("pango" ,pango)
        ("fontconfig" ,fontconfig)
        ("freetype" ,freetype)
        ("libltdl" ,libltdl)
        ("libXaw" ,libxaw)
        ("expat" ,expat)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libpng" ,libpng)))
     (native-inputs
      `(("bison" ,bison)
+       ("swig" ,swig)
        ("pkg-config" ,pkg-config)))
     (outputs '("out" "doc"))                      ; 5 MiB of html + pdfs
     (home-page "http://www.graphviz.org/")
@@ -166,16 +168,31 @@ interfaces for other technical domains.")
 (define-public python-graphviz
   (package
     (name "python-graphviz")
-    (version "0.8.4")
+    (version "0.13.2")
     (source (origin
               (method url-fetch)
               (uri (pypi-uri "graphviz" version ".zip"))
               (sha256
                (base32
-                "17v8h7j2yz8hy1jf7q8p0ik8dmf32m58lc6v11x7aqc4pnfa2n29"))))
+                "009alrilzx0v7kl41khbq7k6k8b8pxyvbsi1b1ai933f6kpbxb30"))))
     (build-system python-build-system)
+    (arguments
+     '(#:phases (modify-phases %standard-phases
+                  (replace 'check
+                    (lambda* (#:key tests #:allow-other-keys)
+                      (if tests
+                          (invoke "pytest" "-vv")
+                          (format #t "test suite not run~%"))
+                      #t)))))
     (native-inputs
-     `(("unzip" ,unzip)))
+     `(("unzip" ,unzip)
+
+       ;; For tests.
+       ("graphviz" ,graphviz)
+       ("python-mock" ,python-mock)
+       ("python-pytest" ,python-pytest)
+       ("python-pytest-cov" ,python-pytest-cov)
+       ("python-pytest-mock" ,python-pytest-mock)))
     (home-page "https://github.com/xflr6/graphviz")
     (synopsis "Simple Python interface for Graphviz")
     (description
@@ -194,7 +211,7 @@ visualization tool suite.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/pygraphviz/pygraphviz.git")
+             (url "https://github.com/pygraphviz/pygraphviz")
              (commit (string-append "pygraphviz-" version))))
        (file-name (string-append "pygraphviz-" version "-checkout"))
        (sha256
@@ -212,13 +229,16 @@ visualization tool suite.")
      `(("python-nose" ,python-nose)
        ("python-mock" ,python-mock)
        ("python-doctest-ignore-unicode" ,python-doctest-ignore-unicode)))
-    (home-page "http://pygraphviz.github.io")
+    (home-page "https://pygraphviz.github.io")
     (synopsis "Python interface to Graphviz")
     (description "PyGraphviz is a Python interface to the Graphviz graph
 layout and visualization package.  With PyGraphviz you can create, edit, read,
 write, and draw graphs using Python to access the Graphviz graph data
 structure and layout algorithms.")
     (license license:bsd-3)))
+
+(define-public python2-pygraphviz
+  (package-with-python2 python-pygraphviz))
 
 (define-public gts
   (package
@@ -292,12 +312,12 @@ structure and layout algorithms.")
        ("gtk+" ,gtk+)
        ("python-pycairo" ,python-pycairo)
        ("python-pygobject" ,python-pygobject)))
-    (home-page "https://pypi.python.org/pypi/xdot")
+    (home-page "https://pypi.org/project/xdot/")
     (synopsis "Interactive viewer for graphviz dot files")
     (description "Xdot is an interactive viewer for graphs written in
 @code{graphviz}’s dot language.  Internally, it uses the xdot output format as
-an intermediate format,and @code{gtk} and @code{cairo} for rendering.  Xdot can
-be used either as a standalone application, or as a python library.")
+an intermediate format, and @code{gtk} and @code{cairo} for rendering.  Xdot
+can be used either as a standalone application, or as a Python library.")
     (license license:lgpl3+)))
 
 (define-public python-pydot
@@ -330,13 +350,13 @@ graphs in Graphviz's DOT language, written in pure Python.")
 (define-public dot2tex
   (package
     (name "dot2tex")
-    (version "2.9.0")
+    (version "2.11.3")
     (source (origin
               (method url-fetch)
               (uri (pypi-uri "dot2tex" version))
               (sha256
                (base32
-                "0jhdwp0wv2h0xb7j2s5xiv7i8yaqgfpwwqcyrjvaxkfwsynm8gkx"))))
+                "1kp77wiv7b5qib82i3y3sn9r49rym43aaqm5aw1bwnzfbbq2m6i9"))))
     (build-system python-build-system)
     (arguments
      `(#:python ,python-2))

@@ -3,7 +3,8 @@
 ;;; Copyright © 2015 Mark H Weaver <mhw@netris.org>
 ;;; Copyright © 2016 Andreas Enge <andreas@enge.fr>
 ;;; Copyright © 2017 Marius Bakke <mbakke@fastmail.com>
-;;; Copyright © 2017 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2017, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2020 Florian Pelz <pelzflorian@pelzflorian.de>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -27,9 +28,11 @@
   #:use-module (guix gexp)
   #:use-module (guix store)
   #:use-module (guix monads)
+  #:use-module (guix modules)
   #:use-module ((guix packages) #:select (package-version))
   #:use-module ((guix store) #:select (%store-prefix))
   #:use-module (gnu installer)
+  #:use-module (gnu system locale)
   #:use-module (gnu services dbus)
   #:use-module (gnu services networking)
   #:use-module (gnu services shepherd)
@@ -38,6 +41,7 @@
   #:use-module (gnu packages bash)
   #:use-module (gnu packages bootloaders)
   #:use-module (gnu packages certs)
+  #:use-module (gnu packages file-systems)
   #:use-module (gnu packages fonts)
   #:use-module (gnu packages fontutils)
   #:use-module (gnu packages guile)
@@ -49,6 +53,7 @@
   #:use-module (gnu packages texinfo)
   #:use-module (gnu packages compression)
   #:use-module (gnu packages nvi)
+  #:use-module (gnu packages xorg)
   #:use-module (ice-9 match)
   #:use-module (srfi srfi-26)
   #:export (installation-os
@@ -60,8 +65,11 @@
             mx6cuboxi-installation-os
             nintendo-nes-classic-edition-installation-os
             novena-installation-os
+            firefly-rk3399-installation-os
             pine64-plus-installation-os
             pinebook-installation-os
+            rock64-installation-os
+            rockpro64-installation-os
             rk3399-puma-installation-os
             wandboard-installation-os
             os-with-u-boot))
@@ -239,9 +247,6 @@ the user's target storage device rather than on the RAM disk."
 (define (/etc/configuration-files _)
   "Return a list of tuples representing configuration templates to add to
 /etc."
-  (define (file f)
-    (local-file (string-append "examples/" f)))
-
   (define directory
     (computed-file "configuration-templates"
                    (with-imported-modules '((guix build utils))
@@ -251,10 +256,10 @@ the user's target storage device rather than on the RAM disk."
                                      (copy-file file
                                                 (string-append #$output "/"
                                                                target)))
-                                   '(#$(file "bare-bones.tmpl")
-                                     #$(file "beaglebone-black.tmpl")
-                                     #$(file "desktop.tmpl")
-                                     #$(file "lightweight-desktop.tmpl"))
+                                   '(#$(local-file "examples/bare-bones.tmpl")
+                                     #$(local-file "examples/beaglebone-black.tmpl")
+                                     #$(local-file "examples/desktop.tmpl")
+                                     #$(local-file "examples/lightweight-desktop.tmpl"))
                                    '("bare-bones.scm"
                                      "beaglebone-black.scm"
                                      "desktop.scm"
@@ -285,6 +290,38 @@ the user's target storage device rather than on the RAM disk."
 
                     (persistent? #f)
                     (max-database-size (* 5 (expt 2 20)))))) ;5 MiB
+
+
+;; These define a service to load the uvesafb kernel module with the
+;; appropriate options.  The GUI installer needs it when the machine does not
+;; support Kernel Mode Setting.  Otherwise kmscon is missing /dev/fb0.
+(define (uvesafb-shepherd-service _)
+  (list (shepherd-service
+         (documentation "Load the uvesafb kernel module if needed.")
+         (provision '(maybe-uvesafb))
+         (requirement '(file-systems))
+         (start #~(lambda ()
+                    ;; uvesafb is only supported on x86 and x86_64.
+                    (or (not (and (string-suffix? "linux-gnu" %host-type)
+                                  (or (string-prefix? "x86_64" %host-type)
+                                      (string-prefix? "i686" %host-type))))
+                        (file-exists? "/dev/fb0")
+                        (invoke #+(file-append kmod "/bin/modprobe")
+                                "uvesafb"
+                                (string-append "v86d=" #$v86d "/sbin/v86d")
+                                "mode_option=1024x768"))))
+         (respawn? #f)
+         (one-shot? #t))))
+
+(define uvesafb-service-type
+  (service-type
+   (name 'uvesafb)
+   (extensions
+    (list (service-extension shepherd-root-service-type
+                             uvesafb-shepherd-service)))
+   (description
+    "Load the @code{uvesafb} kernel module with the right options.")
+   (default-value #t)))
 
 (define %installation-services
   ;; List of services of the installation system.
@@ -383,8 +420,7 @@ Access documentation at any time by pressing Alt-F2.\x1b[0m
           ;; Having /bin/sh is a good idea.  In particular it allows Tramp
           ;; connections to this system to work.
           (service special-files-service-type
-                   `(("/bin/sh" ,(file-append (canonical-package bash)
-                                              "/bin/sh"))))
+                   `(("/bin/sh" ,(file-append bash "/bin/sh"))))
 
           ;; Loopback device, needed by OpenSSH notably.
           (service static-networking-service-type
@@ -404,10 +440,18 @@ Access documentation at any time by pressing Alt-F2.\x1b[0m
           ;; things needed by 'profile-derivation' to minimize the amount of
           ;; download.
           (service gc-root-service-type
-                   (list bare-bones-os
-                         glibc-utf8-locales
-                         texinfo
-                         (canonical-package guile-2.2))))))
+                   (append
+                    (list bare-bones-os
+                          glibc-utf8-locales
+                          texinfo
+                          guile-3.0)
+                    %default-locale-libcs))
+
+          ;; Machines without Kernel Mode Setting (those with many old and
+          ;; current AMD GPUs, SiS GPUs, ...) need uvesafb to show the GUI
+          ;; installer.  Some may also need a kernel parameter like nomodeset
+          ;; or vga=793, but we leave that for the user to specify in GRUB.
+          (service uvesafb-service-type))))
 
 (define %issue
   ;; Greeting.
@@ -428,12 +472,6 @@ Access documentation at any time by pressing Alt-F2.\x1b[0m
                  (target "/dev/sda")))
     (label (string-append "GNU Guix installation "
                           (package-version guix)))
-
-    ;; XXX: The AMD Radeon driver is reportedly broken, which makes kmscon
-    ;; non-functional:
-    ;; <https://lists.gnu.org/archive/html/guix-devel/2019-03/msg00441.html>.
-    ;; Thus, blacklist it.
-    (kernel-arguments '("quiet" "modprobe.blacklist=radeon"))
 
     (file-systems
      ;; Note: the disk image build code overrides this root file system with
@@ -459,6 +497,7 @@ Access documentation at any time by pressing Alt-F2.\x1b[0m
             ;; elogind's cgroup file systems.
             (list %pseudo-terminal-file-system
                   %shared-memory-file-system
+                  %efivars-file-system
                   %immutable-store)))
 
     (users (list (user-account
@@ -479,7 +518,7 @@ Access documentation at any time by pressing Alt-F2.\x1b[0m
      ;; Explicitly allow for empty passwords.
      (base-pam-services #:allow-empty-passwords? #t))
 
-    (packages (cons* (canonical-package glibc) ;for 'tzselect' & co.
+    (packages (cons* glibc ;for 'tzselect' & co.
                      parted gptfdisk ddrescue
                      fontconfig
                      font-dejavu font-gnu-unifont
@@ -488,6 +527,8 @@ Access documentation at any time by pressing Alt-F2.\x1b[0m
                      mdadm
                      dosfstools         ;mkfs.fat, for the UEFI boot partition
                      btrfs-progs
+                     f2fs-tools
+                     jfsutils
                      openssh    ;we already have sshd, having ssh/scp can help
                      wireless-tools iw wpa-supplicant-minimal iproute
                      ;; XXX: We used to have GNU fdisk here, but as of version
@@ -558,6 +599,11 @@ The bootloader BOOTLOADER is installed to BOOTLOADER-TARGET."
                             "/dev/mmcblk1" ; eMMC storage
                             "ttyS0"))
 
+(define firefly-rk3399-installation-os
+  (embedded-installation-os u-boot-firefly-rk3399-bootloader
+                            "/dev/mmcblk0" ; SD card/eMMC (SD priority) storage
+                            "ttyS2")) ; UART2 connected on the Pi2 bus
+
 (define mx6cuboxi-installation-os
   (embedded-installation-os u-boot-mx6cuboxi-bootloader
                             "/dev/mmcblk0" ; SD card storage
@@ -582,6 +628,16 @@ The bootloader BOOTLOADER is installed to BOOTLOADER-TARGET."
   (embedded-installation-os u-boot-pinebook-bootloader
                             "/dev/mmcblk0" ; SD card storage
                             "ttyS0"))
+
+(define rock64-installation-os
+  (embedded-installation-os u-boot-rock64-rk3328-bootloader
+                            "/dev/mmcblk0" ; SD card/eMMC (SD priority) storage
+                            "ttyS2")) ; UART2 connected on the Pi2 bus
+
+(define rockpro64-installation-os
+  (embedded-installation-os u-boot-rockpro64-rk3399-bootloader
+                            "/dev/mmcblk0" ; SD card/eMMC (SD priority) storage
+                            "ttyS2")) ; UART2 connected on the Pi2 bus
 
 (define rk3399-puma-installation-os
   (embedded-installation-os u-boot-puma-rk3399-bootloader

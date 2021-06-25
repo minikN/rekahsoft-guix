@@ -28,11 +28,8 @@
 #include <sys/mount.h>
 #endif
 
-#if HAVE_LINUX_FS_H
-#include <linux/fs.h>
 #include <sys/ioctl.h>
 #include <errno.h>
-#endif
 
 #include <sqlite3.h>
 
@@ -88,8 +85,9 @@ LocalStore::LocalStore(bool reserveSpace)
 
         Path perUserDir = profilesDir + "/per-user";
         createDirs(perUserDir);
-        if (chmod(perUserDir.c_str(), 01777) == -1)
-            throw SysError(format("could not set permissions on '%1%' to 1777") % perUserDir);
+        if (chmod(perUserDir.c_str(), 0755) == -1)
+            throw SysError(format("could not set permissions on '%1%' to 755")
+                           % perUserDir);
 
         mode_t perm = 01775;
 
@@ -184,13 +182,15 @@ LocalStore::LocalStore(bool reserveSpace)
 LocalStore::~LocalStore()
 {
     try {
-        foreach (RunningSubstituters::iterator, i, runningSubstituters) {
-            if (i->second.disabled) continue;
-            i->second.to.close();
-            i->second.from.close();
-            i->second.error.close();
-            if (i->second.pid != -1)
-                i->second.pid.wait(true);
+	if (runningSubstituter) {
+	    RunningSubstituter &i = *runningSubstituter;
+            if (!i.disabled) {
+		i.to.close();
+		i.from.close();
+		i.error.close();
+		if (i.pid != -1)
+		    i.pid.wait(true);
+	    }
         }
     } catch (...) {
         ignoreException();
@@ -808,11 +808,12 @@ void LocalStore::setSubstituterEnv()
 }
 
 
-void LocalStore::startSubstituter(const Path & substituter, RunningSubstituter & run)
+void LocalStore::startSubstituter(RunningSubstituter & run)
 {
     if (run.disabled || run.pid != -1) return;
 
-    debug(format("starting substituter program `%1%'") % substituter);
+    debug(format("starting substituter program `%1% substitute'")
+	  % settings.guixProgram);
 
     Pipe toPipe, fromPipe, errorPipe;
 
@@ -829,11 +830,10 @@ void LocalStore::startSubstituter(const Path & substituter, RunningSubstituter &
             throw SysError("dupping stdout");
         if (dup2(errorPipe.writeSide, STDERR_FILENO) == -1)
             throw SysError("dupping stderr");
-        execl(substituter.c_str(), substituter.c_str(), "--query", NULL);
-        throw SysError(format("executing `%1%'") % substituter);
+        execl(settings.guixProgram.c_str(), "guix", "substitute", "--query", NULL);
+        throw SysError(format("executing `%1%'") % settings.guixProgram);
     });
 
-    run.program = baseNameOf(substituter);
     run.to = toPipe.writeSide.borrow();
     run.from = run.fromBuf.fd = fromPipe.readSide.borrow();
     run.error = errorPipe.readSide.borrow();
@@ -889,13 +889,14 @@ string LocalStore::getLineFromSubstituter(RunningSubstituter & run)
                 if (errno == EINTR) continue;
                 throw SysError("reading from substituter's stderr");
             }
-            if (n == 0) throw EndOfFile(format("substituter `%1%' died unexpectedly") % run.program);
+            if (n == 0) throw EndOfFile(format("`%1% substitute' died unexpectedly")
+					% settings.guixProgram);
             err.append(buf, n);
             string::size_type p;
             while (((p = err.find('\n')) != string::npos)
 		   || ((p = err.find('\r')) != string::npos)) {
 	        string thing(err, 0, p + 1);
-	        writeToStderr(run.program + ": " + thing);
+	        writeToStderr("substitute: " + thing);
                 err = string(err, p + 1);
             }
         }
@@ -907,7 +908,7 @@ string LocalStore::getLineFromSubstituter(RunningSubstituter & run)
                 unsigned char c;
                 run.fromBuf(&c, 1);
                 if (c == '\n') {
-                    if (!err.empty()) printMsg(lvlError, run.program + ": " + err);
+                    if (!err.empty()) printMsg(lvlError, "substitute: " + err);
                     return res;
                 }
                 res += c;
@@ -930,38 +931,47 @@ PathSet LocalStore::querySubstitutablePaths(const PathSet & paths)
 {
     PathSet res;
 
-    if (!settings.useSubstitutes) return res;
+    if (!settings.useSubstitutes || paths.empty()) return res;
 
-    foreach (Paths::iterator, i, settings.substituters) {
-        if (res.size() == paths.size()) break;
-        RunningSubstituter & run(runningSubstituters[*i]);
-        startSubstituter(*i, run);
-        if (run.disabled) continue;
-        string s = "have ";
-        foreach (PathSet::const_iterator, j, paths)
-            if (res.find(*j) == res.end()) { s += *j; s += " "; }
-        writeLine(run.to, s);
-        while (true) {
-            /* FIXME: we only read stderr when an error occurs, so
-               substituters should only write (short) messages to
-               stderr when they fail.  I.e. they shouldn't write debug
-               output. */
-            Path path = getLineFromSubstituter(run);
-            if (path == "") break;
-            res.insert(path);
-        }
+    if (!runningSubstituter) {
+	std::unique_ptr<RunningSubstituter>fresh(new RunningSubstituter);
+	runningSubstituter.swap(fresh);
     }
+
+    RunningSubstituter & run = *runningSubstituter;
+    startSubstituter(run);
+
+    if (!run.disabled) {
+	string s = "have ";
+	foreach (PathSet::const_iterator, j, paths)
+	    if (res.find(*j) == res.end()) { s += *j; s += " "; }
+	writeLine(run.to, s);
+	while (true) {
+	    /* FIXME: we only read stderr when an error occurs, so
+	       substituters should only write (short) messages to
+	       stderr when they fail.  I.e. they shouldn't write debug
+	       output. */
+	    Path path = getLineFromSubstituter(run);
+	    if (path == "") break;
+	    res.insert(path);
+	}
+    }
+
     return res;
 }
 
 
-void LocalStore::querySubstitutablePathInfos(const Path & substituter,
-    PathSet & paths, SubstitutablePathInfos & infos)
+void LocalStore::querySubstitutablePathInfos(PathSet & paths, SubstitutablePathInfos & infos)
 {
     if (!settings.useSubstitutes) return;
 
-    RunningSubstituter & run(runningSubstituters[substituter]);
-    startSubstituter(substituter, run);
+    if (!runningSubstituter) {
+	std::unique_ptr<RunningSubstituter>fresh(new RunningSubstituter);
+	runningSubstituter.swap(fresh);
+    }
+
+    RunningSubstituter & run = *runningSubstituter;
+    startSubstituter(run);
     if (run.disabled) return;
 
     string s = "info ";
@@ -993,10 +1003,9 @@ void LocalStore::querySubstitutablePathInfos(const Path & substituter,
 void LocalStore::querySubstitutablePathInfos(const PathSet & paths,
     SubstitutablePathInfos & infos)
 {
-    PathSet todo = paths;
-    foreach (Paths::iterator, i, settings.substituters) {
-        if (todo.empty()) break;
-        querySubstitutablePathInfos(*i, todo, infos);
+    if (!paths.empty()) {
+	PathSet todo = paths;
+	querySubstitutablePathInfos(todo, infos);
     }
 }
 
@@ -1224,8 +1233,9 @@ static void checkSecrecy(const Path & path)
 
 static std::string runAuthenticationProgram(const Strings & args)
 {
-    return runProgram(settings.nixLibexecDir + "/authenticate",
-		      false, args);
+    Strings fullArgs = { "authenticate" };
+    fullArgs.insert(fullArgs.end(), args.begin(), args.end()); // append
+    return runProgram(settings.guixProgram, false, fullArgs);
 }
 
 void LocalStore::exportPath(const Path & path, bool sign,
@@ -1627,6 +1637,18 @@ void LocalStore::vacuumDB()
 {
     if (sqlite3_exec(db, "vacuum;", 0, 0, 0) != SQLITE_OK)
         throwSQLiteError(db, "vacuuming SQLite database");
+}
+
+
+void LocalStore::createUser(const std::string & userName, uid_t userId)
+{
+    auto dir = settings.nixStateDir + "/profiles/per-user/" + userName;
+
+    createDirs(dir);
+    if (chmod(dir.c_str(), 0755) == -1)
+	throw SysError(format("changing permissions of directory '%s'") % dir);
+    if (chown(dir.c_str(), userId, -1) == -1)
+	throw SysError(format("changing owner of directory '%s'") % dir);
 }
 
 

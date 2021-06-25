@@ -1,9 +1,10 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2014, 2015, 2017, 2018 Mark H Weaver <mhw@netris.org>
 ;;; Copyright © 2015 Eric Bavier <bavier@member.fsf.org>
 ;;; Copyright © 2016 Alex Kost <alezost@gmail.com>
-;;; Copyright © 2017 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2017, 2019, 2020 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2019 Marius Bakke <mbakke@fastmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -27,12 +28,15 @@
   #:use-module (guix monads)
   #:use-module (guix gexp)
   #:use-module (guix base32)
+  #:autoload   (guix base64) (base64-decode)
   #:use-module (guix grafts)
   #:use-module (guix derivations)
   #:use-module (guix memoization)
   #:use-module (guix build-system)
   #:use-module (guix search-paths)
   #:use-module (guix sets)
+  #:use-module (guix deprecation)
+  #:use-module (guix i18n)
   #:use-module (ice-9 match)
   #:use-module (ice-9 vlist)
   #:use-module (ice-9 regex)
@@ -42,16 +46,23 @@
   #:use-module (srfi srfi-26)
   #:use-module (srfi srfi-34)
   #:use-module (srfi srfi-35)
+  #:use-module (rnrs bytevectors)
   #:use-module (web uri)
   #:re-export (%current-system
                %current-target-system
                search-path-specification)         ;for convenience
-  #:export (origin
+  #:export (content-hash
+            content-hash?
+            content-hash-algorithm
+            content-hash-value
+
+            origin
             origin?
             this-origin
             origin-uri
             origin-method
-            origin-sha256
+            origin-hash
+            origin-sha256                         ;deprecated
             origin-file-name
             origin-actual-file-name
             origin-patches
@@ -61,6 +72,7 @@
             origin-snippet
             origin-modules
             base32
+            base64
 
             package
             package?
@@ -110,6 +122,8 @@
             package-output
             package-grafts
             package-patched-vulnerabilities
+            package-with-patches
+            package-with-extra-patches
             package/inherit
 
             transitive-input-references
@@ -152,15 +166,82 @@
 ;;;
 ;;; Code:
 
+;; Crytographic content hash.
+(define-immutable-record-type <content-hash>
+  (%content-hash algorithm value)
+  content-hash?
+  (algorithm content-hash-algorithm)              ;symbol
+  (value     content-hash-value))                 ;bytevector
+
+(define-syntax-rule (define-content-hash-constructor name
+                      (algorithm size) ...)
+  "Define NAME as a <content-hash> constructor that ensures that (1) its
+second argument is among the listed ALGORITHM, and (2), when possible, that
+its first argument has the right size for the chosen algorithm."
+  (define-syntax name
+    (lambda (s)
+      (syntax-case s (algorithm ...)
+        ((_ bv algorithm)
+         (let ((bv* (syntax->datum #'bv)))
+           (when (and (bytevector? bv*)
+                      (not (= size (bytevector-length bv*))))
+             (syntax-violation 'content-hash "invalid content hash length" s))
+           #'(%content-hash 'algorithm bv)))
+        ...))))
+
+(define-content-hash-constructor build-content-hash
+  (sha256 32)
+  (sha512 64)
+  (sha3-256 32)
+  (sha3-512 64)
+  (blake2s-256 64))
+
+(define-syntax content-hash
+  (lambda (s)
+    "Return a content hash with the given parameters.  The default hash
+algorithm is sha256.  If the first argument is a literal string, it is decoded
+as base32.  Otherwise, it must be a bytevector."
+    ;; What we'd really want here is something like C++ 'constexpr'.
+    (syntax-case s ()
+      ((_ str)
+       (string? (syntax->datum #'str))
+       #'(content-hash str sha256))
+      ((_ str algorithm)
+       (string? (syntax->datum #'str))
+       (with-syntax ((bv (base32 (syntax->datum #'str))))
+         #'(content-hash bv algorithm)))
+      ((_ (id str) algorithm)
+       (and (string? (syntax->datum #'str))
+            (free-identifier=? #'id #'base32))
+       (with-syntax ((bv (nix-base32-string->bytevector (syntax->datum #'str))))
+         #'(content-hash bv algorithm)))
+      ((_ (id str) algorithm)
+       (and (string? (syntax->datum #'str))
+            (free-identifier=? #'id #'base64))
+       (with-syntax ((bv (base64-decode (syntax->datum #'str))))
+         #'(content-hash bv algorithm)))
+      ((_ bv)
+       #'(content-hash bv sha256))
+      ((_ bv hash)
+       #'(build-content-hash bv hash)))))
+
+(define (print-content-hash hash port)
+  (format port "#<content-hash ~a:~a>"
+          (content-hash-algorithm hash)
+          (bytevector->nix-base32-string (content-hash-value hash))))
+
+(set-record-type-printer! <content-hash> print-content-hash)
+
+
 ;; The source of a package, such as a tarball URL and fetcher---called
 ;; "origin" to avoid name clash with `package-source', `source', etc.
 (define-record-type* <origin>
-  origin make-origin
+  %origin make-origin
   origin?
   this-origin
   (uri       origin-uri)                          ; string
   (method    origin-method)                       ; procedure
-  (sha256    origin-sha256)                       ; bytevector
+  (hash      origin-hash)                         ; <content-hash>
   (file-name origin-file-name (default #f))       ; optional file name
 
   ;; Patches are delayed so that the 'search-patch' calls are made lazily,
@@ -183,30 +264,60 @@
   (patch-guile origin-patch-guile                 ; package or #f
                (default #f)))
 
+(define-syntax origin-compatibility-helper
+  (syntax-rules (sha256)
+    ((_ () (fields ...))
+     (%origin fields ...))
+    ((_ ((sha256 exp) rest ...) (others ...))
+     (%origin others ...
+              (hash (content-hash exp sha256))
+              rest ...))
+    ((_ (field rest ...) (others ...))
+     (origin-compatibility-helper (rest ...)
+                                  (others ... field)))))
+
+(define-syntax-rule (origin fields ...)
+  "Build an <origin> record, automatically converting 'sha256' field
+specifications to 'hash'."
+  (origin-compatibility-helper (fields ...) ()))
+
+(define-deprecated (origin-sha256 origin)
+  origin-hash
+  (let ((hash (origin-hash origin)))
+    (unless (eq? (content-hash-algorithm hash) 'sha256)
+      (raise (condition (&message
+                         (message (G_ "no SHA256 hash for origin"))))))
+    (content-hash-value hash)))
+
 (define (print-origin origin port)
   "Write a concise representation of ORIGIN to PORT."
   (match origin
-    (($ <origin> uri method sha256 file-name patches)
+    (($ <origin> uri method hash file-name patches)
      (simple-format port "#<origin ~s ~a ~s ~a>"
-                    uri (bytevector->base32-string sha256)
+                    uri hash
                     (force patches)
                     (number->string (object-address origin) 16)))))
 
 (set-record-type-printer! <origin> print-origin)
 
-(define-syntax base32
-  (lambda (s)
-    "Return the bytevector corresponding to the given Nix-base32
+(define-syntax-rule (define-compile-time-decoder name string->bytevector)
+  "Define NAME as a macro that runs STRING->BYTEVECTOR at macro expansion time
+if possible."
+  (define-syntax name
+    (lambda (s)
+      "Return the bytevector corresponding to the given textual
 representation."
-    (syntax-case s ()
-      ((_ str)
-       (string? (syntax->datum #'str))
-       ;; A literal string: do the conversion at expansion time.
-       (with-syntax ((bv (nix-base32-string->bytevector
-                          (syntax->datum #'str))))
-         #''bv))
-      ((_ str)
-       #'(nix-base32-string->bytevector str)))))
+      (syntax-case s ()
+        ((_ str)
+         (string? (syntax->datum #'str))
+         ;; A literal string: do the conversion at expansion time.
+         (with-syntax ((bv (string->bytevector (syntax->datum #'str))))
+           #''bv))
+        ((_ str)
+         #'(string->bytevector str))))))
+
+(define-compile-time-decoder base32 nix-base32-string->bytevector)
+(define-compile-time-decoder base64 base64-decode)
 
 (define (origin-actual-file-name origin)
   "Return the file name of ORIGIN, either its 'file-name' field or the file
@@ -228,21 +339,22 @@ name of its URI."
          ;; git, svn, cvs, etc. reference
          #f))))
 
+
 (define %supported-systems
   ;; This is the list of system types that are supported.  By default, we
   ;; expect all packages to build successfully here.
-  '("x86_64-linux" "i686-linux" "armhf-linux" "aarch64-linux" "mips64el-linux"))
+  '("x86_64-linux" "i686-linux" "armhf-linux" "aarch64-linux" "mips64el-linux" "i586-gnu"))
 
 (define %hurd-systems
   ;; The GNU/Hurd systems for which support is being developed.
-  '("i585-gnu" "i686-gnu"))
+  '("i586-gnu" "i686-gnu"))
 
 (define %hydra-supported-systems
   ;; This is the list of system types for which build machines are available.
   ;;
-  ;; XXX: MIPS is temporarily unavailable on Hydra:
+  ;; XXX: MIPS is unavailable in CI:
   ;; <https://lists.gnu.org/archive/html/guix-devel/2017-03/msg00790.html>.
-  (fold delete %supported-systems '("aarch64-linux" "mips64el-linux")))
+  (fold delete %supported-systems '("mips64el-linux")))
 
 
 ;; A package.
@@ -351,28 +463,27 @@ object."
 
   (match (package-location package)
     (($ <location> file line column)
-     (catch 'system
+     (catch 'system-error
        (lambda ()
          ;; In general we want to keep relative file names for modules.
-         (with-fluids ((%file-port-name-canonicalization 'relative))
-           (call-with-input-file (search-path %load-path file)
-             (lambda (port)
-               (goto port line column)
-               (match (read port)
-                 (('package inits ...)
-                  (let ((field (assoc field inits)))
-                    (match field
-                      ((_ value)
-                       ;; Put the `or' here, and not in the first argument of
-                       ;; `and=>', to work around a compiler bug in 2.0.5.
-                       (or (and=> (source-properties value)
-                                  source-properties->location)
-                           (and=> (source-properties field)
-                                  source-properties->location)))
-                      (_
-                       #f))))
-                 (_
-                  #f))))))
+         (call-with-input-file (search-path %load-path file)
+           (lambda (port)
+             (goto port line column)
+             (match (read port)
+               (('package inits ...)
+                (let ((field (assoc field inits)))
+                  (match field
+                    ((_ value)
+                     (let ((loc (and=> (source-properties value)
+                                       source-properties->location)))
+                       (and loc
+                            ;; Preserve the original file name, which may be a
+                            ;; relative file name.
+                            (set-field loc (location-file) file))))
+                    (_
+                     #f))))
+               (_
+                #f)))))
        (lambda _
          #f)))
     (_ #f)))
@@ -444,9 +555,9 @@ derivations."
   (let ((distro (resolve-interface '(gnu packages commencement))))
     (module-ref distro 'guile-final)))
 
-(define (guile-2.0)
-  "Return Guile 2.0."
-  ;; FIXME: This is used as a workaround for <https://bugs.gnu.org/28211> when
+(define (guile-for-grafts)
+  "Return the Guile package used to build grafting derivations."
+  ;; Guile 2.2 would not work due to <https://bugs.gnu.org/28211> when
   ;; grafting packages.
   (let ((distro (resolve-interface '(gnu packages guile))))
     (module-ref distro 'guile-2.0)))
@@ -505,11 +616,17 @@ specifies modules in scope when evaluating SNIPPET."
     (and=> (file-extension file-name)
            (cut string-every char-set:hex-digit <>)))
 
+  (define (checkout? directory)
+    ;; Return true if DIRECTORY is a checkout (git, svn, etc).
+    (string-suffix? "-checkout" directory))
+
   (define (tarxz-name file-name)
     ;; Return a '.tar.xz' file name based on FILE-NAME.
-    (let ((base (if (numeric-extension? file-name)
-                    original-file-name
-                    (file-sans-extension file-name))))
+    (let ((base (cond ((numeric-extension? file-name)
+                       original-file-name)
+                      ((checkout? file-name)
+                       (string-drop-right file-name 9))
+                      (else (file-sans-extension file-name)))))
       (string-append base
                      (if (equal? (file-extension base) "tar")
                          ".xz"
@@ -630,8 +747,10 @@ specifies modules in scope when evaluating SNIPPET."
               (apply invoke
                      (string-append #+tar "/bin/tar")
                      "cvfa" #$output
-                     ;; avoid non-determinism in the archive
-                     "--mtime=@0"
+                     ;; Avoid non-determinism in the archive.  Set the mtime
+                     ;; to 1 as is the case in the store (software like gzip
+                     ;; behaves differently when it stumbles upon mtime = 0).
+                     "--mtime=@1"
                      "--owner=root:0"
                      "--group=root:0"
                      (if tar-supports-sort?
@@ -642,13 +761,23 @@ specifies modules in scope when evaluating SNIPPET."
 
     (let ((name (tarxz-name original-file-name)))
       (gexp->derivation name build
-                        ;; TODO: Remove this on the next rebuild cycle.
-                        #:pre-load-modules? #f
-
                         #:graft? #f
                         #:system system
-                        #:deprecation-warnings #t ;to avoid a rebuild
-                        #:guile-for-build guile-for-build))))
+                        #:guile-for-build guile-for-build
+                        #:properties `((type . origin)
+                                       (patches . ,(length patches)))))))
+
+(define (package-with-patches original patches)
+  "Return package ORIGINAL with PATCHES applied."
+  (package (inherit original)
+           (source (origin (inherit (package-source original))
+                           (patches patches)))))
+
+(define (package-with-extra-patches original patches)
+  "Return package ORIGINAL with all PATCHES appended to its list of patches."
+  (package-with-patches original
+                        (append (origin-patches (package-source original))
+                                patches)))
 
 (define (transitive-inputs inputs)
   "Return the closure of INPUTS when considering the 'propagated-inputs'
@@ -762,23 +891,29 @@ in INPUTS and their transitive propagated inputs."
        (transitive-inputs inputs)))
 
 (define package-transitive-supported-systems
-  (mlambdaq (package)
-    "Return the intersection of the systems supported by PACKAGE and those
+  (let ()
+    (define supported-systems
+      (mlambda (package system)
+        (parameterize ((%current-system system))
+          (fold (lambda (input systems)
+                  (match input
+                    ((label (? package? package) . _)
+                     (lset-intersection string=? systems
+                                        (supported-systems package system)))
+                    (_
+                     systems)))
+                (package-supported-systems package)
+                (bag-direct-inputs (package->bag package))))))
+
+    (lambda* (package #:optional (system (%current-system)))
+      "Return the intersection of the systems supported by PACKAGE and those
 supported by its dependencies."
-    (fold (lambda (input systems)
-            (match input
-              ((label (? package? p) . _)
-               (lset-intersection
-                string=? systems (package-transitive-supported-systems p)))
-              (_
-               systems)))
-          (package-supported-systems package)
-          (bag-direct-inputs (package->bag package)))))
+      (supported-systems package system))))
 
 (define* (supported-package? package #:optional (system (%current-system)))
   "Return true if PACKAGE is supported on SYSTEM--i.e., if PACKAGE and all its
 dependencies are known to build on SYSTEM."
-  (member system (package-transitive-supported-systems package)))
+  (member system (package-transitive-supported-systems package system)))
 
 (define (bag-direct-inputs bag)
   "Same as 'package-direct-inputs', but applied to a bag."
@@ -788,19 +923,27 @@ dependencies are known to build on SYSTEM."
 
 (define (bag-transitive-inputs bag)
   "Same as 'package-transitive-inputs', but applied to a bag."
-  (transitive-inputs (bag-direct-inputs bag)))
+  (parameterize ((%current-target-system #f)
+                 (%current-system (bag-system bag)))
+    (transitive-inputs (bag-direct-inputs bag))))
 
 (define (bag-transitive-build-inputs bag)
   "Same as 'package-transitive-native-inputs', but applied to a bag."
-  (transitive-inputs (bag-build-inputs bag)))
+  (parameterize ((%current-target-system #f)
+                 (%current-system (bag-system bag)))
+    (transitive-inputs (bag-build-inputs bag))))
 
 (define (bag-transitive-host-inputs bag)
   "Same as 'package-transitive-target-inputs', but applied to a bag."
-  (transitive-inputs (bag-host-inputs bag)))
+  (parameterize ((%current-target-system (bag-target bag))
+                 (%current-system (bag-system bag)))
+    (transitive-inputs (bag-host-inputs bag))))
 
 (define (bag-transitive-target-inputs bag)
   "Return the \"target inputs\" of BAG, recursively."
-  (transitive-inputs (bag-target-inputs bag)))
+  (parameterize ((%current-target-system (bag-target bag))
+                 (%current-system (bag-system bag)))
+    (transitive-inputs (bag-target-inputs bag))))
 
 (define* (package-closure packages #:key (system (%current-system)))
   "Return the closure of PACKAGES on SYSTEM--i.e., PACKAGES and the list of
@@ -1018,39 +1161,39 @@ information in exceptions."
                        #:key (graft? (%graft?)))
   "Compile PACKAGE into a bag for SYSTEM, possibly cross-compiled to TARGET,
 and return it."
-  (cached (=> %bag-cache)
-          package (list system target graft?)
-          ;; Bind %CURRENT-SYSTEM and %CURRENT-TARGET-SYSTEM so that thunked
-          ;; field values can refer to it.
-          (parameterize ((%current-system system)
-                         (%current-target-system target))
-            (match (if graft?
-                       (or (package-replacement package) package)
-                       package)
-              ((and self
-                    ($ <package> name version source build-system
-                                 args inputs propagated-inputs native-inputs
-                                 outputs))
-               ;; Even though we prefer to use "@" to separate the package
-               ;; name from the package version in various user-facing parts
-               ;; of Guix, checkStoreName (in nix/libstore/store-api.cc)
-               ;; prohibits the use of "@", so use "-" instead.
-               (or (make-bag build-system (string-append name "-" version)
-                             #:system system
-                             #:target target
-                             #:source source
-                             #:inputs (append (inputs self)
-                                              (propagated-inputs self))
-                             #:outputs outputs
-                             #:native-inputs (native-inputs self)
-                             #:arguments (args self))
-                   (raise (if target
-                              (condition
-                               (&package-cross-build-system-error
-                                (package package)))
-                              (condition
-                               (&package-error
-                                (package package)))))))))))
+  (let ((package (or (and graft? (package-replacement package))
+                     package)))
+    (cached (=> %bag-cache)
+            package (list system target)
+            ;; Bind %CURRENT-SYSTEM and %CURRENT-TARGET-SYSTEM so that thunked
+            ;; field values can refer to it.
+            (parameterize ((%current-system system)
+                           (%current-target-system target))
+              (match package
+                ((and self
+                      ($ <package> name version source build-system
+                                   args inputs propagated-inputs native-inputs
+                                   outputs))
+                 ;; Even though we prefer to use "@" to separate the package
+                 ;; name from the package version in various user-facing parts
+                 ;; of Guix, checkStoreName (in nix/libstore/store-api.cc)
+                 ;; prohibits the use of "@", so use "-" instead.
+                 (or (make-bag build-system (string-append name "-" version)
+                               #:system system
+                               #:target target
+                               #:source source
+                               #:inputs (append (inputs self)
+                                                (propagated-inputs self))
+                               #:outputs outputs
+                               #:native-inputs (native-inputs self)
+                               #:arguments (args self))
+                     (raise (if target
+                                (condition
+                                 (&package-cross-build-system-error
+                                  (package package)))
+                                (condition
+                                 (&package-error
+                                  (package package))))))))))))
 
 (define %graft-cache
   ;; 'eq?' cache mapping package objects to a graft corresponding to their
@@ -1058,39 +1201,39 @@ and return it."
   (make-weak-key-hash-table 200))
 
 (define (input-graft store system)
-  "Return a procedure that, given a package with a graft, returns a graft, and
-#f otherwise."
-  (match-lambda
-    ((? package? package)
+  "Return a procedure that, given a package with a replacement and an output name,
+returns a graft, and #f otherwise."
+  (match-lambda*
+    (((? package? package) output)
      (let ((replacement (package-replacement package)))
        (and replacement
-            (cached (=> %graft-cache) package system
+            (cached (=> %graft-cache) package (cons output system)
                     (let ((orig (package-derivation store package system
                                                     #:graft? #f))
                           (new  (package-derivation store replacement system
                                                     #:graft? #t)))
                       (graft
                         (origin orig)
-                        (replacement new)))))))
-    (x
-     #f)))
+                        (origin-output output)
+                        (replacement new)
+                        (replacement-output output)))))))))
 
 (define (input-cross-graft store target system)
   "Same as 'input-graft', but for cross-compilation inputs."
-  (match-lambda
-    ((? package? package)
-    (let ((replacement (package-replacement package)))
-      (and replacement
-           (let ((orig (package-cross-derivation store package target system
-                                                 #:graft? #f))
-                 (new  (package-cross-derivation store replacement
-                                                 target system
-                                                 #:graft? #t)))
-             (graft
-               (origin orig)
-               (replacement new))))))
-   (_
-    #f)))
+  (match-lambda*
+    (((? package? package) output)
+     (let ((replacement (package-replacement package)))
+       (and replacement
+            (let ((orig (package-cross-derivation store package target system
+                                                  #:graft? #f))
+                  (new  (package-cross-derivation store replacement
+                                                  target system
+                                                  #:graft? #t)))
+              (graft
+                (origin orig)
+                (origin-output output)
+                (replacement new)
+                (replacement-output output))))))))
 
 (define* (fold-bag-dependencies proc seed bag
                                 #:key (native? #t))
@@ -1107,26 +1250,21 @@ dependencies; otherwise, restrict to target dependencies."
                       (bag-host-inputs bag))))
         bag-host-inputs))
 
-  (define nodes
-    (match (bag-direct-inputs* bag)
-      (((labels things _ ...) ...)
-       things)))
-
-  (let loop ((nodes nodes)
+  (let loop ((inputs (bag-direct-inputs* bag))
              (result seed)
-             (visited (setq)))
-    (match nodes
+             (visited vlist-null))
+    (match inputs
       (()
        result)
-      (((? package? head) . tail)
-       (if (set-contains? visited head)
-           (loop tail result visited)
-           (let ((inputs (bag-direct-inputs* (package->bag head))))
-             (loop (match inputs
-                     (((labels things _ ...) ...)
-                      (append things tail)))
-                   (proc head result)
-                   (set-insert head visited)))))
+      (((label (? package? head) . rest) . tail)
+       (let ((output  (match rest (() "out") ((output) output)))
+             (outputs (vhash-foldq* cons '() head visited)))
+         (if (member output outputs)
+             (loop tail result visited)
+             (let ((inputs (bag-direct-inputs* (package->bag head))))
+               (loop (append inputs tail)
+                     (proc head output result)
+                     (vhash-consq head output visited))))))
       ((head . tail)
        (loop tail result visited)))))
 
@@ -1141,23 +1279,27 @@ to (see 'graft-derivation'.)"
 
   (define native-grafts
     (let ((->graft (input-graft store system)))
-      (fold-bag-dependencies (lambda (package grafts)
-                               (match (->graft package)
-                                 (#f    grafts)
-                                 (graft (cons graft grafts))))
-                             '()
-                             bag)))
+      (parameterize ((%current-system system)
+                     (%current-target-system #f))
+        (fold-bag-dependencies (lambda (package output grafts)
+                                 (match (->graft package output)
+                                   (#f    grafts)
+                                   (graft (cons graft grafts))))
+                               '()
+                               bag))))
 
   (define target-grafts
     (if target
         (let ((->graft (input-cross-graft store target system)))
-          (fold-bag-dependencies (lambda (package grafts)
-                                   (match (->graft package)
-                                     (#f    grafts)
-                                     (graft (cons graft grafts))))
-                                 '()
-                                 bag
-                                 #:native? #f))
+          (parameterize ((%current-system system)
+                         (%current-target-system target))
+            (fold-bag-dependencies (lambda (package output grafts)
+                                     (match (->graft package output)
+                                       (#f    grafts)
+                                       (graft (cons graft grafts))))
+                                   '()
+                                   bag
+                                   #:native? #f)))
         '()))
 
   ;; We can end up with several identical grafts if we stumble upon packages
@@ -1258,7 +1400,7 @@ This is an internal procedure."
                   (()
                    drv)
                   (grafts
-                   (let ((guile (package-derivation store (guile-2.0)
+                   (let ((guile (package-derivation store (guile-for-grafts)
                                                     system #:graft? #f)))
                      ;; TODO: As an optimization, we can simply graft the tip
                      ;; of the derivation graph since 'graft-derivation'
@@ -1284,7 +1426,7 @@ system identifying string)."
                    (graft-derivation store drv grafts
                                      #:system system
                                      #:guile
-                                     (package-derivation store (guile-2.0)
+                                     (package-derivation store (guile-for-grafts)
                                                          system #:graft? #f))))
                 drv))))
 
@@ -1315,7 +1457,11 @@ code of derivations to GUILE, a package object."
   "Return as a monadic value the absolute file name of FILE within the
 OUTPUT directory of PACKAGE.  When FILE is omitted, return the name of the
 OUTPUT directory of PACKAGE.  When TARGET is true, use it as a
-cross-compilation target triplet."
+cross-compilation target triplet.
+
+Note that this procedure does _not_ build PACKAGE.  Thus, the result might or
+might not designate an existing file.  We recommend not using this procedure
+unless you know what you are doing."
   (lambda (store)
     (define compute-derivation
       (if target
@@ -1347,14 +1493,19 @@ cross-compilation target triplet."
                              #:optional (system (%current-system)))
   "Return the derivation corresponding to ORIGIN."
   (match origin
-    (($ <origin> uri method sha256 name (= force ()) #f)
+    (($ <origin> uri method hash name (= force ()) #f)
      ;; No patches, no snippet: this is a fixed-output derivation.
-     (method uri 'sha256 sha256 name #:system system))
-    (($ <origin> uri method sha256 name (= force (patches ...)) snippet
+     (method uri
+             (content-hash-algorithm hash)
+             (content-hash-value hash)
+             name #:system system))
+    (($ <origin> uri method hash name (= force (patches ...)) snippet
         (flags ...) inputs (modules ...) guile-for-build)
      ;; Patches and/or a snippet.
-     (mlet %store-monad ((source (method uri 'sha256 sha256 name
-                                         #:system system))
+     (mlet %store-monad ((source (method uri
+                                         (content-hash-algorithm hash)
+                                         (content-hash-value hash)
+                                         name #:system system))
                          (guile  (package->derivation (or guile-for-build
                                                           (default-guile))
                                                       system

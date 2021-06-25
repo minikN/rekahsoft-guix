@@ -1,6 +1,9 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2018 Jan Nieuwenhuizen <janneke@gnu.org>
+;;; Copyright © 2019, 2020 Mathieu Othacehe <m.othacehe@gmail.com>
+;;; Copyright © 2020 Florian Pelz <pelzflorian@pelzflorian.de>
+;;; Copyright © 2020 Lars-Dominik Braun <ldb@leibniz-psychology.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -42,7 +45,6 @@
   #:use-module (srfi srfi-35)
   #:use-module (srfi srfi-39)
   #:use-module (ice-9 match)
-  #:use-module (ice-9 regex)
   #:use-module (ice-9 vlist)
   #:use-module (ice-9 popen)
   #:use-module (ice-9 threads)
@@ -102,7 +104,11 @@
             add-text-to-store
             add-to-store
             add-file-tree-to-store
+            file-mapping->tree
             binary-file
+            with-build-handler
+            map/accumulate-builds
+            mapm/accumulate-builds
             build-things
             build
             query-failed-paths
@@ -131,6 +137,7 @@
 
             built-in-builders
             references
+            references/cached
             references/substitutes
             references*
             query-path-info*
@@ -159,6 +166,8 @@
             %guile-for-build
             current-system
             set-current-system
+            current-target-system
+            set-current-target
             text-file
             interned-file
             interned-file-tree
@@ -170,6 +179,7 @@
             store-path?
             direct-store-path?
             derivation-path?
+            store-path-base
             store-path-package-name
             store-path-hash-part
             direct-store-path
@@ -547,10 +557,10 @@ for this connection will be pinned.  Return a server object."
                                           (make-bytevector 8192))))
       (write-int %worker-magic-1 port)
       (let ((r (read-int port)))
-        (and (eqv? r %worker-magic-2)
+        (and (= r %worker-magic-2)
              (let ((v (read-int port)))
-               (and (eqv? (protocol-major %protocol-version)
-                          (protocol-major v))
+               (and (= (protocol-major %protocol-version)
+                       (protocol-major v))
                     (begin
                       (write-int %protocol-version port)
                       (when (>= (protocol-minor v) 14)
@@ -615,14 +625,25 @@ connection.  Use with care."
 (define (call-with-store proc)
   "Call PROC with an open store connection."
   (let ((store (open-connection)))
-    (dynamic-wind
-      (const #f)
-      (lambda ()
-        (parameterize ((current-store-protocol-version
-                        (store-connection-version store)))
-          (proc store)))
-      (lambda ()
-        (false-if-exception (close-connection store))))))
+    (define (thunk)
+      (parameterize ((current-store-protocol-version
+                      (store-connection-version store)))
+        (let ((result (proc store)))
+          (close-connection store)
+          result)))
+
+    (cond-expand
+      (guile-3
+       (with-exception-handler (lambda (exception)
+                                 (close-connection store)
+                                 (raise-exception exception))
+         thunk))
+      (else                                       ;Guile 2.2
+       (catch #t
+         thunk
+         (lambda (key . args)
+           (close-connection store)
+           (apply throw key args)))))))
 
 (define-syntax-rule (with-store store exp ...)
   "Bind STORE to an open connection to the store and evaluate EXPs;
@@ -748,6 +769,14 @@ encoding conversion errors."
            (cut string-append "http://" <>))
        '("ci.guix.gnu.org")))
 
+(define (current-user-name)
+  "Return the name of the calling user."
+  (catch #t
+    (lambda ()
+      (passwd:name (getpwuid (getuid))))
+    (lambda _
+      (getenv "USER"))))
+
 (define* (set-build-options server
                             #:key keep-failed? keep-going? fallback?
                             (verbosity 0)
@@ -755,10 +784,12 @@ encoding conversion errors."
                             max-build-jobs
                             timeout
                             max-silent-time
-                            (use-build-hook? #t)
+                            (offload? #t)
+                            (use-build-hook? *unspecified*) ;deprecated
                             (build-verbosity 0)
                             (log-type 0)
                             (print-build-trace #t)
+                            (user-name (current-user-name))
 
                             ;; When true, provide machine-readable "build
                             ;; traces" for use by (guix status).  Old clients
@@ -791,15 +822,19 @@ encoding conversion errors."
                             (locale (false-if-exception (setlocale LC_ALL))))
   ;; Must be called after `open-connection'.
 
-  (define socket
-    (store-connection-socket server))
+  (define buffered
+    (store-connection-output-port server))
+
+  (unless (unspecified? use-build-hook?)
+    (warn-about-deprecation #:use-build-hook? #f
+                            #:replacement #:offload?))
 
   (let-syntax ((send (syntax-rules ()
                        ((_ (type option) ...)
                         (begin
-                          (write-arg type option socket)
+                          (write-arg type option buffered)
                           ...)))))
-    (write-int (operation-id set-options) socket)
+    (write-int (operation-id set-options) buffered)
     (send (boolean keep-failed?) (boolean keep-going?)
           (boolean fallback?) (integer verbosity))
     (when (< (store-connection-minor-version server) #x61)
@@ -807,7 +842,9 @@ encoding conversion errors."
             (max-silent-time (or max-silent-time 3600)))
         (send (integer max-build-jobs) (integer max-silent-time))))
     (when (>= (store-connection-minor-version server) 2)
-      (send (boolean use-build-hook?)))
+      (send (boolean (if (unspecified? use-build-hook?)
+                         offload?
+                         use-build-hook?))))
     (when (>= (store-connection-minor-version server) 4)
       (send (integer build-verbosity) (integer log-type)
             (boolean print-build-trace)))
@@ -849,6 +886,9 @@ encoding conversion errors."
                            `(("build-repeat"
                               . ,(number->string (max 0 (1- rounds)))))
                            '())
+                     ,@(if user-name
+                           `(("user-name" . ,user-name))
+                           '())
                      ,@(if terminal-columns
                            `(("terminal-columns"
                               . ,(number->string terminal-columns)))
@@ -857,6 +897,7 @@ encoding conversion errors."
                            `(("locale" . ,locale))
                            '()))))
         (send (string-pairs pairs))))
+    (write-buffered-output server)
     (let loop ((done? (process-stderr server)))
       (or done? (process-stderr server)))))
 
@@ -1069,13 +1110,14 @@ path."
            ;; We don't use the 'operation' macro so we can pass SELECT? to
            ;; 'write-file'.
            (record-operation 'add-to-store)
-           (let ((port (store-connection-socket server)))
-             (write-int (operation-id add-to-store) port)
-             (write-string basename port)
-             (write-int 1 port)                   ;obsolete, must be #t
-             (write-int (if recursive? 1 0) port)
-             (write-string hash-algo port)
-             (write-file file-name port #:select? select?)
+           (let ((port (store-connection-socket server))
+                 (buffered (store-connection-output-port server)))
+             (write-int (operation-id add-to-store) buffered)
+             (write-string basename buffered)
+             (write-int 1 buffered)                   ;obsolete, must be #t
+             (write-int (if recursive? 1 0) buffered)
+             (write-string hash-algo buffered)
+             (write-file file-name buffered #:select? select?)
              (write-buffered-output server)
              (let loop ((done? (process-stderr server)))
                (or done? (loop (process-stderr server))))
@@ -1181,13 +1223,14 @@ an arbitrary directory layout in the store without creating a derivation."
         ;; We don't use the 'operation' macro so we can use 'write-file-tree'
         ;; instead of 'write-file'.
         (record-operation 'add-to-store/tree)
-        (let ((port (store-connection-socket server)))
-          (write-int (operation-id add-to-store) port)
-          (write-string basename port)
-          (write-int 1 port)                      ;obsolete, must be #t
-          (write-int (if recursive? 1 0) port)
-          (write-string hash-algo port)
-          (write-file-tree basename port
+        (let ((port (store-connection-socket server))
+              (buffered (store-connection-output-port server)))
+          (write-int (operation-id add-to-store) buffered)
+          (write-string basename buffered)
+          (write-int 1 buffered)                      ;obsolete, must be #t
+          (write-int (if recursive? 1 0) buffered)
+          (write-string hash-algo buffered)
+          (write-file-tree basename buffered
                            #:file-type+size file-type+size
                            #:file-port file-port
                            #:symlink-target symlink-target
@@ -1198,6 +1241,127 @@ an arbitrary directory layout in the store without creating a derivation."
           (let ((result (read-store-path port)))
             (hash-set! cache tree result)
             result)))))
+
+(define (file-mapping->tree mapping)
+  "Convert MAPPING, an alist like:
+
+  ((\"guix/build/utils.scm\" . \"…/utils.scm\"))
+
+to a tree suitable for 'add-file-tree-to-store' and 'interned-file-tree'."
+  (let ((mapping (map (match-lambda
+                        ((destination . source)
+                         (cons (string-tokenize destination %not-slash)
+                               source)))
+                      mapping)))
+    (fold (lambda (pair result)
+            (match pair
+              ((destination . source)
+               (let loop ((destination destination)
+                          (result result))
+                 (match destination
+                   ((file)
+                    (let* ((mode (stat:mode (stat source)))
+                           (type (if (zero? (logand mode #o100))
+                                     'regular
+                                     'executable)))
+                      (alist-cons file
+                                  `(,type (file ,source))
+                                  result)))
+                   ((file rest ...)
+                    (let ((directory (assoc-ref result file)))
+                      (alist-cons file
+                                  `(directory
+                                    ,@(loop rest
+                                            (match directory
+                                              (('directory . entries) entries)
+                                              (#f '()))))
+                                  (if directory
+                                      (alist-delete file result)
+                                      result)))))))))
+          '()
+          mapping)))
+
+(define current-build-prompt
+  ;; When true, this is the prompt to abort to when 'build-things' is called.
+  (make-parameter #f))
+
+(define (call-with-build-handler handler thunk)
+  "Register HANDLER as a \"build handler\" and invoke THUNK."
+  (define tag
+    (make-prompt-tag "build handler"))
+
+  (parameterize ((current-build-prompt tag))
+    (call-with-prompt tag
+      thunk
+      (lambda (k . args)
+        ;; Since HANDLER may call K, which in turn may call 'build-things'
+        ;; again, reinstate a prompt (thus, it's not a tail call.)
+        (call-with-build-handler handler
+                                 (lambda ()
+                                   (apply handler k args)))))))
+
+(define (invoke-build-handler store things mode)
+  "Abort to 'current-build-prompt' if it is set."
+  (or (not (current-build-prompt))
+      (abort-to-prompt (current-build-prompt) store things mode)))
+
+(define-syntax-rule (with-build-handler handler exp ...)
+  "Register HANDLER as a \"build handler\" and invoke THUNK.  When
+'build-things' is called within the dynamic extent of the call to THUNK,
+HANDLER is invoked like so:
+
+  (HANDLER CONTINUE STORE THINGS MODE)
+
+where CONTINUE is the continuation, and the remaining arguments are those that
+were passed to 'build-things'.
+
+Build handlers are useful to announce a build plan with 'show-what-to-build'
+and to implement dry runs (by not invoking CONTINUE) in a way that gracefully
+deals with \"dynamic dependencies\" such as grafts---derivations that depend
+on the build output of a previous derivation."
+  (call-with-build-handler handler (lambda () exp ...)))
+
+;; Unresolved dynamic dependency.
+(define-record-type <unresolved>
+  (unresolved things continuation)
+  unresolved?
+  (things       unresolved-things)
+  (continuation unresolved-continuation))
+
+(define (build-accumulator continue store things mode)
+  "This build handler accumulates THINGS and returns an <unresolved> object."
+  (if (= mode (build-mode normal))
+      (unresolved things continue)
+      (continue #t)))
+
+(define (map/accumulate-builds store proc lst)
+  "Apply PROC over each element of LST, accumulating 'build-things' calls and
+coalescing them into a single call."
+  (define result
+    (map (lambda (obj)
+           (with-build-handler build-accumulator
+             (proc obj)))
+         lst))
+
+  (match (append-map (lambda (obj)
+                       (if (unresolved? obj)
+                           (unresolved-things obj)
+                           '()))
+                     result)
+    (()
+     result)
+    (to-build
+     ;; We've accumulated things TO-BUILD.  Actually build them and resume the
+     ;; corresponding continuations.
+     (build-things store (delete-duplicates to-build))
+     (map/accumulate-builds store
+                            (lambda (obj)
+                              (if (unresolved? obj)
+                                  ;; Pass #f because 'build-things' is now
+                                  ;; unnecessary.
+                                  ((unresolved-continuation obj) #f)
+                                  obj))
+                            result))))
 
 (define build-things
   (let ((build (operation (build-things (string-list things)
@@ -1213,20 +1377,24 @@ outputs, and return when the worker is done building them.  Elements of THINGS
 that are not derivations can only be substituted and not built locally.
 Alternately, an element of THING can be a derivation/output name pair, in
 which case the daemon will attempt to substitute just the requested output of
-the derivation.  Return #t on success."
-      (let ((things (map (match-lambda
-                           ((drv . output) (string-append drv "!" output))
-                           (thing thing))
-                         things)))
-        (parameterize ((current-store-protocol-version
-                        (store-connection-version store)))
-          (if (>= (store-connection-minor-version store) 15)
-              (build store things mode)
-              (if (= mode (build-mode normal))
-                  (build/old store things)
-                  (raise (condition (&store-protocol-error
-                                     (message "unsupported build mode")
-                                     (status  1)))))))))))
+the derivation.  Return #t on success.
+
+When a handler is installed with 'with-build-handler', it is called any time
+'build-things' is called."
+      (or (not (invoke-build-handler store things mode))
+          (let ((things (map (match-lambda
+                               ((drv . output) (string-append drv "!" output))
+                               (thing thing))
+                             things)))
+            (parameterize ((current-store-protocol-version
+                            (store-connection-version store)))
+              (if (>= (store-connection-minor-version store) 15)
+                  (build store things mode)
+                  (if (= mode (build-mode normal))
+                      (build/old store things)
+                      (raise (condition (&store-protocol-error
+                                         (message "unsupported build mode")
+                                         (status  1))))))))))))
 
 (define-operation (add-temp-root (store-path path))
   "Make PATH a temporary root for the duration of the current session.
@@ -1280,6 +1448,13 @@ error if there is no such root."
   ;; 'references/substitutes' many times with the same arguments.  Ideally we
   ;; would use a cache associated with the daemon connection instead (XXX).
   (make-hash-table 100))
+
+(define (references/cached store item)
+  "Like 'references', but cache results."
+  (or (hash-ref %reference-cache item)
+      (let ((references (references store item)))
+        (hash-set! %reference-cache item references)
+        references)))
 
 (define (references/substitutes store items)
   "Return the list of list of references of ITEMS; the result has the same
@@ -1473,17 +1648,19 @@ the list of store paths to delete.  IGNORE-LIVENESS? should always be
 #f.  MIN-FREED is the minimum amount of disk space to be freed, in
 bytes, before the GC can stop.  Return the list of store paths delete,
 and the number of bytes freed."
-  (let ((s (store-connection-socket server)))
-    (write-int (operation-id collect-garbage) s)
-    (write-int action s)
-    (write-store-path-list to-delete s)
-    (write-arg boolean #f s)                      ; ignore-liveness?
-    (write-long-long min-freed s)
-    (write-int 0 s)                               ; obsolete
+  (let ((s (store-connection-socket server))
+        (buffered (store-connection-output-port server)))
+    (write-int (operation-id collect-garbage) buffered)
+    (write-int action buffered)
+    (write-store-path-list to-delete buffered)
+    (write-arg boolean #f buffered)                      ; ignore-liveness?
+    (write-long-long min-freed buffered)
+    (write-int 0 buffered)                               ; obsolete
     (when (>= (store-connection-minor-version server) 5)
       ;; Obsolete `use-atime' and `max-atime' parameters.
-      (write-int 0 s)
-      (write-int 0 s))
+      (write-int 0 buffered)
+      (write-int 0 buffered))
+    (write-buffered-output server)
 
     ;; Loop until the server is done sending error output.
     (let loop ((done? (process-stderr server)))
@@ -1540,10 +1717,12 @@ is raised if the set of paths read from PORT is not signed (as per
 
 (define* (export-path server path port #:key (sign? #t))
   "Export PATH to PORT.  When SIGN? is true, sign it."
-  (let ((s (store-connection-socket server)))
-    (write-int (operation-id export-path) s)
-    (write-store-path path s)
-    (write-arg boolean sign? s)
+  (let ((s (store-connection-socket server))
+        (buffered (store-connection-output-port server)))
+    (write-int (operation-id export-path) buffered)
+    (write-store-path path buffered)
+    (write-arg boolean sign? buffered)
+    (write-buffered-output server)
     (let loop ((done? (process-stderr server port)))
       (or done? (loop (process-stderr server port))))
     (= 1 (read-int s))))
@@ -1600,10 +1779,11 @@ This makes sense only when the daemon was started with '--cache-failures'."
 ;; from %STATE-MONAD.
 (template-directory instantiations %store-monad)
 
-(define* (cache-object-mapping object keys result)
+(define* (cache-object-mapping object keys result
+                               #:key (vhash-cons vhash-consq))
   "Augment the store's object cache with a mapping from OBJECT/KEYS to RESULT.
 KEYS is a list of additional keys to match against, for instance a (SYSTEM
-TARGET) tuple.
+TARGET) tuple.  Use VHASH-CONS to insert OBJECT into the cache.
 
 OBJECT is typically a high-level object such as a <package> or an <origin>,
 and RESULT is typically its derivation."
@@ -1611,8 +1791,8 @@ and RESULT is typically its derivation."
     (values result
             (store-connection
              (inherit store)
-             (object-cache (vhash-consq object (cons result keys)
-                                        (store-connection-object-cache store)))))))
+             (object-cache (vhash-cons object (cons result keys)
+                                       (store-connection-object-cache store)))))))
 
 (define record-cache-lookup!
   (if (profiled? "object-cache")
@@ -1641,11 +1821,12 @@ and RESULT is typically its derivation."
       (lambda (x y)
         #t)))
 
-(define* (lookup-cached-object object #:optional (keys '()))
+(define* (lookup-cached-object object #:optional (keys '())
+                               #:key (vhash-fold* vhash-foldq*))
   "Return the cached object in the store connection corresponding to OBJECT
-and KEYS.  KEYS is a list of additional keys to match against, and which are
-compared with 'equal?'.  Return #f on failure and the cached result
-otherwise."
+and KEYS; use VHASH-FOLD* to look for OBJECT in the cache.  KEYS is a list of
+additional keys to match against, and which are compared with 'equal?'.
+Return #f on failure and the cached result otherwise."
   (lambda (store)
     (let* ((cache (store-connection-object-cache store))
 
@@ -1653,33 +1834,50 @@ otherwise."
            ;; the whole vlist chain and significantly reduces the number of
            ;; 'hashq' calls.
            (value (let/ec return
-                    (vhash-foldq* (lambda (item result)
-                                    (match item
-                                      ((value . keys*)
-                                       (if (equal? keys keys*)
-                                           (return value)
-                                           result))))
-                                  #f object
-                                  cache))))
+                    (vhash-fold* (lambda (item result)
+                                   (match item
+                                     ((value . keys*)
+                                      (if (equal? keys keys*)
+                                          (return value)
+                                          result))))
+                                 #f object
+                                 cache))))
       (record-cache-lookup! value cache)
       (values value store))))
 
-(define* (%mcached mthunk object #:optional (keys '()))
+(define* (%mcached mthunk object #:optional (keys '())
+                   #:key
+                   (vhash-cons vhash-consq)
+                   (vhash-fold* vhash-foldq*))
   "Bind the monadic value returned by MTHUNK, which supposedly corresponds to
-OBJECT/KEYS, or return its cached value."
-  (mlet %store-monad ((cached (lookup-cached-object object keys)))
+OBJECT/KEYS, or return its cached value.  Use VHASH-CONS to insert OBJECT into
+the cache, and VHASH-FOLD* to look it up."
+  (mlet %store-monad ((cached (lookup-cached-object object keys
+                                                    #:vhash-fold* vhash-fold*)))
     (if cached
         (return cached)
         (>>= (mthunk)
              (lambda (result)
-               (cache-object-mapping object keys result))))))
+               (cache-object-mapping object keys result
+                                     #:vhash-cons vhash-cons))))))
 
-(define-syntax-rule (mcached mvalue object keys ...)
-  "Run MVALUE, which corresponds to OBJECT/KEYS, and cache it; or return the
+(define-syntax mcached
+  (syntax-rules (eq? equal?)
+    "Run MVALUE, which corresponds to OBJECT/KEYS, and cache it; or return the
 value associated with OBJECT/KEYS in the store's object cache if there is
 one."
-  (%mcached (lambda () mvalue)
-            object (list keys ...)))
+    ((_ eq? mvalue object keys ...)
+     (%mcached (lambda () mvalue)
+               object (list keys ...)
+               #:vhash-cons vhash-consq
+               #:vhash-fold* vhash-foldq*))
+    ((_ equal? mvalue object keys ...)
+     (%mcached (lambda () mvalue)
+               object (list keys ...)
+               #:vhash-cons vhash-cons
+               #:vhash-fold* vhash-fold*))
+    ((_ mvalue object keys ...)
+     (mcached eq? mvalue object keys ...))))
 
 (define (preserve-documentation original proc)
   "Return PROC with documentation taken from ORIGINAL."
@@ -1701,6 +1899,20 @@ taking the store as its first argument."
   (preserve-documentation proc
                           (lambda (store . args)
                             (run-with-store store (apply proc args)))))
+
+(define (mapm/accumulate-builds mproc lst)
+  "Like 'mapm' in %STORE-MONAD, but accumulate 'build-things' calls and
+coalesce them into a single call."
+  (lambda (store)
+    (values (map/accumulate-builds store
+                                   (lambda (obj)
+                                     (run-with-store store
+                                       (mproc obj)
+                                       #:system (%current-system)
+                                       #:target (%current-target-system)))
+                                   lst)
+            store)))
+
 
 ;;
 ;; Store monad operators.
@@ -1777,6 +1989,16 @@ the store."
   ;; Set the %CURRENT-SYSTEM fluid at bind time.
   (lambda (state)
     (values (%current-system system) state)))
+
+(define-inlinable (current-target-system)
+  ;; Consult the %CURRENT-TARGET-SYSTEM fluid at bind time.
+  (lambda (state)
+    (values (%current-target-system) state)))
+
+(define-inlinable (set-current-target target)
+  ;; Set the %CURRENT-TARGET-SYSTEM fluid at bind time.
+  (lambda (state)
+    (values (%current-target-system target) state)))
 
 (define %guile-for-build
   ;; The derivation of the Guile to be used within the build environment,
@@ -1898,29 +2120,26 @@ valid inputs."
   "Return #t if PATH is a derivation path."
   (and (store-path? path) (string-suffix? ".drv" path)))
 
-(define store-regexp*
-  ;; The substituter makes repeated calls to 'store-path-hash-part', hence
-  ;; this optimization.
-  (mlambda (store)
-    "Return a regexp matching a file in STORE."
-    (make-regexp (string-append "^" (regexp-quote store)
-                                "/([0-9a-df-np-sv-z]{32})-([^/]+)$"))))
+(define (store-path-base path)
+  "Return the base path of a path in the store."
+  (and (string-prefix? (%store-prefix) path)
+       (let ((base (string-drop path (+ 1 (string-length (%store-prefix))))))
+         (and (> (string-length base) 33)
+              (not (string-index base #\/))
+              base))))
 
 (define (store-path-package-name path)
   "Return the package name part of PATH, a file name in the store."
-  (let ((path-rx (store-regexp* (%store-prefix))))
-    (and=> (regexp-exec path-rx path)
-           (cut match:substring <> 2))))
+  (let ((base (store-path-base path)))
+    (string-drop base (+ 32 1)))) ;32 hash part + 1 hyphen
 
 (define (store-path-hash-part path)
   "Return the hash part of PATH as a base32 string, or #f if PATH is not a
 syntactically valid store path."
-  (and (string-prefix? (%store-prefix) path)
-       (let ((base (string-drop path (+ 1 (string-length (%store-prefix))))))
-         (and (> (string-length base) 33)
-              (let ((hash (string-take base 32)))
-                (and (string-every %nix-base32-charset hash)
-                     hash))))))
+  (let* ((base (store-path-base path))
+         (hash (string-take base 32)))
+    (and (string-every %nix-base32-charset hash)
+         hash)))
 
 (define (derivation-log-file drv)
   "Return the build log file for DRV, a derivation file name, or #f if it

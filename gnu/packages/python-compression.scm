@@ -1,9 +1,11 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2017, 2018 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2017, 2019 Ricardo Wurmus <rekado@elephly.net>
-;;; Copyright © 2017 ng0 <ng0@n0.is>
+;;; Copyright © 2017 Nikita <nikita@n0.is>
 ;;; Copyright © 2017 Julien Lepiller <julien@lepiller.eu>
-;;; Copyright © 2018, 2019 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2018, 2019, 2020 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2020 Nicolas Goaziou <mail@nicolasgoaziou.fr>
+;;; Copyright © 2020 Marius Bakke <mbakke@fastmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -31,6 +33,7 @@
   #:use-module (gnu packages compression)
   #:use-module (gnu packages check)
   #:use-module (gnu packages maths)
+  #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages python)
   #:use-module (gnu packages python-xyz)
   #:use-module (gnu packages sphinx))
@@ -83,11 +86,20 @@ Python strings.")
        (uri (pypi-uri "lz4" version))
        (sha256
         (base32
-         "0ghv1xbaq693kgww1x9c22bplz479ls9szjsaa4ig778ls834hm0"))))
+         "0ghv1xbaq693kgww1x9c22bplz479ls9szjsaa4ig778ls834hm0"))
+       (modules '((guix build utils)))
+       (snippet
+        '(begin
+           ;; Remove bundled copy of lz4.
+           (delete-file-recursively "lz4libs")
+           #t))))
     (build-system python-build-system)
     (native-inputs
-     `(("python-nose" ,python-nose)
+     `(("pkg-config" ,pkg-config)
+       ("python-nose" ,python-nose)
        ("python-setuptools-scm" ,python-setuptools-scm)))
+    (inputs
+     `(("lz4" ,lz4)))
     (home-page "https://github.com/python-lz4/python-lz4")
     (synopsis "LZ4 bindings for Python")
     (description
@@ -120,6 +132,26 @@ the LZ4 frame format.")
 
 (define-public python2-lzstring
   (package-with-python2 python-lzstring))
+
+(define-public python-brotli
+  (package
+    (name "python-brotli")
+    (version "1.0.7")
+    (source
+      (origin
+        (method url-fetch)
+        (uri (pypi-uri "Brotli" version ".zip"))
+        (sha256
+         (base32
+          "19x5dqxckb62n37mpnczp21rfxqvgpm0ki5ds8ac65zx8hbxqf05"))))
+    (build-system python-build-system)
+    (native-inputs
+     `(("unzip" ,unzip)))
+    (home-page "https://github.com/google/brotli")
+    (synopsis "Python bindings for the Brotli compression library")
+    (description
+     "This package provides python bindings for the Brotli compression library.")
+    (license license:asl2.0)))
 
 (define-public bitshuffle
   (package
@@ -210,27 +242,66 @@ install: libbitshuffle.so
 (define-public python-zipp
   (package
     (name "python-zipp")
-    (version "0.5.1")
+    (version "1.0.0")
     (source
      (origin
        (method url-fetch)
        (uri (pypi-uri "zipp" version))
        (sha256
         (base32
-         "1hsv4zwy1pwnbrr63wjjkpwrmnk36ngbkkqw01bj5hcwh1z3m56a"))))
+         "0v3qayhqv7vyzydpydwcp51bqciw8p2ajddw68x5k8zppc0vx3yk"))))
     (build-system python-build-system)
     (propagated-inputs
-     `(("python-contextlib2" ,python-contextlib2)
-       ("python-pathlib2" ,python-pathlib2)
-       ("python-rst.linker" ,python-rst.linker)))
+     `(("python-more-itertools" ,python-more-itertools)))
     (native-inputs
-     `(("python-setuptools-scm" ,python-setuptools-scm)
-       ("python-sphinx" ,python-sphinx)
-       ("python-unittest2" ,python-unittest2)))
+     `(("python-setuptools-scm" ,python-setuptools-scm)))
     (home-page "https://github.com/jaraco/zipp")
     (synopsis
      "Backport of pathlib-compatible object wrapper for zip files")
     (description
      "This package provides a @code{pathlib}-compatible @code{Zipfile} object
 wrapper.  It provides a backport of the @code{Path} object.")
+    (properties `((python2-variant . ,(delay python2-zipp))))
     (license license:expat)))
+
+(define-public python2-zipp
+  (let ((base (package-with-python2 (strip-python2-variant python-zipp))))
+    (package/inherit
+     base
+     (native-inputs
+      `(("python-contextlib2" ,python2-contextlib2)
+        ("python-pathlib2" ,python2-pathlib2)
+        ("python-unittest2" ,python2-unittest2)
+        ,@(package-native-inputs base))))))
+
+;; This package is used to bootstrap pytest, via importlib-metadata.
+(define-public python2-zipp-bootstrap
+  (hidden-package
+   (package/inherit
+    python2-zipp
+    (name "python2-zipp-bootstrap")
+    (arguments
+     `(#:tests? #f
+       ,@(package-arguments python2-zipp)))
+    (native-inputs
+     `(("python-setuptools-scm" ,python2-setuptools-scm))))))
+
+(define-public python-zstandard
+  (package
+    (name "python-zstandard")
+    (version "0.13.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "zstandard" version))
+       (sha256
+        (base32 "0q9msi00s93iqm8vzd839r7yc51gz54z90h5bckqyjdxa6vxijz5"))))
+    (build-system python-build-system)
+    (native-inputs
+     `(("python-hypothesis" ,python-hypothesis)))
+    (home-page "https://github.com/indygreg/python-zstandard")
+    (synopsis "Zstandard bindings for Python")
+    (description "This project provides Python bindings for interfacing with
+the Zstandard compression library.  A C extension and CFFI interface are
+provided.")
+    (license license:bsd-3)))

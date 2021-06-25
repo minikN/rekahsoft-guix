@@ -1,6 +1,7 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2017 Julien Lepiller <julien@lepiller.eu>
 ;;; Copyright © 2018 Oleg Pykhalov <go.wigust@gmail.com>
+;;; Copyright © 2020 Pierre Langlois <pierre.langlois@gmx.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -44,6 +45,9 @@
             define-zone-entries
             zone-file
             zone-entry
+
+            knot-resolver-service-type
+            knot-resolver-configuration
 
             dnsmasq-service-type
             dnsmasq-configuration
@@ -635,7 +639,94 @@
                         (service-extension activation-service-type
                                            knot-activation)
                         (service-extension account-service-type
-                                           (const %knot-accounts))))))
+                                           (const %knot-accounts))))
+                (description
+                 "Run @uref{https://www.knot-dns.cz/, Knot}, an authoritative
+name server for the @acronym{DNS, Domain Name System}.")))
+
+
+;;;
+;;; Knot Resolver.
+;;;
+
+(define-record-type* <knot-resolver-configuration>
+  knot-resolver-configuration
+  make-knot-resolver-configuration
+  knot-resolver-configuration?
+  (package knot-resolver-configuration-package
+           (default knot-resolver))
+  (kresd-config-file knot-resolver-kresd-config-file
+                     (default %kresd.conf))
+  (garbage-collection-interval knot-resolver-garbage-collection-interval
+                               (default 1000)))
+
+(define %kresd.conf
+  (plain-file "kresd.conf" "-- -*- mode: lua -*-
+trust_anchors.add_file('/var/cache/knot-resolver/root.keys')
+net = { '127.0.0.1', '::1' }
+user('knot-resolver', 'knot-resolver')
+modules = { 'hints > iterate', 'stats', 'predict' }
+cache.size = 100 * MB
+"))
+
+(define %knot-resolver-accounts
+  (list (user-group
+         (name "knot-resolver")
+         (system? #t))
+        (user-account
+         (name "knot-resolver")
+         (group "knot-resolver")
+         (system? #t)
+         (home-directory "/var/cache/knot-resolver")
+         (shell (file-append shadow "/sbin/nologin")))))
+
+(define (knot-resolver-activation config)
+  #~(begin
+      (use-modules (guix build utils))
+      (let ((rundir "/var/cache/knot-resolver")
+            (owner (getpwnam "knot-resolver")))
+        (mkdir-p rundir)
+        (chown rundir (passwd:uid owner) (passwd:gid owner)))))
+
+(define knot-resolver-shepherd-services
+  (match-lambda
+    (($ <knot-resolver-configuration> package
+                                      kresd-config-file
+                                      garbage-collection-interval)
+     (list
+      (shepherd-service
+       (provision '(kresd))
+       (requirement '(networking))
+       (documentation "Run the Knot Resolver daemon.")
+       (start #~(make-forkexec-constructor
+                 '(#$(file-append package "/sbin/kresd")
+                   "-c" #$kresd-config-file "-f" "1"
+                   "/var/cache/knot-resolver")))
+       (stop #~(make-kill-destructor)))
+      (shepherd-service
+       (provision '(kres-cache-gc))
+       (requirement '(user-processes))
+       (documentation "Run the Knot Resolver Garbage Collector daemon.")
+       (start #~(make-forkexec-constructor
+                 '(#$(file-append package "/sbin/kres-cache-gc")
+                   "-d" #$(number->string garbage-collection-interval)
+                   "-c" "/var/cache/knot-resolver")
+                 #:user "knot-resolver"
+                 #:group "knot-resolver"))
+       (stop #~(make-kill-destructor)))))))
+
+(define knot-resolver-service-type
+  (service-type
+   (name 'knot-resolver)
+   (extensions
+    (list (service-extension shepherd-root-service-type
+                             knot-resolver-shepherd-services)
+          (service-extension activation-service-type
+                             knot-resolver-activation)
+          (service-extension account-service-type
+                             (const %knot-resolver-accounts))))
+   (default-value (knot-resolver-configuration))
+   (description "Run the Knot DNS Resolver.")))
 
 
 ;;;
@@ -661,6 +752,8 @@
                     (default #f))       ;boolean
   (servers          dnsmasq-configuration-servers
                     (default '()))      ;list of string
+  (addresses        dnsmasq-configuration-addresses
+                    (default '()))      ;list of string
   (cache-size       dnsmasq-configuration-cache-size
                     (default 150))      ;integer
   (negative-cache?  dnsmasq-configuration-negative-cache?
@@ -672,7 +765,7 @@
                                 no-hosts?
                                 port local-service? listen-addresses
                                 resolv-file no-resolv? servers
-                                cache-size negative-cache?)
+                                addresses cache-size negative-cache?)
      (shepherd-service
       (provision '(dnsmasq))
       (requirement '(networking))
@@ -696,6 +789,8 @@
                          '())
                   #$@(map (cut format #f "--server=~a" <>)
                           servers)
+                  #$@(map (cut format #f "--address=~a" <>)
+                          addresses)
                   #$(format #f "--cache-size=~a" cache-size)
                   #$@(if negative-cache?
                          '()

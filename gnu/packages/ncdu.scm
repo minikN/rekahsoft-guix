@@ -1,6 +1,6 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2014 John Darrington <jmd@gnu.org>
-;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -28,20 +28,21 @@
 (define-public ncdu
   (package
     (name "ncdu")
-    (version "1.14")
+    (version "1.15.1")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://dev.yorhel.nl/download/ncdu-"
                                   version ".tar.gz"))
               (sha256
                (base32
-                "0i4cap2z3037xx2rdzhrlazl2igk3xy4ncddp9j7xqi1mcx7i566"))))
+                "1c1zxalm5asyhn4p1hd51h7khw17515gbqmvdz63kc8xpx6xqbdh"))))
     (build-system gnu-build-system)
     (inputs `(("ncurses" ,ncurses)))
-    (synopsis "Ncurses based disk usage analyzer")
-    (description "A disk usage analyzer with an ncurses interface, aimed to be
+    (synopsis "Ncurses-based disk usage analyzer")
+    (description
+     "Ncdu is a disk usage analyzer with an ncurses interface, aimed to be
 run on a remote server where you don't have an entire graphical setup, but have
-to do with a simple SSH connection. ncdu aims to be fast, simple and easy to
+to do with a simple SSH connection.  ncdu aims to be fast, simple and easy to
 use, and should be able to run in any minimal POSIX-like environment with
 ncurses installed.")
     (license (x11-style

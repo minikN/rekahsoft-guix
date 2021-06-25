@@ -1,5 +1,5 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2013, 2014, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2013, 2014, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2015 Taylan Ulrich Bayırlı/Kammer <taylanbayirli@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
@@ -29,9 +29,7 @@
   #:use-module (guix build utils)
   #:use-module (language tree-il optimize)
   #:use-module (language cps optimize)
-  #:export (%default-optimizations
-            %lightweight-optimizations
-            compile-files))
+  #:export (compile-files))
 
 ;;; Commentary:
 ;;;
@@ -39,25 +37,32 @@
 ;;;
 ;;; Code:
 
-(define %default-optimizations
-  ;; Default optimization options (equivalent to -O2 on Guile 2.2).
-  (append (if (defined? 'tree-il-default-optimization-options)
-              (tree-il-default-optimization-options) ;Guile 2.2
-              (tree-il-optimizations))               ;Guile 3
-          (if (defined? 'cps-default-optimization-options)
-              (cps-default-optimization-options)  ;Guile 2.2
-              (cps-optimizations))))              ;Guile 3
+(define optimizations-for-level
+  (or (and=> (false-if-exception
+              (resolve-interface '(system base optimize)))
+             (lambda (iface)
+               (module-ref iface 'optimizations-for-level))) ;Guile 3.0
+      (let ()                                                ;Guile 2.2
+        (define %default-optimizations
+          ;; Default optimization options (equivalent to -O2 on Guile 2.2).
+          (append (tree-il-default-optimization-options)
+                  (cps-default-optimization-options)))
 
-(define %lightweight-optimizations
-  ;; Lightweight optimizations (like -O0, but with partial evaluation).
-  (let loop ((opts %default-optimizations)
-             (result '()))
-    (match opts
-      (() (reverse result))
-      ((#:partial-eval? _ rest ...)
-       (loop rest `(#t #:partial-eval? ,@result)))
-      ((kw _ rest ...)
-       (loop rest `(#f ,kw ,@result))))))
+        (define %lightweight-optimizations
+          ;; Lightweight optimizations (like -O0, but with partial evaluation).
+          (let loop ((opts %default-optimizations)
+                     (result '()))
+            (match opts
+              (() (reverse result))
+              ((#:partial-eval? _ rest ...)
+               (loop rest `(#t #:partial-eval? ,@result)))
+              ((kw _ rest ...)
+               (loop rest `(#f ,kw ,@result))))))
+
+        (lambda (level)
+          (if (<= level 1)
+              %lightweight-optimizations
+              %default-optimizations)))))
 
 (define (supported-warning-type? type)
   "Return true if TYPE, a symbol, denotes a supported warning type."
@@ -79,9 +84,32 @@
 
 (define (optimization-options file)
   "Return the default set of optimizations options for FILE."
-  (if (string-contains file "gnu/packages/")
-      %lightweight-optimizations                  ;build faster
-      '()))
+  (define (strip-option option lst)
+    (let loop ((lst lst)
+               (result '()))
+      (match lst
+        (()
+         (reverse result))
+        ((kw value rest ...)
+         (if (eq? kw option)
+             (append (reverse result) rest)
+             (loop rest (cons* value kw result)))))))
+
+  (define (override-option option value lst)
+    `(,option ,value ,@(strip-option option lst)))
+
+  (cond ((or (string-contains file "gnu/packages/")
+             (string-contains file "gnu/tests/"))
+         ;; Use '-O1' to have partial evaluation and primitive inlining so we
+         ;; can honor the "macro writer's bill of rights".
+         (optimizations-for-level 1))
+        ((string-contains file "gnu/services/")
+         ;; '-O2 -Ono-letrectify' compiles about ~20% faster than '-O2' for
+         ;; large files like gnu/services/mail.scm.
+         (override-option #:letrectify? #f
+                          (optimizations-for-level 2)))
+        (else
+         (optimizations-for-level 3))))
 
 (define (scm->go file)
   "Strip the \".scm\" suffix from FILE, and append \".go\"."
@@ -169,47 +197,46 @@ BUILD-DIRECTORY, using up to WORKERS parallel workers.  The resulting object
 files are for HOST, a GNU triplet such as \"x86_64-linux-gnu\"."
   (define progress-lock (make-mutex))
   (define total (length files))
-  (define completed 0)
+  (define progress 0)
 
   (define (build file)
     (with-mutex progress-lock
-      (report-compilation file total completed))
+      (report-compilation file total progress)
+      (set! progress (+ 1 progress)))
 
     ;; Exit as soon as something goes wrong.
     (exit-on-exception
      file
-     (with-target host
-       (lambda ()
-         (let ((relative (relative-file source-directory file)))
-           (compile-file file
-                         #:output-file (string-append build-directory "/"
-                                                      (scm->go relative))
-                         #:opts (append warning-options
-                                        (optimization-options relative)))))))
-    (with-mutex progress-lock
-      (set! completed (+ 1 completed))))
+     (let ((relative (relative-file source-directory file)))
+       (compile-file file
+                     #:output-file (string-append build-directory "/"
+                                                  (scm->go relative))
+                     #:opts (append warning-options
+                                    (optimization-options relative))))))
 
   (with-augmented-search-path %load-path source-directory
     (with-augmented-search-path %load-compiled-path build-directory
       (with-fluids ((*current-warning-prefix* ""))
-
-        ;; FIXME: To work around <https://bugs.gnu.org/15602>, we first load all
-        ;; of FILES.
-        (load-files source-directory files
-                    #:report-load report-load
-                    #:debug-port debug-port)
-
-        ;; Make sure compilation related modules are loaded before starting to
-        ;; compile files in parallel.
+        ;; Make sure the compiler's modules are loaded before 'with-target'
+        ;; (since 'with-target' influences the .go loader), and before
+        ;; starting to compile files in parallel.
         (compile #f)
 
-        ;; XXX: Don't use too many workers to work around the insane memory
-        ;; requirements of the compiler in Guile 2.2.2:
-        ;; <https://lists.gnu.org/archive/html/guile-devel/2017-05/msg00033.html>.
-        (n-par-for-each (min workers 8) build files)
+        (with-target host
+          (lambda ()
+            ;; FIXME: To work around <https://bugs.gnu.org/15602>, we first
+            ;; load all of FILES.
+            (load-files source-directory files
+                        #:report-load report-load
+                        #:debug-port debug-port)
 
-        (unless (zero? total)
-          (report-compilation #f total total))))))
+            ;; XXX: Don't use too many workers to work around the insane
+            ;; memory requirements of the compiler in Guile 2.2.2:
+            ;; <https://lists.gnu.org/archive/html/guile-devel/2017-05/msg00033.html>.
+            (n-par-for-each (min workers 8) build files)
+
+            (unless (zero? total)
+              (report-compilation #f total total))))))))
 
 (eval-when (eval load)
   (when (and (string=? "2" (major-version))

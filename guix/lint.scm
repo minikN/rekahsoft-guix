@@ -1,14 +1,15 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2014 Cyril Roelandt <tipecaml@gmail.com>
 ;;; Copyright © 2014, 2015 Eric Bavier <bavier@member.fsf.org>
-;;; Copyright © 2013, 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2015, 2016 Mathieu Lirzin <mthl@gnu.org>
 ;;; Copyright © 2016 Danny Milosavljevic <dannym+a@scratchpost.org>
 ;;; Copyright © 2016 Hartmut Goebel <h.goebel@crazy-compilers.com>
 ;;; Copyright © 2017 Alex Kost <alezost@gmail.com>
 ;;; Copyright © 2017 Tobias Geerinckx-Rice <me@tobias.gr>
-;;; Copyright © 2017, 2018 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2017, 2018, 2020 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2018, 2019 Arun Isaac <arunisaac@systemreboot.net>
+;;; Copyright © 2020 Chris Marusich <cmmarusich@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -26,7 +27,7 @@
 ;;; along with GNU Guix.  If not, see <http://www.gnu.org/licenses/>.
 
 (define-module (guix lint)
-  #:use-module ((guix store) #:hide (close-connection))
+  #:use-module (guix store)
   #:use-module (guix base32)
   #:use-module (guix diagnostics)
   #:use-module (guix download)
@@ -40,10 +41,15 @@
   #:use-module (guix upstream)
   #:use-module (guix utils)
   #:use-module (guix memoization)
+  #:use-module (guix profiles)
+  #:use-module (guix monads)
   #:use-module (guix scripts)
   #:use-module ((guix ui) #:select (texi->plain-text fill-paragraph))
   #:use-module (guix gnu-maintenance)
   #:use-module (guix cve)
+  #:use-module ((guix swh) #:hide (origin?))
+  #:autoload   (guix git-download) (git-reference?
+                                    git-reference-url git-reference-commit)
   #:use-module (ice-9 match)
   #:use-module (ice-9 regex)
   #:use-module (ice-9 format)
@@ -52,8 +58,7 @@
   #:use-module ((guix build download)
                 #:select (maybe-expand-mirrors
                           (open-connection-for-uri
-                           . guix:open-connection-for-uri)
-                          close-connection))
+                           . guix:open-connection-for-uri)))
   #:use-module (web request)
   #:use-module (web response)
   #:use-module (srfi srfi-1)
@@ -80,6 +85,8 @@
             check-vulnerabilities
             check-for-updates
             check-formatting
+            check-archival
+            check-profile-collisions
 
             lint-warning
             lint-warning?
@@ -97,7 +104,8 @@
             lint-checker?
             lint-checker-name
             lint-checker-description
-            lint-checker-check))
+            lint-checker-check
+            lint-checker-requires-store?))
 
 
 ;;;
@@ -152,7 +160,9 @@
   ;; 'certainty' level.
   (name        lint-checker-name)
   (description lint-checker-description)
-  (check       lint-checker-check))
+  (check       lint-checker-check)
+  (requires-store? lint-checker-requires-store?
+                   (default #f)))
 
 (define (properly-starts-sentence? s)
   (string-match "^[(\"'`[:upper:][:digit:]]" s))
@@ -280,15 +290,32 @@ of a package, and INPUT-NAMES, a list of package specifications such as
 (define (check-inputs-should-be-native package)
   ;; Emit a warning if some inputs of PACKAGE are likely to belong to its
   ;; native inputs.
-  (let ((inputs (package-inputs package))
+  (let ((inputs (append (package-inputs package)
+                        (package-propagated-inputs package)))
         (input-names
          '("pkg-config"
+            "autoconf"
+            "automake"
+            "bison"
             "cmake"
+            "dejagnu"
+            "desktop-file-utils"
+            "doxygen"
             "extra-cmake-modules"
+            "flex"
+            "gettext"
             "glib:bin"
+            "gobject-introspection"
+            "googletest-source"
+            "groff"
+            "gtk-doc"
+            "help2man"
             "intltool"
             "itstool"
+            "libtool"
+            "m4"
             "qttools"
+            "yasm" "nasm" "fasm"
             "python-coverage" "python2-coverage"
             "python-cython" "python2-cython"
             "python-docutils" "python2-docutils"
@@ -298,7 +325,14 @@ of a package, and INPUT-NAMES, a list of package specifications such as
             "python-pytest" "python2-pytest"
             "python-pytest-cov" "python2-pytest-cov"
             "python-setuptools-scm" "python2-setuptools-scm"
-            "python-sphinx" "python2-sphinx")))
+            "python-sphinx" "python2-sphinx"
+            "scdoc"
+            "swig"
+            "qmake"
+            "qttools"
+            "texinfo"
+            "xorg-server-for-tests"
+            "yelp-tools")))
     (map (lambda (input)
            (make-warning
             package
@@ -449,7 +483,7 @@ for connections to complete; when TIMEOUT is #f, wait as long as needed."
                    (force-output port)
                    (read-response port))
                  (lambda ()
-                   (close-connection port))))
+                   (close-port port))))
 
              (case (response-code response)
                ((302                    ; found (redirection)
@@ -522,7 +556,7 @@ for connections to complete; when TIMEOUT is #f, wait as long as needed."
 
 (define (validate-uri uri package field)
   "Return #t if the given URI can be reached, otherwise return a warning for
-PACKAGE mentionning the FIELD."
+PACKAGE mentioning the FIELD."
   (let-values (((status argument)
                 (probe-uri uri #:timeout 3)))     ;wait at most 3 seconds
     (case status
@@ -634,18 +668,28 @@ patch could not be found."
               ;; Use %make-warning, as condition-mesasge is already
               ;; translated.
               (%make-warning package (condition-message c)
-                             #:field 'patch-file-names))))
+                             #:field 'patch-file-names)))
+            ((formatted-message? c)
+             (list (%make-warning package
+                                  (apply format #f
+                                         (G_ (formatted-message-string c))
+                                         (formatted-message-arguments c))))))
     (define patches
-      (or (and=> (package-source package) origin-patches)
-          '()))
+      (match (package-source package)
+        ((? origin? origin) (origin-patches origin))
+        (_ '())))
+
+    (define (starts-with-package-name? file-name)
+      (and=> (string-contains file-name (package-name package))
+             zero?))
 
     (append
      (if (every (match-lambda        ;patch starts with package name?
                   ((? string? patch)
-                   (and=> (string-contains (basename patch)
-                                           (package-name package))
-                          zero?))
-                  (_  #f))     ;must be an <origin> or something like that.
+                   (starts-with-package-name? (basename patch)))
+                  ((? origin? patch)
+                   (starts-with-package-name? (origin-actual-file-name patch)))
+                  (_  #f))     ;must be some other file-like object
                 patches)
          '()
          (list
@@ -656,7 +700,7 @@ patch could not be found."
 
      ;; Check whether we're reaching tar's maximum file name length.
      (let ((prefix (string-length (%distro-directory)))
-           (margin (string-length "guix-0.13.0-10-123456789/"))
+           (margin (string-length "guix-2.0.0rc3-10000-1234567890/"))
            (max    99))
        (filter-map (match-lambda
                      ((? string? patch)
@@ -750,30 +794,39 @@ descriptions maintained upstream."
            (#t
             ;; We found a working URL, so stop right away.
             '())
+           (#f
+            ;; Unsupported URL or other error, skip.
+            (loop rest warnings))
            ((? lint-warning? warning)
             (loop rest (cons warning warnings))))))))
 
   (let ((origin (package-source package)))
-    (if (and origin
-             (eqv? (origin-method origin) url-fetch))
-        (let* ((uris     (append-map (cut maybe-expand-mirrors <> %mirrors)
-                                     (map string->uri (origin-uris origin))))
-               (warnings (warnings-for-uris uris)))
+    (if (origin? origin)
+        (cond
+         ((eq? (origin-method origin) url-fetch)
+          (let* ((uris     (append-map (cut maybe-expand-mirrors <> %mirrors)
+                                       (map string->uri (origin-uris origin))))
+                 (warnings (warnings-for-uris uris)))
 
-          ;; Just make sure that at least one of the URIs is valid.
-          (if (= (length uris) (length warnings))
-              ;; When everything fails, report all of WARNINGS, otherwise don't
-              ;; report anything.
-              ;;
-              ;; XXX: Ideally we'd still allow warnings to be raised if *some*
-              ;; URIs are unreachable, but distinguish that from the error case
-              ;; where *all* the URIs are unreachable.
-              (cons*
-               (make-warning package
-                             (G_ "all the source URIs are unreachable:")
-                             #:field 'source)
-               warnings)
-              '()))
+            ;; Just make sure that at least one of the URIs is valid.
+            (if (= (length uris) (length warnings))
+                ;; When everything fails, report all of WARNINGS, otherwise don't
+                ;; report anything.
+                ;;
+                ;; XXX: Ideally we'd still allow warnings to be raised if *some*
+                ;; URIs are unreachable, but distinguish that from the error case
+                ;; where *all* the URIs are unreachable.
+                (cons*
+                 (make-warning package
+                               (G_ "all the source URIs are unreachable:")
+                               #:field 'source)
+                 warnings)
+                '())))
+         ((git-reference? (origin-uri origin))
+          (warnings-for-uris
+           (list (string->uri (git-reference-url (origin-uri origin))))))
+         (else
+          '()))
         '())))
 
 (define (check-source-file-name package)
@@ -790,7 +843,7 @@ descriptions maintained upstream."
            (not (string-match (string-append "^v?" version) file-name)))))
 
   (let ((origin (package-source package)))
-    (if (or (not origin) (origin-file-name-valid? origin))
+    (if (or (not (origin? origin)) (origin-file-name-valid? origin))
         '()
         (list
          (make-warning package
@@ -881,40 +934,98 @@ descriptions maintained upstream."
          (origin-uris origin))
         '())))
 
-(define (check-derivation package)
+(cond-expand
+  (guile-3
+   ;; Guile 3.0.0 does not export this predicate.
+   (define exception-with-kind-and-args?
+     (exception-predicate &exception-with-kind-and-args)))
+  (else                                           ;Guile 2
+   (define exception-with-kind-and-args?
+     (const #f))))
+
+(define* (check-derivation package #:key store)
   "Emit a warning if we fail to compile PACKAGE to a derivation."
-  (define (try system)
-    (catch #t
+  (define (try store system)
+    (catch #t     ;TODO: Remove 'catch' when Guile 2.x is no longer supported.
       (lambda ()
         (guard (c ((store-protocol-error? c)
                    (make-warning package
                                  (G_ "failed to create ~a derivation: ~a")
                                  (list system
                                        (store-protocol-error-message c))))
+                  ((exception-with-kind-and-args? c)
+                   (make-warning package
+                                 (G_ "failed to create ~a derivation: ~s")
+                                 (list system
+                                       (cons (exception-kind c)
+                                             (exception-args c)))))
                   ((message-condition? c)
                    (make-warning package
                                  (G_ "failed to create ~a derivation: ~a")
                                  (list system
-                                       (condition-message c)))))
-          (with-store store
-            ;; Disable grafts since it can entail rebuilds.
-            (parameterize ((%graft? #f))
-              (package-derivation store package system #:graft? #f)
+                                       (condition-message c))))
+                  ((formatted-message? c)
+                   (let ((str (apply format #f
+                                     (formatted-message-string c)
+                                     (formatted-message-arguments c))))
+                     (make-warning package
+                                   (G_ "failed to create ~a derivation: ~a")
+                                   (list system str)))))
+          (parameterize ((%graft? #f))
+            (package-derivation store package system #:graft? #f)
 
-              ;; If there's a replacement, make sure we can compute its
-              ;; derivation.
-              (match (package-replacement package)
-                (#f #t)
-                (replacement
-                 (package-derivation store replacement system
-                                     #:graft? #f)))))))
+            ;; If there's a replacement, make sure we can compute its
+            ;; derivation.
+            (match (package-replacement package)
+              (#f #t)
+              (replacement
+               (package-derivation store replacement system
+                                   #:graft? #f))))))
       (lambda args
         (make-warning package
                       (G_ "failed to create ~a derivation: ~s")
                       (list system args)))))
 
-  (filter lint-warning?
-          (map try (package-supported-systems package))))
+  (define (check-with-store store)
+    (filter lint-warning?
+            (map (cut try store <>) (package-supported-systems package))))
+
+  ;; For backwards compatability, don't rely on store being set
+  (or (and=> store check-with-store)
+      (with-store store
+        (check-with-store store))))
+
+(define* (check-profile-collisions package #:key store)
+  "Check for collisions that would occur when installing PACKAGE as a result
+of the propagated inputs it pulls in."
+  (define (do-check store)
+    (guard (c ((profile-collision-error? c)
+               (let ((first  (profile-collision-error-entry c))
+                     (second (profile-collision-error-conflict c)))
+                 (define format
+                   (if (string=? (manifest-entry-version first)
+                                 (manifest-entry-version second))
+                       manifest-entry-item
+                       (lambda (entry)
+                         (string-append (manifest-entry-name entry) "@"
+                                        (manifest-entry-version entry)))))
+
+                 (list (make-warning package
+                                     (G_ "propagated inputs ~a and ~a collide")
+                                     (list (format first)
+                                           (format second)))))))
+      ;; Disable grafts to avoid building PACKAGE and its dependencies.
+      (parameterize ((%graft? #f))
+        (run-with-store store
+          (mbegin %store-monad
+            (check-for-collisions (packages->manifest (list package))
+                                  (%current-system))
+            (return '()))))))
+
+  (if store
+      (do-check store)
+      (with-store store
+        (do-check store))))
 
 (define (check-license package)
   "Warn about type errors of the 'license' field of PACKAGE."
@@ -950,6 +1061,16 @@ display a message including MESSAGE and return ERROR-VALUE."
                   message
                   (tls-certificate-error-string args))
          error-value)
+        ((and ('system-error _ ...) args)
+         (let ((errno (system-error-errno args)))
+           (if (member errno (list ECONNRESET ECONNABORTED ECONNREFUSED))
+               (let ((details (call-with-output-string
+                                (lambda (port)
+                                  (print-exception port #f (car args)
+                                                   (cdr args))))))
+                 (warning (G_ "~a: ~a~%") message details)
+                 error-value)
+               (apply throw args))))
         (args
          (apply throw args))))))
 
@@ -980,8 +1101,11 @@ the NIST server non-fatal."
                          (package-version package))))
         ((force lookup) name version)))))
 
-(define (check-vulnerabilities package)
-  "Check for known vulnerabilities for PACKAGE."
+(define* (check-vulnerabilities package
+                                #:optional (package-vulnerabilities
+                                            package-vulnerabilities))
+  "Check for known vulnerabilities for PACKAGE.  Obtain the list of
+vulnerability records for PACKAGE by calling PACKAGE-VULNERABILITIES."
   (let ((package (or (package-replacement package) package)))
     (match (package-vulnerabilities package)
       (()
@@ -1008,8 +1132,8 @@ the NIST server non-fatal."
 (define (check-for-updates package)
   "Check if there is an update available for PACKAGE."
   (match (with-networking-fail-safe
-          (G_ "while retrieving upstream info for '~a'")
-          (list (package-name package))
+          (format #f (G_ "while retrieving upstream info for '~a'")
+                  (package-name package))
           #f
           (package-latest-release* package (force %updaters)))
     ((? upstream-source? source)
@@ -1023,6 +1147,99 @@ the NIST server non-fatal."
          '()))
     (#f '()))) ; cannot find newer upstream release
 
+
+(define (check-archival package)
+  "Check whether PACKAGE's source code is archived on Software Heritage.  If
+it's not, and if its source code is a VCS snapshot, then send a \"save\"
+request to Software Heritage.
+
+Software Heritage imposes limits on the request rate per client IP address.
+This checker prints a notice and stops doing anything once that limit has been
+reached."
+  (define (response->warning url method response)
+    (if (request-rate-limit-reached? url method)
+        (list (make-warning package
+                            (G_ "Software Heritage rate limit reached; \
+try again later")
+                            #:field 'source))
+        (list (make-warning package
+                            (G_ "'~a' returned ~a")
+                            (list url (response-code response))
+                            #:field 'source))))
+
+  (define skip-key (gensym "skip-archival-check"))
+
+  (define (skip-when-limit-reached url method)
+    (or (not (request-rate-limit-reached? url method))
+        (throw skip-key #t)))
+
+  (parameterize ((%allow-request? skip-when-limit-reached))
+    (catch #t
+      (lambda ()
+        (match (and (origin? (package-source package))
+                    (package-source package))
+          (#f                                     ;no source
+           '())
+          ((= origin-uri (? git-reference? reference))
+           (define url
+             (git-reference-url reference))
+           (define commit
+             (git-reference-commit reference))
+
+           (match (if (commit-id? commit)
+                      (or (lookup-revision commit)
+                          (lookup-origin-revision url commit))
+                      (lookup-origin-revision url commit))
+             ((? revision? revision)
+              '())
+             (#f
+              ;; Revision is missing from the archive, attempt to save it.
+              (catch 'swh-error
+                (lambda ()
+                  (save-origin (git-reference-url reference) "git")
+                  (list (make-warning
+                         package
+                         ;; TRANSLATORS: "Software Heritage" is a proper noun
+                         ;; that must remain untranslated.  See
+                         ;; <https://www.softwareheritage.org>.
+                         (G_ "scheduled Software Heritage archival")
+                         #:field 'source)))
+                (lambda (key url method response . _)
+                  (cond ((= 429 (response-code response))
+                         (list (make-warning
+                                package
+                                (G_ "archival rate limit exceeded; \
+try again later")
+                                #:field 'source)))
+                        (else
+                         (response->warning url method response))))))))
+          ((? origin? origin)
+           ;; Since "save" origins are not supported for non-VCS source, all
+           ;; we can do is tell whether a given tarball is available or not.
+           (if (origin-hash origin)               ;XXX: for ungoogled-chromium
+               (let ((hash (origin-hash origin)))
+                 (match (lookup-content (content-hash-value hash)
+                                        (symbol->string
+                                         (content-hash-algorithm hash)))
+                   (#f
+                    (list (make-warning package
+                                        (G_ "source not archived on Software \
+Heritage")
+                                        #:field 'source)))
+                   ((? content?)
+                    '())))
+               '()))))
+      (match-lambda*
+        (('swh-error url method response)
+         (response->warning url method response))
+        ((key . args)
+         (if (eq? key skip-key)
+             '()
+             (with-networking-fail-safe
+              (G_ "while connecting to Software Heritage")
+              '()
+              (apply throw key args))))))))
+
 
 ;;;
 ;;; Source code formatting.
@@ -1031,7 +1248,7 @@ the NIST server non-fatal."
 (define (report-tabulations package line line-number)
   "Warn about tabulations found in LINE."
   (match (string-index line #\tab)
-    (#f #t)
+    (#f #f)
     (index
      (make-warning package
                    (G_ "tabulation on line ~a, column ~a")
@@ -1043,44 +1260,44 @@ the NIST server non-fatal."
 
 (define (report-trailing-white-space package line line-number)
   "Warn about trailing white space in LINE."
-  (unless (or (string=? line (string-trim-right line))
-              (string=? line (string #\page)))
-    (make-warning package
-                  (G_ "trailing white space on line ~a")
-                  (list line-number)
-                  #:location
-                  (location (package-file package)
-                            line-number
-                            0))))
+  (and (not (or (string=? line (string-trim-right line))
+                (string=? line (string #\page))))
+       (make-warning package
+                     (G_ "trailing white space on line ~a")
+                     (list line-number)
+                     #:location
+                     (location (package-file package)
+                               line-number
+                               0))))
 
 (define (report-long-line package line line-number)
   "Emit a warning if LINE is too long."
   ;; Note: We don't warn at 80 characters because sometimes hashes and URLs
   ;; make it hard to fit within that limit and we want to avoid making too
   ;; much noise.
-  (when (> (string-length line) 90)
-    (make-warning package
-                  (G_ "line ~a is way too long (~a characters)")
-                  (list line-number (string-length line))
-                  #:location
-                  (location (package-file package)
-                            line-number
-                            0))))
+  (and (> (string-length line) 90)
+       (make-warning package
+                     (G_ "line ~a is way too long (~a characters)")
+                     (list line-number (string-length line))
+                     #:location
+                     (location (package-file package)
+                               line-number
+                               0))))
 
 (define %hanging-paren-rx
   (make-regexp "^[[:blank:]]*[()]+[[:blank:]]*$"))
 
 (define (report-lone-parentheses package line line-number)
   "Emit a warning if LINE contains hanging parentheses."
-  (when (regexp-exec %hanging-paren-rx line)
-    (make-warning package
-                  (G_ "parentheses feel lonely, \
+  (and (regexp-exec %hanging-paren-rx line)
+       (make-warning package
+                     (G_ "parentheses feel lonely, \
 move to the previous or next line")
-                  (list line-number)
-                  #:location
-                  (location (package-file package)
-                            line-number
-                            0))))
+                     (list line-number)
+                     #:location
+                     (location (package-file package)
+                               line-number
+                               0))))
 
 (define %formatting-reporters
   ;; List of procedures that report formatting issues.  These are not separate
@@ -1130,11 +1347,9 @@ them for PACKAGE."
                          warnings
                          (if (< line-number starting-line)
                              '()
-                             (filter
-                              lint-warning?
-                              (map (lambda (report)
-                                     (report package line line-number))
-                                   reporters))))))))))))
+                             (filter-map (lambda (report)
+                                           (report package line line-number))
+                                         reporters)))))))))))
 
 (define (check-formatting package)
   "Check the formatting of the source code of PACKAGE."
@@ -1187,9 +1402,15 @@ or a list thereof")
      (description "Check for autogenerated tarballs")
      (check       check-source-unstable-tarball))
    (lint-checker
-     (name        'derivation)
-     (description "Report failure to compile a package to a derivation")
-     (check       check-derivation))
+     (name            'derivation)
+     (description     "Report failure to compile a package to a derivation")
+     (check           check-derivation)
+     (requires-store? #t))
+   (lint-checker
+     (name            'profile-collisions)
+     (description     "Report collisions that would occur due to propagated inputs")
+     (check           check-profile-collisions)
+     (requires-store? #t))
    (lint-checker
     (name        'patch-file-names)
     (description "Validate file names and availability of patches")
@@ -1229,7 +1450,11 @@ or a list thereof")
    (lint-checker
      (name        'refresh)
      (description "Check the package for new upstream releases")
-     (check       check-for-updates))))
+     (check       check-for-updates))
+   (lint-checker
+     (name        'archival)
+     (description "Ensure source code archival on Software Heritage")
+     (check       check-archival))))
 
 (define %all-checkers
   (append %local-checkers

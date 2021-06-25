@@ -1,6 +1,7 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2014 Eric Bavier <bavier@member.fsf.org>
+;;; Copyright © 2020 Arun Isaac <arunisaac@systemreboot.net>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -46,7 +47,7 @@
              (lambda (result1 result2)
                (loop result1 result2 (cdr lst)))))))
     ((proc seed1 seed2 lst1 lst2)
-     "Like `fold', but with a two lists and two seeds."
+     "Like `fold', but with two lists and two seeds."
      (let loop ((result1 seed1)
                 (result2 seed2)
                 (lst1    lst1)
@@ -56,7 +57,7 @@
            (call-with-values
                (lambda () (proc (car lst1) (car lst2) result1 result2))
              (lambda (result1 result2)
-               (fold2 proc result1 result2 (cdr lst1) (cdr lst2)))))))))
+               (loop result1 result2 (cdr lst1) (cdr lst2)))))))))
 
 (define (fold-tree proc init children roots)
   "Call (PROC NODE RESULT) for each node in the tree that is reachable from

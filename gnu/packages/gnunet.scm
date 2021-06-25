@@ -1,13 +1,16 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2013, 2014, 2015 Andreas Enge <andreas@enge.fr>
 ;;; Copyright © 2014 Sree Harsha Totakura <sreeharsha@totakura.in>
-;;; Copyright © 2015, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
-;;; Copyright © 2015, 2017, 2019 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2015, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2015, 2017, 2019, 2020 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2016 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2016 Mark H Weaver <mhw@netris.org>
-;;; Copyright © 2016, 2017, 2018, 2019 ng0 <ng0@n0.is>
-;;; Copyright © 2016, 2017, 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2016, 2017, 2018, 2019, 2020 Nikita <nikita@n0.is>
+;;; Copyright © 2016, 2017, 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2018 Alex Vong <alexvong1995@gmail.com>
+;;; Copyright © 2019 Brett Gilio <brettg@gnu.org>
+;;; Copyright © 2020 Tanguy Le Carrour <tanguy@bioneland.org>
+;;; Copyright © 2020 Michael Rohleder <mike@rohleder.de>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -30,6 +33,7 @@
   #:use-module (gnu packages aidc)
   #:use-module (gnu packages autotools)
   #:use-module (gnu packages compression)
+  #:use-module (gnu packages crypto)
   #:use-module (gnu packages curl)
   #:use-module (gnu packages gettext)
   #:use-module (gnu packages glib)
@@ -55,7 +59,9 @@
   #:use-module (gnu packages python)
   #:use-module (gnu packages sqlite)
   #:use-module (gnu packages tls)
+  #:use-module (gnu packages upnp)
   #:use-module (gnu packages video)
+  #:use-module (gnu packages vim)
   #:use-module (gnu packages web)
   #:use-module (gnu packages xiph)
   #:use-module (gnu packages backup)
@@ -68,41 +74,40 @@
 (define-public libextractor
   (package
    (name "libextractor")
-   (version "1.9")
+   (version "1.10")
    (source (origin
             (method url-fetch)
             (uri (string-append "mirror://gnu/libextractor/libextractor-"
                                 version ".tar.gz"))
             (sha256
              (base32
-              "1zz2zvikvfibxnk1va3kgzs7djsmiqy7bmk8y01vbsf54ryjb3zh"))))
+              "0mr38g7kfn3p050hd3hckbcz2yd3za6dwl1c26x2kjf7vnsi3vcy"))))
    (build-system gnu-build-system)
    ;; WARNING: Checks require /dev/shm to be in the build chroot, especially
    ;; not to be a symbolic link to /run/shm.
    ;; FIXME:
    ;; The following dependencies are all optional, but should be
    ;; available for maximum coverage:
-   ;; * libmagic (file)
    ;; * librpm (rpm)    ; investigate failure
-   ;; * libgif (giflib) ; investigate failure
+   ;; * libtidy-html (tidy-html) ; investigate failure
    (inputs
     `(("exiv2" ,exiv2)
       ("bzip2" ,bzip2)
       ("flac" ,flac)
-      ("ffmpeg" ,ffmpeg-3.4)
+      ("ffmpeg" ,ffmpeg)
       ("file" ,file)                           ;libmagic, for the MIME plug-in
       ("glib" ,glib)
+      ("giflib" ,giflib)
       ("gstreamer" ,gstreamer)
       ("gst-plugins-base" ,gst-plugins-base)
       ("gtk+" ,gtk+)
       ("libarchive" ,libarchive)
       ("libgsf" ,libgsf)
-      ("libjpeg" ,libjpeg)
+      ("libjpeg" ,libjpeg-turbo)
       ("libltdl" ,libltdl)
       ("libmpeg2" ,libmpeg2)
       ("libmp4v2" ,libmp4v2)
       ("libsmf" ,libsmf)
-      ("tidy-html" ,tidy-html)
       ("libogg" ,libogg)
       ("libtiff" ,libtiff)
       ("libvorbis" ,libvorbis)
@@ -114,12 +119,18 @@
    (arguments
     `(#:configure-flags
       (list (string-append "--with-ltdl="
-                           (assoc-ref %build-inputs "libltdl"))
-            (string-append "--with-tidy="
-                           (assoc-ref %build-inputs "tidy-html")))
+                           (assoc-ref %build-inputs "libltdl")))
       #:parallel-tests? #f
       #:phases
       (modify-phases %standard-phases
+        (add-after 'configure 'fix-exiv2-tests
+          ;; exiv2>=0.27.3 rounds geolocation
+          ;; https://github.com/Exiv2/exiv2/pull/1107/commits/db1be4ae8e1077949fcb6a960e93069d6a41b395#diff-f3f55183ccbe956c720c86e61f708d9f
+          (lambda _
+            (substitute* "src/plugins/test_exiv2.c"
+              (("17.585\\\\\" ") "18\\\"")
+              (("21.713\\\\\" ") "22\\\""))
+            #t))
         (add-after 'install 'move-static-libraries
           (lambda* (#:key outputs #:allow-other-keys)
             ;; Move static libraries to the "static" output.
@@ -146,14 +157,14 @@ tool to extract metadata from a file and print the results.")
 (define-public libmicrohttpd
   (package
    (name "libmicrohttpd")
-   (version "0.9.65")
+   (version "0.9.70")
    (source (origin
             (method url-fetch)
             (uri (string-append "mirror://gnu/libmicrohttpd/libmicrohttpd-"
                                 version ".tar.gz"))
             (sha256
              (base32
-              "1jdk6wigvnkh5bi9if4rik8i9sbvdql61lm8ipgpypyxqmcpjipj"))))
+              "01vkjy89b1ylmh22dy5yza2r414nfwcfixxh3v29nvzrjv9s7l4h"))))
    (build-system gnu-build-system)
    (inputs
     `(("curl" ,curl)
@@ -175,31 +186,44 @@ authentication and support for SSL3 and TLS.")
 (define-public gnurl
   (package
    (name "gnurl")
-   (version "7.63.0")
+   (version "7.70.0")
    (source (origin
             (method url-fetch)
-            (uri (string-append "mirror://gnu/gnunet/" name "-" version ".tar.Z"))
+            (uri (string-append "mirror://gnu/gnunet/gnurl-" version ".tar.gz"))
             (sha256
              (base32
-              "021b3pdfnqywk5q07y48kxyz7g4jjg35dk3cv0ps0x50qjr4ix33"))))
+              "0px9la8v4bj1dzxb95fx3yxk0rcjqjrxpj733ga27cza45wwzkqa"))))
    (build-system gnu-build-system)
    (outputs '("out"
-              "doc"))                             ; 1.7 MiB of man3 pages
+              "doc"))                             ; 1.8 MiB of man3 pages
    (inputs `(("gnutls" ,gnutls/dane)
-             ("libidn" ,libidn)
+             ("libidn2" ,libidn2)
              ("zlib" ,zlib)))
    (native-inputs
     `(("libtool" ,libtool)
-      ("groff" ,groff)
       ("perl" ,perl)
       ("pkg-config" ,pkg-config)
-      ("python" ,python-2)))
+      ("python" ,python)))
    (arguments
-    `(#:configure-flags (list "--disable-ntlm-wb")
-      #:test-target "test"
-      #:parallel-tests? #f
+    `(#:configure-flags
+      ;; All of these produce errors during configure.
+      (list "--disable-ftp"
+            "--disable-file"
+            "--disable-ldap"
+            "--disable-rtsp"
+            "--disable-dict"
+            "--disable-telnet"
+            "--disable-tftp"
+            "--disable-pop3"
+            "--disable-imap"
+            "--disable-smb"
+            "--disable-smtp"
+            "--disable-gopher"
+            "--without-ssl"
+            "--without-libpsl"
+            "--without-librtmp"
+            "--disable-ntlm-wb")
       #:phases
-      ;; We have to patch runtests.pl in tests/ directory
       (modify-phases %standard-phases
         (add-after 'install 'move-man3-pages
           (lambda* (#:key outputs #:allow-other-keys)
@@ -210,6 +234,7 @@ authentication and support for SSL3 and TLS.")
               (rename-file (string-append out "/share/man/man3")
                            (string-append doc "/share/man/man3"))
               #t)))
+        ;; We have to patch runtests.pl in tests/ directory
         (replace 'check
           (lambda _
             (substitute* "tests/runtests.pl"
@@ -226,12 +251,12 @@ supports HTTP, HTTPS and GnuTLS.")
                                   "See COPYING in the distribution."))
    (properties '((ftp-server . "ftp.gnu.org")
                  (ftp-directory . "/gnunet")))
-   (home-page "https://gnunet.org/gnurl")))
+   (home-page "https://gnunet.org/en/gnurl.html")))
 
 (define-public gnunet
   (package
    (name "gnunet")
-   (version "0.10.1")
+   (version "0.13.1")
    (source
     (origin
       (method url-fetch)
@@ -239,53 +264,82 @@ supports HTTP, HTTPS and GnuTLS.")
                           ".tar.gz"))
       (sha256
        (base32
-        "04wxzm3wkgqbn42b8ksr4cx6m5cckyig5cls1adh0nwdczwvnp7n"))))
+        "15jnca5zxng7r6m3qzq9lr73xxq0v6mvcp0lny3zrlkz5s2nmmq3"))))
    (build-system gnu-build-system)
    (inputs
-    `(("glpk" ,glpk)
+    `(("bluez" ,bluez)
+      ("glpk" ,glpk)
       ("gnurl" ,gnurl)
-      ("gstreamer" ,gstreamer)
-      ("gst-plugins-base" ,gst-plugins-base)
       ("gnutls" ,gnutls/dane)
+      ("gstreamer" ,gstreamer)
+      ("jansson" ,jansson)
       ("libextractor" ,libextractor)
+      ("libidn" ,libidn2)
       ("libgcrypt" ,libgcrypt)
-      ("libidn" ,libidn)
-      ("libmicrohttpd" ,libmicrohttpd) ; hostlist, pt, contrib, and more
+      ("libjpeg" ,libjpeg-turbo)
       ("libltdl" ,libltdl)
-      ("libunistring" ,libunistring) ; fs and more
-      ("openssl" ,openssl) ; transport, certificate creation, contribs
-      ("opus" ,opus) ; gnunet-conversation
-      ("pulseaudio" ,pulseaudio) ; conversation
-      ("sqlite" ,sqlite) ; sqlite bindings, *store
-      ("zlib" ,zlib)
-      ("perl" ,perl) ; doxygen and more
-      ("jansson" ,jansson) ; identity, taler (external), gnunet-json, gns
-      ("nss" ,nss) ; gns
-      ("gmp" ,gmp) ; util
-      ("bluez" ,bluez) ; gnunet-transport
-      ("glib" ,glib)
-      ("libogg" ,libogg) ; gnunet-conversation
-      ("python-2" ,python-2))) ; tests, gnunet-qr
+      ("libmicrohttpd" ,libmicrohttpd)
+      ("libogg" ,libogg)
+      ("libsodium" ,libsodium)
+      ("libunistring" ,libunistring)
+      ("miniupnpc" ,miniupnpc)
+      ("opus" ,opus)
+      ("pulseaudio" ,pulseaudio)
+      ("sqlite" ,sqlite)
+      ("zbar" ,zbar)
+      ("zlib" ,zlib)))
    (native-inputs
-    `(("pkg-config" ,pkg-config)))
+    `(("curl" ,curl)
+      ("pkg-config" ,pkg-config)
+      ("python" ,python)
+      ("xxd" ,xxd)
+      ("which" ,(@ (gnu packages base) which))))
    (arguments
-    '(#:configure-flags
-      (list (string-append "--with-nssdir=" %output "/lib"))
-      #:parallel-tests? #f
-      ;; test_gnunet_service_arm fails; reported upstream
-      #:tests? #f
+    '(#:parallel-tests? #f ; Parallel tests aren't supported.
       #:phases
       (modify-phases %standard-phases
-        ;; swap check and install phases and set paths to installed binaries
+        (add-after 'configure 'remove-failing-tests
+          ;; These tests fail in Guix's building environment.
+          (lambda _
+            (substitute* "src/transport/Makefile"
+              (("\\$\\(am__EXEEXT_15\\)") "") ; test_transport_api_https
+              (("test_transport_api_manipulation_cfg\\$\\(EXEEXT\\) \\\\\n") "")
+              (("test_transport_api_udp_nat\\$\\(EXEEXT\\) \\\\\n") "")
+              (("test_transport_blacklisting_multiple_plugins\\$\\(EXEEXT\\) \\\\\n") ""))
+            (substitute* "src/testbed/Makefile"
+              (("test_testbed_api_2peers_1controller\\$\\(EXEEXT\\) \\\\\n") "")
+              (("test_testbed_api_statistics\\$\\(EXEEXT\\) \\\\\n") "")
+              (("test_testbed_api_test\\$\\(EXEEXT\\) \\\\\n") "")
+              (("test_testbed_api_test_timeout\\$\\(EXEEXT\\) \\\\\n") "")
+              (("test_testbed_api_topology\\$\\(EXEEXT\\) \\\\\n") "")
+              (("test_testbed_api_topology_clique\\$\\(EXEEXT\\) \\\\\n") ""))
+            (substitute* "src/topology/Makefile"
+              (("^check_PROGRAMS.*") "\n")
+              (("test_gnunet_daemon_topology\\$\\(EXEEXT\\)\n") ""))
+            (substitute* "src/namestore/Makefile"
+              (("\\$\\(am__append_2\\)") ""))
+            (substitute* "src/gns/Makefile"
+              (("\\$\\(am__append_4\\)") ""))
+            (substitute* "contrib/Makefile"
+              (("^check_PROGRAMS.*") "\n"))
+            ;; 'test' from coreutils doesn't behave as the test expects.
+            (substitute* '("src/gns/gnunet-gns-proxy-setup-ca.in"
+                           "src/transport/gnunet-transport-certificate-creation.in")
+              (("gnutls-certtool") "certtool"))
+            #t))
+        (add-before 'check 'set-env-var-for-tests
+          (lambda _
+            (setenv "LANG" "en_US.UTF-8")))
+        ;; Swap 'check and 'install phases and add installed binaries to $PATH.
         (add-before 'check 'set-path-for-check
           (lambda* (#:key outputs #:allow-other-keys)
            (let ((out (assoc-ref outputs "out")))
              (setenv "GNUNET_PREFIX" (string-append out "/lib"))
              (setenv "PATH" (string-append (getenv "PATH") ":" out "/bin")))
            #t))
+        (delete 'check)
         (add-after 'install 'check
-          (assoc-ref %standard-phases 'check))
-        (delete 'check))))
+          (assoc-ref %standard-phases 'check)))))
    (synopsis "Secure, decentralized, peer-to-peer networking framework")
    (description
      "GNUnet is a framework for secure peer-to-peer networking.  The
@@ -294,7 +348,7 @@ global, distributed network that provides security and privacy.  GNUnet in
 that sense aims to replace the current internet protocol stack.  Along with
 an application for secure publication of files, it has grown to include all
 kinds of basic applications for the foundation of a GNU internet.")
-   (license license:gpl3+)
+   (license license:agpl3+)
    (home-page "https://gnunet.org/")))
 
 (define-public guile-gnunet                       ;GSoC 2015!
@@ -332,14 +386,14 @@ services.")
 (define-public gnunet-gtk
   (package (inherit gnunet)
     (name "gnunet-gtk")
-    (version (package-version gnunet))
+    (version "0.13.1")
     (source (origin
               (method url-fetch)
               (uri (string-append "mirror://gnu/gnunet/gnunet-gtk-"
                                   version ".tar.gz"))
               (sha256
                (base32
-                "1p38k1s6a2fmcfc9a7cf1zrdycm9h06kqdyand4s3k500nj6mb4g"))))
+                "1zdzgq16h77w6ybwg3lqjsjr965np6iqvncqvkbj07glqd4wss0j"))))
     (arguments
      `(#:configure-flags
        (list "--with-libunique"
@@ -347,14 +401,17 @@ services.")
              (string-append "--with-gnunet="
                             (assoc-ref %build-inputs "gnunet")))))
     (inputs
-     `(("gnunet" ,gnunet)
-       ("libgcrypt" ,libgcrypt)
+     `(("glade3" ,glade3)
+       ("gnunet" ,gnunet)
+       ("gnutls" ,gnutls/dane)
        ("gtk+" ,gtk+)
        ("libextractor" ,libextractor)
-       ("glade3" ,glade3)
-       ("qrencode" ,qrencode)
-       ("libunique" ,libunique)))
+       ("libgcrypt" ,libgcrypt)
+       ("libunique" ,libunique)
+       ("qrencode" ,qrencode)))
     (native-inputs
      `(("pkg-config" ,pkg-config)
        ("libglade" ,libglade)))
-    (synopsis "Graphical front-end tools for GNUnet")))
+    (synopsis "Graphical front-end tools for GNUnet")
+    (properties '((ftp-server . "ftp.gnu.org")
+                  (ftp-directory . "/gnunet")))))

@@ -3,8 +3,9 @@
 ;;; Copyright © 2016 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2016, 2017, 2018 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2017, 2018, 2019 Rutger Helling <rhelling@mykolab.com>
-;;; Copyright © 2017 Nicolas Goaziou <mail@nicolasgoaziou.fr>
-;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2017, 2020 Nicolas Goaziou <mail@nicolasgoaziou.fr>
+;;; Copyright © 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2019 Pierre Neidhardt <mail@ambrevar.xyz>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -28,6 +29,7 @@
   #:use-module (guix git-download)
   #:use-module (guix utils)
   #:use-module (guix build-system gnu)
+  #:use-module (guix build-system meson)
   #:use-module (guix build-system trivial)
   #:use-module (gnu packages)
   #:use-module (gnu packages admin)
@@ -42,6 +44,7 @@
   #:use-module (gnu packages fontutils)
   #:use-module (gnu packages flex)
   #:use-module (gnu packages image)
+  #:use-module (gnu packages gcc)
   #:use-module (gnu packages gettext)
   #:use-module (gnu packages ghostscript)
   #:use-module (gnu packages gl)
@@ -50,6 +53,7 @@
   #:use-module (gnu packages gtk)
   #:use-module (gnu packages kerberos)
   #:use-module (gnu packages linux)
+  #:use-module (gnu packages mingw)
   #:use-module (gnu packages openldap)
   #:use-module (gnu packages perl)
   #:use-module (gnu packages pulseaudio)
@@ -72,26 +76,32 @@
 (define-public wine
   (package
     (name "wine")
-    (version "4.0.1")
-    (source (origin
-              (method url-fetch)
-              (uri (string-append "https://dl.winehq.org/wine/source/"
-                                  (version-major+minor version)
-                                  "/wine-" version ".tar.xz"))
-              (sha256
-               (base32
-                "0j29df0px6dzin4j0cbxgza4msvf9spmwranv25krq1g9kq959nk"))))
+    (version "5.12")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (let ((dir (string-append
+                        (version-major version)
+                        (if (string-suffix? ".0" (version-major+minor version))
+                            ".0/"
+                            ".x/"))))
+              (string-append "https://dl.winehq.org/wine/source/" dir
+                             "wine-" version ".tar.xz")))
+       (sha256
+        (base32 "0bl4ii4h1w4z8kb6dpdc1pgwk0wrhm61c2q2nzpcckkrqra75wc7"))))
     (build-system gnu-build-system)
-    (native-inputs `(("pkg-config" ,pkg-config)
-                     ("gettext" ,gettext-minimal)
-                     ("flex" ,flex)
-                     ("bison" ,bison)
-                     ("perl" ,perl)))
+    (native-inputs
+     `(("bison" ,bison)
+       ("flex" ,flex)
+       ("gettext" ,gettext-minimal)
+       ("perl" ,perl)
+       ("pkg-config" ,pkg-config)))
     (inputs
      `(("alsa-lib" ,alsa-lib)
        ("dbus" ,dbus)
        ("cups" ,cups)
        ("eudev" ,eudev)
+       ("faudio" ,faudio)
        ("fontconfig" ,fontconfig)
        ("freetype" ,freetype)
        ("glu" ,glu)
@@ -107,7 +117,7 @@
        ("libsane" ,sane-backends)
        ("libpcap" ,libpcap)
        ("libpng" ,libpng)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libtiff" ,libtiff)
        ("libICE" ,libice)
        ("libX11" ,libx11)
@@ -151,7 +161,7 @@
 
        #:phases
        (modify-phases %standard-phases
-         ;; Explicitely set the 32-bit version of vulkan-loader when installing
+         ;; Explicitly set the 32-bit version of vulkan-loader when installing
          ;; to i686-linux or x86_64-linux.
          ;; TODO: Add more JSON files as they become available in Mesa.
          ,@(match (%current-system)
@@ -164,10 +174,14 @@
                       (copy-file (string-append (assoc-ref inputs "mesa")
                                  "/share/vulkan/icd.d/radeon_icd.i686.json")
                                  (string-append icd "/radeon_icd.i686.json"))
+                      (copy-file (string-append (assoc-ref inputs "mesa")
+                                 "/share/vulkan/icd.d/intel_icd.i686.json")
+                                 (string-append icd "/intel_icd.i686.json"))
                       (wrap-program (string-append out "/bin/wine-preloader")
                                     `("VK_ICD_FILENAMES" ":" =
                                       (,(string-append icd
-                                        "/radeon_icd.i686.json"))))
+                                        "/radeon_icd.i686.json" ":"
+                                        icd "/intel_icd.i686.json"))))
                       #t)))))
              (_
               `())
@@ -209,7 +223,7 @@ integrate Windows applications into your desktop.")
              (string-append "libdir=" %output "/lib/wine64"))
        #:phases
        (modify-phases %standard-phases
-         ;; Explicitely set both the 64-bit and 32-bit versions of vulkan-loader
+         ;; Explicitly set both the 64-bit and 32-bit versions of vulkan-loader
          ;; when installing to x86_64-linux so both are available.
          ;; TODO: Add more JSON files as they become available in Mesa.
          ,@(match (%current-system)
@@ -224,7 +238,9 @@ integrate Windows applications into your desktop.")
                                      (assoc-ref inputs "mesa")
                                      "/share/vulkan/icd.d/intel_icd.x86_64.json" ":"
                                      (assoc-ref inputs "wine")
-                                     "/share/vulkan/icd.d/radeon_icd.i686.json"))))
+                                     "/share/vulkan/icd.d/radeon_icd.i686.json" ":"
+                                     (assoc-ref inputs "wine")
+                                     "/share/vulkan/icd.d/intel_icd.i686.json"))))
                    (wrap-program (string-append out "/bin/wine64-preloader")
                                  `("VK_ICD_FILENAMES" ":" =
                                    (,(string-append (assoc-ref inputs "mesa")
@@ -232,7 +248,9 @@ integrate Windows applications into your desktop.")
                                      ":" (assoc-ref inputs "mesa")
                                      "/share/vulkan/icd.d/intel_icd.x86_64.json"
                                      ":" (assoc-ref inputs "wine")
-                                     "/share/vulkan/icd.d/radeon_icd.i686.json"))))
+                                     "/share/vulkan/icd.d/radeon_icd.i686.json"
+                                     ":" (assoc-ref inputs "wine")
+                                     "/share/vulkan/icd.d/intel_icd.i686.json"))))
                    #t)))))
            (_
             `())
@@ -310,7 +328,7 @@ integrate Windows applications into your desktop.")
 (define-public wine-staging-patchset-data
   (package
     (name "wine-staging-patchset-data")
-    (version "4.13")
+    (version "5.13")
     (source
      (origin
        (method git-fetch)
@@ -319,8 +337,7 @@ integrate Windows applications into your desktop.")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
-        (base32
-         "0bbwsd2qpjilxpjscqbp78p0gl0awj1yj62g0wvybh4x89fzy8zj"))))
+        (base32 "0sw7790gsi3h08xgc8i1y282rk8xrdhqjlwpvbpvyw5zi0i95cvq"))))
     (build-system trivial-build-system)
     (native-inputs
      `(("bash" ,bash)
@@ -357,18 +374,22 @@ integrate Windows applications into your desktop.")
     (inherit wine)
     (name "wine-staging")
     (version (package-version wine-staging-patchset-data))
-    (source (origin
-              (method url-fetch)
-              (uri (string-append
-                    "https://dl.winehq.org/wine/source/"
-                    (version-major version) ".x"
-                    "/wine-" version ".tar.xz"))
-              (file-name (string-append name "-" version ".tar.xz"))
-              (sha256
-               (base32
-                "0rqx8g394aj5q913cd18zsi60sldvxarrp178w6ja0y4rd8l25vr"))))
-    (inputs `(("autoconf" ,autoconf) ; for autoreconf
-              ("faudio" ,faudio)
+    (source
+     (let* ((wine-version (version-major+minor version))
+            (subdirectory (string-append
+                           (version-major version)
+                           (if (string-suffix? ".0" wine-version)
+                               ".0"
+                               ".x"))))
+       (origin
+         (method url-fetch)
+         (uri (string-append "https://dl.winehq.org/wine/source/"
+                             subdirectory "/"
+                             "wine-" wine-version ".tar.xz"))
+         (file-name (string-append name "-" wine-version ".tar.xz"))
+         (sha256
+          (base32 "0lh1bqr8xq1acz5d0cb50rvhw3h6h1vqprx5wlyrjhdg58f5qsn4")))))
+    (inputs `(("autoconf" ,autoconf)    ; for autoreconf
               ("ffmpeg" ,ffmpeg)
               ("gtk+" ,gtk+)
               ("libva" ,libva)
@@ -380,7 +401,7 @@ integrate Windows applications into your desktop.")
     (arguments
      `(#:phases
        (modify-phases %standard-phases
-         ;; Explicitely set the 32-bit version of vulkan-loader when installing
+         ;; Explicitly set the 32-bit version of vulkan-loader when installing
          ;; to i686-linux or x86_64-linux.
          ;; TODO: Add more JSON files as they become available in Mesa.
          ,@(match (%current-system)
@@ -393,10 +414,14 @@ integrate Windows applications into your desktop.")
                       (copy-file (string-append (assoc-ref inputs "mesa")
                                  "/share/vulkan/icd.d/radeon_icd.i686.json")
                                  (string-append icd "/radeon_icd.i686.json"))
+                      (copy-file (string-append (assoc-ref inputs "mesa")
+                                 "/share/vulkan/icd.d/intel_icd.i686.json")
+                                 (string-append icd "/intel_icd.i686.json"))
                       (wrap-program (string-append out "/bin/wine-preloader")
                                     `("VK_ICD_FILENAMES" ":" =
                                       (,(string-append icd
-                                        "/radeon_icd.i686.json"))))
+                                        "/radeon_icd.i686.json" ":"
+                                        icd "/intel_icd.i686.json"))))
                       #t)))))
              (_
               `())
@@ -449,7 +474,7 @@ integrated into the main branch.")
              (string-append "libdir=" %output "/lib/wine64"))
        #:phases
        (modify-phases %standard-phases
-         ;; Explicitely set both the 64-bit and 32-bit versions of vulkan-loader
+         ;; Explicitly set both the 64-bit and 32-bit versions of vulkan-loader
          ;; when installing to x86_64-linux so both are available.
          ;; TODO: Add more JSON files as they become available in Mesa.
          ,@(match (%current-system)
@@ -464,7 +489,9 @@ integrated into the main branch.")
                                      (assoc-ref inputs "mesa")
                                      "/share/vulkan/icd.d/intel_icd.x86_64.json" ":"
                                      (assoc-ref inputs "wine-staging")
-                                     "/share/vulkan/icd.d/radeon_icd.i686.json"))))
+                                     "/share/vulkan/icd.d/radeon_icd.i686.json" ":"
+                                     (assoc-ref inputs "wine-staging")
+                                     "/share/vulkan/icd.d/intel_icd.i686.json"))))
                    (wrap-program (string-append out "/bin/wine64-preloader")
                                  `("VK_ICD_FILENAMES" ":" =
                                    (,(string-append (assoc-ref inputs "mesa")
@@ -472,7 +499,9 @@ integrated into the main branch.")
                                      ":" (assoc-ref inputs "mesa")
                                      "/share/vulkan/icd.d/intel_icd.x86_64.json"
                                      ":" (assoc-ref inputs "wine-staging")
-                                     "/share/vulkan/icd.d/radeon_icd.i686.json"))))
+                                     "/share/vulkan/icd.d/radeon_icd.i686.json"
+                                     ":" (assoc-ref inputs "wine-staging")
+                                     "/share/vulkan/icd.d/intel_icd.i686.json"))))
                    #t)))))
            (_
             `())
@@ -483,7 +512,6 @@ integrated into the main branch.")
                     (script (string-append (assoc-ref %build-inputs
                             "wine-staging-patchset-data")
                             "/share/wine-staging/patches/patchinstall.sh")))
-               ;; Exclude specific patches that conflict with FAudio.
                (invoke script (string-append "DESTDIR=" ".") "--all")
                #t)))
          (add-after 'install 'copy-wine32-binaries
@@ -527,3 +555,90 @@ integrated into the main branch.")
     (synopsis "Implementation of the Windows API (staging branch, WoW64
 version)")
     (supported-systems '("x86_64-linux" "aarch64-linux"))))
+
+(define dxvk32
+  ;; This package provides 32-bit dxvk libraries on 64-bit systems.
+  (package
+    (name "dxvk32")
+    (version "1.5.5")
+    (home-page "https://github.com/doitsujin/dxvk/")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url home-page)
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "1inl0qswgvbp0fs76md86ilqf9mbshkpjm8ga81khn9zd6v3fvan"))))
+    (build-system meson-build-system)
+    (arguments
+     `(#:system "i686-linux"
+       #:configure-flags (list "--cross-file"
+                               (string-append (assoc-ref %build-inputs "source")
+                                              "/build-wine32.txt"))))
+    (native-inputs
+     ;; Since 1.5 dxvk needs gcc-8.1.  See
+     ;; https://github.com/doitsujin/dxvk/issues/1292#issuecomment-567067373.
+     `(("gcc" ,gcc-9)
+       ("glslang" ,glslang)))
+    (inputs
+     `(("wine" ,wine-staging)))
+    (synopsis "Vulkan-based D3D9, D3D10 and D3D11 implementation for Wine")
+    (description "A Vulkan-based translation layer for Direct3D 9/10/11 which
+allows running complex 3D applications with high performance using Wine.
+
+Use @command{setup_dxvk} to install the required libraries to a Wine prefix.")
+    (supported-systems '("x86_64-linux"))
+    (license license:zlib)))
+
+(define-public dxvk
+  (package
+    (inherit dxvk32)
+    (name "dxvk")
+    (arguments
+     `(#:configure-flags (list "--cross-file"
+                               (string-append (assoc-ref %build-inputs "source")
+                                              "/build-wine"
+                                              ,(match (%current-system)
+                                                 ("x86_64-linux" "64")
+                                                 (_ "32"))
+                                              ".txt"))
+       #:phases
+       (modify-phases %standard-phases
+         ,@(if (string=? (%current-system) "x86_64-linux")
+             `((add-after 'unpack 'install-32
+                 (lambda* (#:key inputs outputs #:allow-other-keys)
+                   (let* ((out (assoc-ref outputs "out"))
+                          (dxvk32 (assoc-ref inputs "dxvk32")))
+                     (mkdir-p (string-append out "/lib32"))
+                     (copy-recursively (string-append dxvk32 "/lib")
+                                       (string-append out "/lib32"))
+                     #t))))
+             '())
+         (add-after 'install 'install-setup
+           (lambda* (#:key inputs outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (bin (string-append out "/bin/setup_dxvk")))
+               (mkdir-p (string-append out "/bin"))
+               (copy-file "../source/setup_dxvk.sh"
+                          bin)
+               (chmod bin #o755)
+               (substitute* bin
+                 (("wine=\"wine\"")
+                  (string-append "wine=" (assoc-ref inputs "wine") "/bin/wine"))
+                 (("x32") ,(match (%current-system)
+                             ("x86_64-linux" "../lib32")
+                             (_ "../lib")))
+                 (("x64") "../lib"))))))))
+    (inputs
+     `(("wine" ,(match (%current-system)
+                  ;; ("x86_64-linux" wine64)
+                  ("x86_64-linux" wine64-staging)
+                  ;; ("x86_64-linux" mingw-w64-x86_64)
+                  (_ wine)))
+       ,@(match (%current-system)
+           ("x86_64-linux"
+            `(("dxvk32" ,dxvk32)))
+           (_ '()))))
+    (supported-systems '("i686-linux" "x86_64-linux"))))

@@ -1,8 +1,11 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2015 David Thompson <davet@gnu.org>
 ;;; Copyright © 2015 Mark H Weaver <mhw@netris.org>
 ;;; Copyright © 2017 Mathieu Othacehe <m.othacehe@gmail.com>
+;;; Copyright © 2019 Guillaume Le Vaillant <glv@posteo.net>
+;;; Copyright © 2020 Julien Lepiller <julien@lepiller.eu>
+;;; Copyright © 2020 Jan (janneke) Nieuwenhuizen <janneke@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -21,7 +24,7 @@
 
 (define-module (guix build syscalls)
   #:use-module (system foreign)
-  #:use-module (system base target)             ;for cross-compilation support
+  #:use-module (system base target)
   #:use-module (rnrs bytevectors)
   #:autoload   (ice-9 binary-ports) (get-bytevector-n)
   #:use-module (srfi srfi-1)
@@ -43,6 +46,7 @@
             MS_BIND
             MS_MOVE
             MS_STRICTATIME
+            MS_LAZYTIME
             MNT_FORCE
             MNT_DETACH
             MNT_EXPIRE
@@ -68,17 +72,21 @@
             statfs
             free-disk-space
             device-in-use?
+            add-to-entropy-count
 
             processes
             mkdtemp!
             fdatasync
             pivot-root
             scandir*
+            getxattr
+            setxattr
 
             fcntl-flock
             lock-file
             unlock-file
             with-file-lock
+            with-file-lock/no-wait
 
             set-thread-name
             thread-name
@@ -190,9 +198,14 @@
      (* (sizeof* type) n))
     ((_ type)
      (let-syntax ((v (lambda (s)
-                       (let ((val (sizeof type)))
-                         (syntax-case s ()
-                           (_ val))))))
+                       ;; When compiling natively, call 'sizeof' at expansion
+                       ;; time; otherwise, emit code to call it at run time.
+                       (syntax-case s ()
+                         (_
+                          (if (= (target-word-size)
+                                 (with-target %host-type target-word-size))
+                              (sizeof type)
+                              #'(sizeof type)))))))
        v))))
 
 (define-syntax alignof*
@@ -204,9 +217,14 @@
      (alignof* type))
     ((_ type)
      (let-syntax ((v (lambda (s)
-                       (let ((val (alignof type)))
-                         (syntax-case s ()
-                           (_ val))))))
+                       ;; When compiling natively, call 'sizeof' at expansion
+                       ;; time; otherwise, emit code to call it at run time.
+                       (syntax-case s ()
+                         (_
+                          (if (= (target-word-size)
+                                 (with-target %host-type target-word-size))
+                              (alignof type)
+                              #'(alignof type)))))))
        v))))
 
 (define-syntax align                             ;as found in (system foreign)
@@ -396,17 +414,11 @@ the returned procedure is called."
     ((_ (proc args ...) body ...)
      (define-as-needed proc (lambda* (args ...) body ...)))
     ((_ variable value)
-     (begin
-       (when (module-defined? the-scm-module 'variable)
-         (re-export variable))
-
-       (define variable
-         (if (module-defined? the-scm-module 'variable)
-             (module-ref the-scm-module 'variable)
-             value))
-
-       (unless (module-defined? the-scm-module 'variable)
-         (export variable))))))
+     (if (module-defined? the-scm-module 'variable)
+         (module-re-export! (current-module) '(variable))
+         (begin
+           (module-define! (current-module) 'variable value)
+           (module-export! (current-module) '(variable)))))))
 
 
 ;;;
@@ -455,6 +467,7 @@ the returned procedure is called."
 (define MS_BIND            4096)
 (define MS_MOVE            8192)
 (define MS_STRICTATIME 16777216)
+(define MS_LAZYTIME    33554432)
 
 (define MNT_FORCE       1)
 (define MNT_DETACH      2)
@@ -712,6 +725,76 @@ backend device."
              (list (strerror err))
              (list err))))))
 
+(define getxattr
+  (let ((proc (syscall->procedure ssize_t "getxattr"
+                                  `(* * * ,size_t))))
+    (lambda (file key)
+      "Get the extended attribute value for KEY on FILE."
+      (let-values (((size err)
+                    ;; Get size of VALUE for buffer.
+                    (proc (string->pointer/utf-8 file)
+                          (string->pointer key)
+                          (string->pointer "")
+                          0)))
+        (cond ((< size 0) #f)
+              ((zero? size) "")
+              ;; Get VALUE in buffer of SIZE.  XXX actual size can race.
+              (else (let*-values (((buf) (make-bytevector size))
+                                  ((size err)
+                                   (proc (string->pointer/utf-8 file)
+                                         (string->pointer key)
+                                         (bytevector->pointer buf)
+                                         size)))
+                      (if (>= size 0)
+                          (utf8->string buf)
+                          (throw 'system-error "getxattr" "~S: ~A"
+                                 (list file key (strerror err))
+                                 (list err))))))))))
+
+(define setxattr
+  (let ((proc (syscall->procedure int "setxattr"
+                                  `(* * * ,size_t ,int))))
+    (lambda* (file key value #:optional (flags 0))
+      "Set extended attribute KEY to VALUE on FILE."
+      (let*-values (((bv) (string->utf8 value))
+                    ((ret err)
+                     (proc (string->pointer/utf-8 file)
+                           (string->pointer key)
+                           (bytevector->pointer bv)
+                           (bytevector-length bv)
+                           flags)))
+        (unless (zero? ret)
+          (throw 'system-error "setxattr" "~S: ~A"
+                 (list file key value (strerror err))
+                 (list err)))))))
+
+
+;;;
+;;; Random.
+;;;
+
+;; From <uapi/linux/random.h>.
+(define RNDADDTOENTCNT #x40045201)
+
+(define (add-to-entropy-count port-or-fd n)
+  "Add N to the kernel's entropy count (the value that can be read from
+/proc/sys/kernel/random/entropy_avail).  PORT-OR-FD must correspond to
+/dev/urandom or /dev/random.  Raise to 'system-error with EPERM when the
+caller lacks root privileges."
+  (let ((fd  (if (port? port-or-fd)
+                 (fileno port-or-fd)
+                 port-or-fd))
+        (box (make-bytevector (sizeof int))))
+    (bytevector-sint-set! box 0 n (native-endianness)
+                          (sizeof int))
+    (let-values (((ret err)
+                  (%ioctl fd RNDADDTOENTCNT
+                          (bytevector->pointer box))))
+      (unless (zero? err)
+        (throw 'system-error "add-to-entropy-count" "~A"
+               (list (strerror err))
+               (list err))))))
+
 
 ;;;
 ;;; Containers.
@@ -866,36 +949,6 @@ system to PUT-OLD."
   (namelen uint8)
   (name    uint8))
 
-(define-syntax define-generic-identifier
-  (syntax-rules (gnu/linux gnu/hurd =>)
-    "Define a generic identifier that adjust to the current GNU variant."
-    ((_ id (gnu/linux => linux) (gnu/hurd => hurd))
-     (define-syntax id
-       (lambda (s)
-         (syntax-case s ()
-           ((_ args (... ...))
-            (if (string-contains (or (target-type) %host-type)
-                                 "linux")
-                #'(linux args (... ...))
-                #'(hurd args (... ...))))
-           (_
-            (if (string-contains (or (target-type) %host-type)
-                                 "linux")
-                #'linux
-                #'hurd))))))))
-
-(define-generic-identifier read-dirent-header
-  (gnu/linux => read-dirent-header/linux)
-  (gnu/hurd  => read-dirent-header/hurd))
-
-(define-generic-identifier %struct-dirent-header
-  (gnu/linux => %struct-dirent-header/linux)
-  (gnu/hurd  => %struct-dirent-header/hurd))
-
-(define-generic-identifier sizeof-dirent-header
-  (gnu/linux => sizeof-dirent-header/linux)
-  (gnu/hurd  => sizeof-dirent-header/hurd))
-
 ;; Constants for the 'type' field, from <dirent.h>.
 (define DT_UNKNOWN 0)
 (define DT_FIFO 1)
@@ -934,18 +987,29 @@ system to PUT-OLD."
                  "closedir: ~A" (list (strerror err))
                  (list err)))))))
 
-(define readdir*
+(define (readdir-procedure name-field-offset sizeof-dirent-header
+                           read-dirent-header)
   (let ((proc (syscall->procedure '* "readdir64" '(*))))
     (lambda* (directory #:optional (pointer->string pointer->string/utf-8))
       (let ((ptr (proc directory)))
         (and (not (null-pointer? ptr))
              (cons (pointer->string
-                    (make-pointer (+ (pointer-address ptr)
-                                     (c-struct-field-offset
-                                      %struct-dirent-header name)))
+                    (make-pointer (+ (pointer-address ptr) name-field-offset))
                     -1)
                    (read-dirent-header
                     (pointer->bytevector ptr sizeof-dirent-header))))))))
+
+(define readdir*
+  ;; Decide at run time which one must be used.
+  (if (string-contains %host-type "linux-gnu")
+      (readdir-procedure (c-struct-field-offset %struct-dirent-header/linux
+                                                name)
+                         sizeof-dirent-header/linux
+                         read-dirent-header/linux)
+      (readdir-procedure (c-struct-field-offset %struct-dirent-header/hurd
+                                                name)
+                         sizeof-dirent-header/hurd
+                         read-dirent-header/hurd)))
 
 (define* (scandir* name #:optional
                    (select? (const #t))
@@ -1065,10 +1129,10 @@ exception if it's already taken."
           ;; Presumably we got EAGAIN or so.
           (throw 'flock-error err))))))
 
-(define (lock-file file)
+(define* (lock-file file #:key (wait? #t))
   "Wait and acquire an exclusive lock on FILE.  Return an open port."
   (let ((port (open-file file "w0")))
-    (fcntl-flock port 'write-lock)
+    (fcntl-flock port 'write-lock #:wait? wait?)
     port))
 
 (define (unlock-file port)
@@ -1078,20 +1142,49 @@ exception if it's already taken."
   #t)
 
 (define (call-with-file-lock file thunk)
-  (let ((port (catch 'system-error
-                (lambda ()
-                  (lock-file file))
-                (lambda args
-                  ;; When using the statically-linked Guile in the initrd,
-                  ;; 'fcntl-flock' returns ENOSYS unconditionally.  Ignore
-                  ;; that error since we're typically the only process running
-                  ;; at this point.
-                  (if (= ENOSYS (system-error-errno args))
-                      #f
-                      (apply throw args))))))
+  (let ((port #f))
     (dynamic-wind
       (lambda ()
-        #t)
+        (set! port
+          (catch 'system-error
+            (lambda ()
+              (lock-file file))
+            (lambda args
+              ;; When using the statically-linked Guile in the initrd,
+              ;; 'fcntl-flock' returns ENOSYS unconditionally.  Ignore
+              ;; that error since we're typically the only process running
+              ;; at this point.
+              (if (= ENOSYS (system-error-errno args))
+                  #f
+                  (apply throw args))))))
+      thunk
+      (lambda ()
+        (when port
+          (unlock-file port))))))
+
+(define (call-with-file-lock/no-wait file thunk handler)
+  (let ((port #f))
+    (dynamic-wind
+      (lambda ()
+        (set! port
+          (catch #t
+            (lambda ()
+              (lock-file file #:wait? #f))
+            (lambda (key . args)
+              (match key
+                ('flock-error
+                 (apply handler args)
+                 ;; No open port to the lock, so return #f.
+                 #f)
+                ('system-error
+                 ;; When using the statically-linked Guile in the initrd,
+                 ;; 'fcntl-flock' returns ENOSYS unconditionally.  Ignore
+                 ;; that error since we're typically the only process running
+                 ;; at this point.
+                 (if (= ENOSYS (system-error-errno (cons key args)))
+                     #f
+                     (apply throw key args)))
+                (_ (apply throw key args)))))))
       thunk
       (lambda ()
         (when port
@@ -1100,6 +1193,11 @@ exception if it's already taken."
 (define-syntax-rule (with-file-lock file exp ...)
   "Wait to acquire a lock on FILE and evaluate EXP in that context."
   (call-with-file-lock file (lambda () exp ...)))
+
+(define-syntax-rule (with-file-lock/no-wait file handler exp ...)
+  "Try to acquire a lock on FILE and evaluate EXP in that context.  Execute
+handler if the lock is already held by another process."
+  (call-with-file-lock/no-wait file (lambda () exp ...) handler))
 
 
 ;;;
@@ -1120,7 +1218,7 @@ exception if it's already taken."
   ;; zero.
   16)
 
-(define (set-thread-name name)
+(define (set-thread-name!/linux name)
   "Set the name of the calling thread to NAME.  NAME is truncated to 15
 bytes."
   (let ((ptr (string->pointer name)))
@@ -1133,7 +1231,7 @@ bytes."
                (list (strerror err))
                (list err))))))
 
-(define (thread-name)
+(define (thread-name/linux)
   "Return the name of the calling thread as a string."
   (let ((buf (make-bytevector %max-thread-name-length)))
     (let-values (((ret err)
@@ -1147,12 +1245,24 @@ bytes."
                  (list (strerror err))
                  (list err))))))
 
+(define set-thread-name
+  (if (string-contains %host-type "linux")
+      set-thread-name!/linux
+      (const #f)))
+
+(define thread-name
+  (if (string-contains %host-type "linux")
+      thread-name/linux
+      (const "")))
+
 
 ;;;
 ;;; Network interfaces.
 ;;;
 
 (define SIOCGIFCONF                               ;from <bits/ioctls.h>
+                                                  ;     <net/if.h>
+                                                  ;     <hurd/ioctl.h>
   (if (string-contains %host-type "linux")
       #x8912                                      ;GNU/Linux
       #xf00801a4))                                ;GNU/Hurd
@@ -1163,23 +1273,23 @@ bytes."
 (define SIOCSIFFLAGS
   (if (string-contains %host-type "linux")
       #x8914                                      ;GNU/Linux
-      -1))                                        ;FIXME: GNU/Hurd?
+      #x84804190))                                ;GNU/Hurd
 (define SIOCGIFADDR
   (if (string-contains %host-type "linux")
       #x8915                                      ;GNU/Linux
-      -1))                                        ;FIXME: GNU/Hurd?
+      #xc08401a1))                                ;GNU/Hurd
 (define SIOCSIFADDR
   (if (string-contains %host-type "linux")
       #x8916                                      ;GNU/Linux
-      -1))                                        ;FIXME: GNU/Hurd?
+      #x8084018c))                                ;GNU/Hurd
 (define SIOCGIFNETMASK
   (if (string-contains %host-type "linux")
       #x891b                                      ;GNU/Linux
-      -1))                                        ;FIXME: GNU/Hurd?
+      #xc08401a5))                                ;GNU/Hurd
 (define SIOCSIFNETMASK
   (if (string-contains %host-type "linux")
       #x891c                                      ;GNU/Linux
-      -1))                                        ;FIXME: GNU/Hurd?
+      #x80840196))                                ;GNU/Hurd
 (define SIOCADDRT
   (if (string-contains %host-type "linux")
       #x890B                                      ;GNU/Linux
@@ -1215,61 +1325,130 @@ bytes."
       40
       32))
 
-(define-c-struct sockaddr-in                      ;<linux/in.h>
-  sizeof-sockaddrin
+(define-c-struct sockaddr-in/linux                ;<linux/in.h>
+  sizeof-sockaddr-in/linux
   (lambda (family port address)
     (make-socket-address family address port))
-  read-sockaddr-in
-  write-sockaddr-in!
+  read-sockaddr-in/linux
+  write-sockaddr-in!/linux
   (family    unsigned-short)
   (port      (int16 ~ big))
   (address   (int32 ~ big)))
 
-(define-c-struct sockaddr-in6                     ;<linux/in6.h>
-  sizeof-sockaddr-in6
+(define-c-struct sockaddr-in/hurd                 ;<netinet/in.h>
+  sizeof-sockaddr-in/hurd
+  (lambda (len family port address zero)
+    (make-socket-address family address port))
+  read-sockaddr-in/hurd
+  write-sockaddr-in!/hurd
+  (len       uint8)
+  (family    uint8)
+  (port      (int16 ~ big))
+  (address   (int32 ~ big))
+  (zero      (array uint8 8)))
+
+(define-c-struct sockaddr-in6/linux               ;<linux/in6.h>
+  sizeof-sockaddr-in6/linux
   (lambda (family port flowinfo address scopeid)
     (make-socket-address family address port flowinfo scopeid))
-  read-sockaddr-in6
-  write-sockaddr-in6!
+  read-sockaddr-in6/linux
+  write-sockaddr-in6!/linux
   (family    unsigned-short)
   (port      (int16 ~ big))
   (flowinfo  (int32 ~ big))
   (address   (int128 ~ big))
   (scopeid   int32))
 
-(define (write-socket-address! sockaddr bv index)
+(define-c-struct sockaddr-in6/hurd                ;<netinet/in.h>
+  sizeof-sockaddr-in6/hurd
+  (lambda (len family port flowinfo address scopeid)
+    (make-socket-address family address port flowinfo scopeid))
+  read-sockaddr-in6/hurd
+  write-sockaddr-in6!/hurd
+  (len       uint8)
+  (family    uint8)
+  (port      (int16 ~ big))
+  (flowinfo  (int32 ~ big))
+  (address   (int128 ~ big))
+  (scopeid   int32))
+
+(define (write-socket-address!/linux sockaddr bv index)
   "Write SOCKADDR, a socket address as returned by 'make-socket-address', to
 bytevector BV at INDEX."
   (let ((family (sockaddr:fam sockaddr)))
     (cond ((= family AF_INET)
-           (write-sockaddr-in! bv index
-                               family
-                               (sockaddr:port sockaddr)
-                               (sockaddr:addr sockaddr)))
+           (write-sockaddr-in!/linux bv index
+                                     family
+                                     (sockaddr:port sockaddr)
+                                     (sockaddr:addr sockaddr)))
           ((= family AF_INET6)
-           (write-sockaddr-in6! bv index
-                                family
-                                (sockaddr:port sockaddr)
-                                (sockaddr:flowinfo sockaddr)
-                                (sockaddr:addr sockaddr)
-                                (sockaddr:scopeid sockaddr)))
+           (write-sockaddr-in6!/linux bv index
+                                      family
+                                      (sockaddr:port sockaddr)
+                                      (sockaddr:flowinfo sockaddr)
+                                      (sockaddr:addr sockaddr)
+                                      (sockaddr:scopeid sockaddr)))
           (else
            (error "unsupported socket address" sockaddr)))))
+
+(define (write-socket-address!/hurd sockaddr bv index)
+  "Write SOCKADDR, a socket address as returned by 'make-socket-address', to
+bytevector BV at INDEX."
+  (let ((family (sockaddr:fam sockaddr)))
+    (cond ((= family AF_INET)
+           (write-sockaddr-in!/hurd bv index
+                                    sizeof-sockaddr-in/hurd
+                                    family
+                                    (sockaddr:port sockaddr)
+                                    (sockaddr:addr sockaddr)
+                                    '(0 0 0 0 0 0 0 0)))
+          ((= family AF_INET6)
+           (write-sockaddr-in6!/hurd bv index
+                                     sizeof-sockaddr-in6/hurd
+                                     family
+                                     (sockaddr:port sockaddr)
+                                     (sockaddr:flowinfo sockaddr)
+                                     (sockaddr:addr sockaddr)
+                                     (sockaddr:scopeid sockaddr)))
+          (else
+           (error "unsupported socket address" sockaddr)))))
+
+(define write-socket-address!
+  (if (string-contains %host-type "linux-gnu")
+      write-socket-address!/linux
+      write-socket-address!/hurd))
 
 (define PF_PACKET 17)                             ;<bits/socket.h>
 (define AF_PACKET PF_PACKET)
 
-(define* (read-socket-address bv #:optional (index 0))
+(define* (read-socket-address/linux bv #:optional (index 0))
   "Read a socket address from bytevector BV at INDEX."
   (let ((family (bytevector-u16-native-ref bv index)))
     (cond ((= family AF_INET)
-           (read-sockaddr-in bv index))
+           (read-sockaddr-in/linux bv index))
           ((= family AF_INET6)
-           (read-sockaddr-in6 bv index))
+           (read-sockaddr-in6/linux bv index))
           (else
            ;; XXX: Unsupported address family, such as AF_PACKET.  Return a
            ;; vector such that the vector can at least call 'sockaddr:fam'.
            (vector family)))))
+
+(define* (read-socket-address/hurd bv #:optional (index 0))
+  "Read a socket address from bytevector BV at INDEX."
+  (let ((family (bytevector-u16-native-ref bv index)))
+    (cond ((= family AF_INET)
+           (read-sockaddr-in/hurd bv index))
+          ((= family AF_INET6)
+           (read-sockaddr-in6/hurd bv index))
+          (else
+           ;; XXX: Unsupported address family, such as AF_PACKET.  Return a
+           ;; vector such that the vector can at least call 'sockaddr:fam'.
+           (vector family)))))
+
+(define read-socket-address
+  (if (string-contains %host-type "linux-gnu")
+      read-socket-address/linux
+      read-socket-address/hurd))
 
 (define %ioctl
   ;; The most terrible interface, live from Scheme.
@@ -1883,8 +2062,8 @@ correspond to a terminal, return the value returned by FALL-BACK."
         ;; would return EINVAL instead in some cases:
         ;; <https://bugs.ruby-lang.org/issues/10494>.
         ;; Furthermore, some FUSE file systems like unionfs return ENOSYS for
-        ;; that ioctl.
-        (if (memv errno (list ENOTTY EINVAL ENOSYS))
+        ;; that ioctl, and bcachefs returns EPERM.
+        (if (memv errno (list ENOTTY EINVAL ENOSYS EPERM))
             (fall-back)
             (apply throw args))))))
 

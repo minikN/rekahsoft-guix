@@ -1,5 +1,5 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2019 Jakob L. Kreuze <zerodaysfordays@sdf.lonestar.org>
+;;; Copyright © 2019 Jakob L. Kreuze <zerodaysfordays@sdf.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -19,8 +19,10 @@
 (define-module (gnu tests reconfigure)
   #:use-module (gnu bootloader)
   #:use-module (gnu services shepherd)
-  #:use-module (gnu system vm)
   #:use-module (gnu system)
+  #:use-module (gnu system accounts)
+  #:use-module (gnu system shadow)
+  #:use-module (gnu system vm)
   #:use-module (gnu tests)
   #:use-module (guix derivations)
   #:use-module (guix gexp)
@@ -43,7 +45,13 @@
 generation of the system profile."
   (define os
     (marionette-operating-system
-     (simple-operating-system)
+     (operating-system
+       (inherit (simple-operating-system))
+       (users (cons (user-account
+                     (name "jakob")
+                     (group "users")
+                     (home-directory "/home/jakob"))
+                    %base-user-accounts)))
      #:imported-modules '((gnu services herd)
                           (guix combinators))))
 
@@ -84,7 +92,25 @@ generation of the system profile."
 
             (test-equal "script created new generation"
               (length (system-generations marionette))
-              (1+ (length generations-prior))))
+              (1+ (length generations-prior)))
+
+            (test-assert "script activated the new generation"
+              (and (eqv? 'symlink
+                         (marionette-eval
+                          '(stat:type (lstat "/run/current-system"))
+                          marionette))
+                   (string= #$os
+                            (marionette-eval
+                             '(readlink "/run/current-system")
+                             marionette))))
+
+            (test-assert "script activated user accounts"
+              (marionette-eval
+               '(string-contains (call-with-input-file "/etc/passwd"
+                                   (lambda (port)
+                                     (get-string-all port)))
+                                 "jakob")
+               marionette)))
 
           (test-end)
           (exit (= (test-runner-fail-count (test-runner-current)) 0)))))
@@ -109,14 +135,6 @@ Shepherd (PID 1) by unloading obsolete services and loading new services."
                       (start #~(const #t))
                       (stop #~(const #t))
                       (respawn? #f)))
-
-  ;; Return the Shepherd service file for SERVICE, after ensuring that it
-  ;; exists in the store.
-  (define (ensure-service-file service)
-    (let ((file (shepherd-service-file service)))
-      (mlet* %store-monad ((store-object (lower-object file))
-                           (_ (built-derivations (list store-object))))
-        (return file))))
 
   (define (test enable-dummy disable-dummy)
     (with-imported-modules '((gnu build marionette))
@@ -161,10 +179,12 @@ Shepherd (PID 1) by unloading obsolete services and loading new services."
           (test-end)
           (exit (= (test-runner-fail-count (test-runner-current)) 0)))))
 
-  (mlet* %store-monad ((file (ensure-service-file dummy-service)))
-    (let ((enable (upgrade-services-program (list file) '(dummy) '() '()))
+  (gexp->derivation
+   "upgrade-services"
+   (let* ((file (shepherd-service-file dummy-service))
+          (enable (upgrade-services-program (list file) '(dummy) '() '()))
           (disable (upgrade-services-program '() '() '(dummy) '())))
-      (gexp->derivation "upgrade-services" (test enable disable)))))
+     (test enable disable))))
 
 (define* (run-install-bootloader-test)
   "Run a test of an OS running INSTALL-BOOTLOADER-PROGRAM, which installs a

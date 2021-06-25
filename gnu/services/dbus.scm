@@ -1,5 +1,5 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2013, 2014, 2015, 2016, 2017, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2013, 2014, 2015, 2016, 2017, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2015 Sou Bunnbu <iyzsong@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
@@ -86,6 +86,19 @@ includes the @code{etc/dbus-1/system.d} directories of each package listed in
         (use-modules (sxml simple)
                      (srfi srfi-1))
 
+        (define-syntax directives
+          (syntax-rules ()
+            ;; Expand the given directives (SXML expressions) only if their
+            ;; key names a file that exists.
+            ((_ (name directory) rest ...)
+             (let ((dir directory))
+               (if (file-exists? dir)
+                   `((name ,dir)
+                     ,@(directives rest ...))
+                   (directives rest ...))))
+            ((_)
+             '())))
+
         (define (services->sxml services)
           ;; Return the SXML 'includedir' clauses for DIRS.
           `(busconfig
@@ -98,10 +111,13 @@ includes the @code{etc/dbus-1/system.d} directories of each package listed in
             (servicedir "/etc/dbus-1/system-services")
 
             ,@(append-map (lambda (dir)
-                            `((includedir
-                               ,(string-append dir "/etc/dbus-1/system.d"))
-                              (servicedir       ;for '.service' files
-                               ,(string-append dir "/share/dbus-1/services"))))
+                            (directives
+                             (includedir
+                              (string-append dir "/etc/dbus-1/system.d"))
+                             (includedir
+                              (string-append dir "/share/dbus-1/system.d"))
+                             (servicedir          ;for '.service' files
+                              (string-append dir "/share/dbus-1/services"))))
                           services)))
 
         (mkdir #$output)
@@ -160,18 +176,9 @@ includes the @code{etc/dbus-1/system.d} directories of each package listed in
 
       (unless (file-exists? "/etc/machine-id")
         (format #t "creating /etc/machine-id...~%")
-        (let ((prog (string-append #$(dbus-configuration-dbus config)
-                                   "/bin/dbus-uuidgen")))
-          ;; XXX: We can't use 'system' because the initrd's
-          ;; guile system(3) only works when 'sh' is in $PATH.
-          (let ((pid (primitive-fork)))
-            (if (zero? pid)
-                (call-with-output-file "/etc/machine-id"
-                  (lambda (port)
-                    (close-fdes 1)
-                    (dup2 (port->fdes port) 1)
-                    (execl prog)))
-                (waitpid pid)))))))
+        (invoke (string-append #$(dbus-configuration-dbus config)
+                               "/bin/dbus-uuidgen")
+                "--ensure=/etc/machine-id"))))
 
 (define dbus-shepherd-service
   (match-lambda
@@ -179,10 +186,10 @@ includes the @code{etc/dbus-1/system.d} directories of each package listed in
      (list (shepherd-service
             (documentation "Run the D-Bus system daemon.")
             (provision '(dbus-system))
-            (requirement '(user-processes))
+            (requirement '(user-processes syslogd))
             (start #~(make-forkexec-constructor
                       (list (string-append #$dbus "/bin/dbus-daemon")
-                            "--nofork" "--system")
+                            "--nofork" "--system" "--syslog-only")
                       #:pid-file "/var/run/dbus/pid"))
             (stop #~(make-kill-destructor)))))))
 
@@ -213,7 +220,10 @@ includes the @code{etc/dbus-1/system.d} directories of each package listed in
                             (append (dbus-configuration-services config)
                                     services)))))
 
-                (default-value (dbus-configuration))))
+                (default-value (dbus-configuration))
+                (description "Run the system-wide D-Bus inter-process message
+bus.  It allows programs and daemons to communicate and is also responsible
+for spawning (@dfn{activating}) D-Bus services on demand.")))
 
 (define* (dbus-service #:key (dbus dbus) (services '()))
   "Return a service that runs the \"system bus\", using @var{dbus}, with
@@ -353,7 +363,13 @@ tuples, are all set as environment variables when the bus daemon launches it."
                             (append (polkit-configuration-actions config)
                                     actions)))))
 
-                (default-value (polkit-configuration))))
+                (default-value (polkit-configuration))
+                (description
+                 "Run the
+@uref{http://www.freedesktop.org/wiki/Software/polkit/, Polkit privilege
+management service}, which allows system administrators to grant access to
+privileged operations in a structured way.  Polkit is a requirement for most
+desktop environments, such as GNOME.")))
 
 (define* (polkit-service #:key (polkit polkit))
   "Return a service that runs the

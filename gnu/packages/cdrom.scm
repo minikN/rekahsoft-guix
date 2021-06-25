@@ -3,16 +3,17 @@
 ;;; Copyright © 2013, 2014 Andreas Enge <andreas@enge.fr>
 ;;; Copyright © 2015 Taylan Ulrich Bayırlı/Kammer <taylanbayirli@gmail.com>
 ;;; Copyright © 2015 Paul van der Walt <paul@denknerd.org>
-;;; Copyright © 2015, 2016, 2017, 2018 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2015, 2016, 2017, 2018, 2019, 2020 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2016 Alex Kost <alezost@gmail.com>
 ;;; Copyright © 2016 Marius Bakke <mbakke@fastmail.com>
 ;;; Copyright © 2017 John Darrington <jmd@gnu.org>
 ;;; Copyright © 2017 Thomas Danckaert <post@thomasdanckaert.be>
-;;; Copyright © 2017, 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
-;;; Copyright © 2017 ng0 <ng0@n0.is>
+;;; Copyright © 2017, 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2017 Nikita <nikita@n0.is>
 ;;; Copyright © 2018 Oleg Pykhalov <go.wigust@gmail.com>
 ;;; Copyright © 2018, 2019 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2019 Eric Bavier <bavier@member.fsf.org>
+;;; Copyright © 2020 Timotej Lazar <timotej.lazar@araneo.si>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -38,9 +39,11 @@
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system glib-or-gtk)
   #:use-module (guix gexp)
+  #:use-module (guix utils)
   #:use-module (gnu packages)
   #:use-module (gnu packages acl)
   #:use-module (gnu packages audio)
+  #:use-module (gnu packages autotools)
   #:use-module (gnu packages bison)
   #:use-module (gnu packages compression)
   #:use-module (gnu packages flex)
@@ -66,6 +69,7 @@
   #:use-module (gnu packages python)
   #:use-module (gnu packages image)
   #:use-module (gnu packages photo)
+  #:use-module (gnu packages tcl)
   #:use-module (gnu packages video)
   #:use-module (gnu packages wget)
   #:use-module (gnu packages xiph))
@@ -104,14 +108,14 @@ caching facility provided by the library.")
 (define-public libcdio
   (package
     (name "libcdio")
-    (version "2.0.0")
+    (version "2.1.0")
     (source (origin
              (method url-fetch)
              (uri (string-append "mirror://gnu/libcdio/libcdio-"
                                  version ".tar.bz2"))
              (sha256
               (base32
-               "0jr8ppdm80c533nzmrpz3iffnpc6nhvsria1di9f4jg1l19a03fd"))))
+               "0avi6apv5ydjy6b9c3z9a46rvp5i57qyr09vr7x4nndxkmcfjl45"))))
     (build-system gnu-build-system)
     (inputs
      `(("ncurses" ,ncurses)
@@ -134,14 +138,14 @@ extraction from CDs.")
 (define-public libcdio-paranoia
   (package
     (name "libcdio-paranoia")
-    (version "10.2+0.94+2")
+    (version "10.2+2.0.1")
     (source (origin
              (method url-fetch)
              (uri (string-append "mirror://gnu/libcdio/libcdio-paranoia-"
-                                 version ".tar.gz"))
+                                 version ".tar.bz2"))
              (sha256
               (base32
-               "0h8rr1ir05r29rgawa1ccw335668k4s3zq4yg9095svyx7n843yn"))))
+               "12hfnrq7amv9qjzc92cr265m7kh0a1hpasck8cxx1gygbhqczc9k"))))
     (build-system gnu-build-system)
     (native-inputs `(("pkg-config" ,pkg-config)))
     (propagated-inputs `(("libcdio" ,libcdio)))
@@ -155,17 +159,15 @@ libcdio.")
 (define-public xorriso
   (package
     (name "xorriso")
-    (version "1.5.0")
+    (version "1.5.2")
+    (outputs '("out" "gui"))
     (source (origin
              (method url-fetch)
              (uri (string-append "mirror://gnu/xorriso/xorriso-"
                                  version ".tar.gz"))
              (sha256
               (base32
-               "0aq6lvlwlkxz56l5sbvgycr6j5c82ch2bv6zrnc2345ibfpafgx9"))
-             (patches
-              (search-patches "xorriso-no-partition-table-in-inner-efi.patch"
-                              "xorriso-no-mbr-in-inner-efi.patch"))))
+               "1rqpzj95f70jfwpn4lamasfgqpizjsipz12aprdhri777b4zas9v"))))
     (build-system gnu-build-system)
     (arguments
      `(#:phases
@@ -175,10 +177,26 @@ libcdio.")
              (let* ((out (assoc-ref outputs "out"))
                     (out-bin (string-append out "/bin")))
                (install-file "frontend/grub-mkrescue-sed.sh" out-bin)
+               #t)))
+         (add-after 'install 'move-gui-to-separate-output
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out"))
+                   (gui (assoc-ref outputs "gui")))
+               (for-each
+                 (lambda (file)
+                   (mkdir-p (string-append gui (dirname file)))
+                   (rename-file (string-append out file)
+                                (string-append gui file)))
+                 (list "/bin/xorriso-tcltk"
+                       "/share/info/xorriso-tcltk.info"
+                       "/share/man/man1/xorriso-tcltk.1"))
+               (wrap-program (string-append gui "/bin/xorriso-tcltk")
+                 `("PATH" ":" prefix (,(string-append out "/bin"))))
                #t))))))
     (inputs
      `(("acl" ,acl)
        ("readline" ,readline)
+       ("tk" ,tk)
        ("zlib" ,zlib)))
     (home-page "https://www.gnu.org/software/xorriso/")
     (synopsis "Create, manipulate, burn ISO-9660 file systems")
@@ -216,7 +234,7 @@ files.")
      `(#:tests? #f ; there is no check target
        #:configure-flags ; Add $libdir to the RUNPATH of all the executables.
        (list (string-append "LDFLAGS=-Wl,-rpath=" %output "/lib"))))
-    (home-page "http://www.xiph.org/paranoia/")
+    (home-page "https://www.xiph.org/paranoia/")
     (synopsis "Audio CD reading utility")
     (description "Cdparanoia retrieves audio tracks from CDDA capable CDROM
 drives.  The data can be saved to a file or directed to standard output
@@ -226,6 +244,54 @@ target drive is CDDA capable.  In addition to simple reading, cdparanoia adds
 extra-robust data verification, synchronization, error handling and scratch
 reconstruction capability.")
     (license gpl2))) ; libraries under lgpl2.1
+
+(define-public cdrdao
+  (package
+    (name "cdrdao")
+    (version "1.2.4")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/cdrdao/cdrdao")
+             (commit
+              (string-append "rel_" (string-replace-substring version "." "_")))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "1gcl8ibyylamy2d1piq3749nw3xrlp12r0spzp2gmni57b8a6b7j"))))
+    (build-system gnu-build-system)
+    (arguments
+     '(#:configure-flags
+       (list
+        ;; GCDMaster depends on obsolete libgnomeuimm, see
+        ;; <https://github.com/cdrdao/cdrdao/issues/3>.
+        "--without-gcdmaster"
+        ;; Use the native SCSI interface.
+        "--without-scglib")
+       #:phases
+       (modify-phases %standard-phases
+         (add-before 'bootstrap 'fix-configure.ac
+           (lambda _
+             ;; Remove reference to missing macro.
+             (substitute* "configure.ac" (("^AM_GCONF_SOURCE_2.*") ""))
+             #t)))))
+    (native-inputs
+     `(("autoconf" ,autoconf)
+       ("automake" ,automake)
+       ("pkg-config" ,pkg-config)))
+    (inputs
+     `(("ao" ,ao)
+       ("lame" ,lame)
+       ("libmad" ,libmad)
+       ("libvorbis" ,libvorbis)))
+    (home-page "http://cdrdao.sourceforge.net")
+    (synopsis "Read and write CDs in disk-at-once mode")
+    (description "cdrdao records audio or data CDs in disk-at-once (DAO) mode,
+based on a textual description of the contents.  This mode writes the complete
+disc – lead-in, one or more tracks, and lead-out – in a single step and is
+commonly used with audio CDs.  @code{cdrdao} can also handle the bin/cue
+format, commonly used for VCDs or disks with subchannel data.")
+    (license gpl2+)))
 
 (define-public cdrtools
   (package
@@ -462,14 +528,14 @@ capacity is user-selectable.")
        ("eudev" ,eudev)
        ("fontconfig" ,fontconfig)
        ("libexif" ,libexif)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("ffmpeg" ,ffmpeg-3.4)))
     (native-inputs
      `(("pkg-config" ,pkg-config)
        ("flex" ,flex)
        ("python" ,python-2)
        ("xmlto" ,xmlto)
-       ("gettext" ,gnu-gettext)
+       ("gettext" ,gettext-minimal)
        ("docbook-xml" ,docbook-xml)
        ("docbook-xsl" ,docbook-xsl)
        ("zip" ,zip)))
@@ -489,7 +555,7 @@ graphical interface.")
     (source (origin
              (method git-fetch)
              (uri (git-reference
-                   (url "https://github.com/lipnitsk/libcue.git")
+                   (url "https://github.com/lipnitsk/libcue")
                    (commit (string-append "v" version))))
              (file-name (git-file-name name version))
              (sha256
@@ -671,7 +737,7 @@ information is written to standard error.")
 (define-public asunder
   (package
     (name "asunder")
-    (version "2.9.3")
+    (version "2.9.6")
     (source (origin
               (method url-fetch)
               (uri
@@ -680,7 +746,7 @@ information is written to standard error.")
                               ".tar.bz2"))
               (sha256
                (base32
-                "1630i1df06y840v3fgdf75jxw1s8kwbfn5bhi0686viah0scccw5"))))
+                "1ycnd82lh7qy1pcbngd4b41s16j9hnm2kyfrncg4cwr3bfk7yg7a"))))
     (build-system glib-or-gtk-build-system)
     (arguments
      '(#:out-of-source? #f
@@ -793,14 +859,14 @@ laid out on the image.")
 (define-public libburn
   (package
     (name "libburn")
-    (version "1.5.0")
+    (version "1.5.2")
     (source (origin
              (method url-fetch)
              (uri (string-append "http://files.libburnia-project.org/releases/"
                                  "libburn-" version ".tar.gz"))
              (sha256
               (base32
-               "1gg2kgnqvaa2fwghai62prxz6slpak1f6bvgjh8m4dn16v114asq"))))
+               "09sjrvq8xsj1gnl2wwyv4lbmicyzzl6x1ac2rrn53xnp34bxnckv"))))
     (build-system gnu-build-system)
     (native-inputs
      `(("pkg-config" ,pkg-config)))
@@ -815,14 +881,14 @@ DVD-RW, DVD-R, DVD-R/DL, BD-R, and BD-RE.")
 (define-public libisofs
   (package
     (name "libisofs")
-    (version "1.5.0")
+    (version "1.5.2")
     (source (origin
              (method url-fetch)
              (uri (string-append "http://files.libburnia-project.org/releases/"
                                  "libisofs-" version ".tar.gz"))
              (sha256
               (base32
-               "001l3akf3wb6msl9man776w560iqyvsbwwzs7d7y7msx13irspys"))))
+               "002mcyqwg625a8hqvsrmgm26mhhfwj0j7rahfhsqirmk02b16npg"))))
     (build-system gnu-build-system)
     (inputs
      `(("zlib" ,zlib)
@@ -884,7 +950,7 @@ CD data, and more.  It's mostly compatible with @code{cdrtools}.")
 (define-public libmirage
   (package
     (name "libmirage")
-    (version "3.2.2")
+    (version "3.2.4")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -892,7 +958,7 @@ CD data, and more.  It's mostly compatible with @code{cdrtools}.")
                     version ".tar.bz2"))
               (sha256
                (base32
-                "0gwrfia0fyhi0b3p2pfyyvrcfcb0qysfzgpdqsqjqbx4xaqx5wpi"))))
+                "0md3f71x2dbgyw5s254vx1s80slh3f25r9pvjihkrmj0rn53nnzw"))))
     (build-system cmake-build-system)
     (native-inputs
      `(("pkg-config" ,pkg-config)
@@ -913,15 +979,15 @@ the data stored in various image formats.")
 (define-public cdemu-daemon
   (package
     (name "cdemu-daemon")
-    (version "3.2.2")
+    (version "3.2.4")
     (source (origin
               (method url-fetch)
               (uri (string-append
-                    "https://downloads.sourceforge.net/cdemu/cdemu-daemon/cdemu-daemon-"
-                    version ".tar.bz2"))
+                    "https://downloads.sourceforge.net/cdemu/cdemu-daemon/"
+                    "cdemu-daemon-" version ".tar.bz2"))
               (sha256
                (base32
-                "0himyrhhfjsr4ff5aci7240bpm9x34h20pid412ci8fm16nk929b"))))
+                "02yyj8sr7d5briamhzrqh8zdsiiggxmx5y05kx25y7k3g15jvcx6"))))
     (build-system cmake-build-system)
     (native-inputs
      `(("pkg-config" ,pkg-config)
@@ -942,7 +1008,7 @@ drive and disc (including CD-ROMs and DVD-ROMs).")
 (define-public cdemu-client
   (package
     (name "cdemu-client")
-    (version "3.2.1")
+    (version "3.2.4")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -950,7 +1016,7 @@ drive and disc (including CD-ROMs and DVD-ROMs).")
                     version ".tar.bz2"))
               (sha256
                (base32
-                "1d8m24qvv62xcwafw5zs4yf39vs64kxl4idqcngd8yyjhrb2ykg5"))))
+                "1swylaja1p1jfjf3s58c9hsk1cyy20i7mrq32kcg6kzp88grs8my"))))
     (build-system cmake-build-system)
     (native-inputs
      `(("pkg-config" ,pkg-config)

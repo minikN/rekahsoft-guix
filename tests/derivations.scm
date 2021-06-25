@@ -1,5 +1,5 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -23,13 +23,12 @@
   #:use-module (guix grafts)
   #:use-module (guix store)
   #:use-module (guix utils)
-  #:use-module (gcrypt hash)
+  #:use-module ((gcrypt hash) #:prefix gcrypt:)
   #:use-module (guix base32)
   #:use-module (guix tests)
   #:use-module (guix tests http)
   #:use-module ((guix packages) #:select (package-derivation base32))
   #:use-module ((guix build utils) #:select (executable-file?))
-  #:use-module ((gnu packages) #:select (search-bootstrap-binary))
   #:use-module (gnu packages bootstrap)
   #:use-module ((gnu packages guile) #:select (guile-1.8))
   #:use-module (srfi srfi-1)
@@ -210,13 +209,13 @@
   (test-skip 1))
 (test-assert "'download' built-in builder"
   (let ((text (random-text)))
-    (with-http-server 200 text
+    (with-http-server `((200 ,text))
       (let* ((drv (derivation %store "world"
                               "builtin:download" '()
                               #:env-vars `(("url"
                                             . ,(object->string (%local-url))))
                               #:hash-algo 'sha256
-                              #:hash (sha256 (string->utf8 text)))))
+                              #:hash (gcrypt:sha256 (string->utf8 text)))))
         (and (build-derivations %store (list drv))
              (string=? (call-with-input-file (derivation->output-path drv)
                          get-string-all)
@@ -225,13 +224,13 @@
 (unless (http-server-can-listen?)
   (test-skip 1))
 (test-assert "'download' built-in builder, invalid hash"
-  (with-http-server 200 "hello, world!"
+  (with-http-server `((200 "hello, world!"))
     (let* ((drv (derivation %store "world"
                             "builtin:download" '()
                             #:env-vars `(("url"
                                           . ,(object->string (%local-url))))
                             #:hash-algo 'sha256
-                            #:hash (sha256 (random-bytevector 100))))) ;wrong
+                            #:hash (gcrypt:sha256 (random-bytevector 100))))) ;wrong
       (guard (c ((store-protocol-error? c)
                  (string-contains (store-protocol-error-message c) "failed")))
         (build-derivations %store (list drv))
@@ -240,13 +239,13 @@
 (unless (http-server-can-listen?)
   (test-skip 1))
 (test-assert "'download' built-in builder, not found"
-  (with-http-server 404 "not found"
+  (with-http-server '((404 "not found"))
     (let* ((drv (derivation %store "will-never-be-found"
                             "builtin:download" '()
                             #:env-vars `(("url"
                                           . ,(object->string (%local-url))))
                             #:hash-algo 'sha256
-                            #:hash (sha256 (random-bytevector 100)))))
+                            #:hash (gcrypt:sha256 (random-bytevector 100)))))
       (guard (c ((store-protocol-error? c)
                  (string-contains (store-protocol-error-message (pk c)) "failed")))
         (build-derivations %store (list drv))
@@ -274,10 +273,10 @@
                           #:env-vars `(("url"
                                         . ,(object->string (%local-url))))
                           #:hash-algo 'sha256
-                          #:hash (sha256 (string->utf8 text)))))
-    (and (with-http-server 200 text
+                          #:hash (gcrypt:sha256 (string->utf8 text)))))
+    (and (with-http-server `((200 ,text))
            (build-derivations %store (list drv)))
-         (with-http-server 200 text
+         (with-http-server `((200 ,text))
            (build-derivations %store (list drv)
                               (build-mode check)))
          (string=? (call-with-input-file (derivation->output-path drv)
@@ -318,34 +317,43 @@
 (test-assert "fixed-output-derivation?"
   (let* ((builder    (add-text-to-store %store "my-fixed-builder.sh"
                                         "echo -n hello > $out" '()))
-         (hash       (sha256 (string->utf8 "hello")))
+         (hash       (gcrypt:sha256 (string->utf8 "hello")))
          (drv        (derivation %store "fixed"
                                  %bash `(,builder)
                                  #:sources (list builder)
                                  #:hash hash #:hash-algo 'sha256)))
     (fixed-output-derivation? drv)))
 
-(test-assert "fixed-output derivation"
-  (let* ((builder    (add-text-to-store %store "my-fixed-builder.sh"
-                                        "echo -n hello > $out" '()))
-         (hash       (sha256 (string->utf8 "hello")))
-         (drv        (derivation %store "fixed"
-                                 %bash `(,builder)
-                                 #:sources `(,builder) ;optional
-                                 #:hash hash #:hash-algo 'sha256))
-         (succeeded? (build-derivations %store (list drv))))
-    (and succeeded?
-         (let ((p (derivation->output-path drv)))
-           (and (equal? (string->utf8 "hello")
-                        (call-with-input-file p get-bytevector-all))
-                (bytevector? (query-path-hash %store p)))))))
+(test-equal "fixed-output derivation"
+  '(sha1 sha256 sha512)
+  (map (lambda (hash-algorithm)
+         (let* ((builder (add-text-to-store %store "my-fixed-builder.sh"
+                                            "echo -n hello > $out" '()))
+                (sha256  (gcrypt:sha256 (string->utf8 "hello")))
+                (hash    (gcrypt:bytevector-hash
+                          (string->utf8 "hello")
+                          (gcrypt:lookup-hash-algorithm hash-algorithm)))
+                (drv     (derivation %store
+                                     (string-append
+                                      "fixed-" (symbol->string hash-algorithm))
+                                     %bash `(,builder)
+                                     #:sources `(,builder) ;optional
+                                     #:hash hash
+                                     #:hash-algo hash-algorithm)))
+           (build-derivations %store (list drv))
+           (let ((p (derivation->output-path drv)))
+             (and (bytevector=? (string->utf8 "hello")
+                                (call-with-input-file p get-bytevector-all))
+                  (bytevector? (query-path-hash %store p))
+                  hash-algorithm))))
+       '(sha1 sha256 sha512)))
 
 (test-assert "fixed-output derivation: output paths are equal"
   (let* ((builder1   (add-text-to-store %store "fixed-builder1.sh"
                                         "echo -n hello > $out" '()))
          (builder2   (add-text-to-store %store "fixed-builder2.sh"
                                         "echo hey; echo -n hello > $out" '()))
-         (hash       (sha256 (string->utf8 "hello")))
+         (hash       (gcrypt:sha256 (string->utf8 "hello")))
          (drv1       (derivation %store "fixed"
                                  %bash `(,builder1)
                                  #:hash hash #:hash-algo 'sha256))
@@ -360,7 +368,7 @@
 (test-assert "fixed-output derivation, recursive"
   (let* ((builder    (add-text-to-store %store "my-fixed-builder.sh"
                                         "echo -n hello > $out" '()))
-         (hash       (sha256 (string->utf8 "hello")))
+         (hash       (gcrypt:sha256 (string->utf8 "hello")))
          (drv        (derivation %store "fixed-rec"
                                  %bash `(,builder)
                                  #:sources (list builder)
@@ -382,7 +390,7 @@
                                         "echo -n hello > $out" '()))
          (builder2   (add-text-to-store %store "fixed-builder2.sh"
                                         "echo hey; echo -n hello > $out" '()))
-         (hash       (sha256 (string->utf8 "hello")))
+         (hash       (gcrypt:sha256 (string->utf8 "hello")))
          (fixed1     (derivation %store "fixed"
                                  %bash `(,builder1)
                                  #:hash hash #:hash-algo 'sha256))
@@ -409,6 +417,38 @@
     (and succeeded?
          (equal? (derivation->output-path final1)
                  (derivation->output-path final2)))))
+
+(test-assert "derivation with duplicate fixed-output inputs"
+  ;; Here we create a derivation that has two inputs, both of which are
+  ;; fixed-output leading to the same result.  This test ensures the hash of
+  ;; that derivation is correctly computed, namely that duplicate inputs are
+  ;; coalesced.  See <https://bugs.gnu.org/36777>.
+  (let* ((builder1   (add-text-to-store %store "fixed-builder1.sh"
+                                        "echo -n hello > $out" '()))
+         (builder2   (add-text-to-store %store "fixed-builder2.sh"
+                                        "echo hey; echo -n hello > $out" '()))
+         (hash       (gcrypt:sha256 (string->utf8 "hello")))
+         (fixed1     (derivation %store "fixed"
+                                 %bash `(,builder1)
+                                 #:hash hash #:hash-algo 'sha256))
+         (fixed2     (derivation %store "fixed"
+                                 %bash `(,builder2)
+                                 #:hash hash #:hash-algo 'sha256))
+         (builder3   (add-text-to-store %store "builder.sh"
+                                        "echo fake builder"))
+         (final      (derivation %store "final"
+                                 %bash `(,builder3)
+                                 #:sources (list %bash builder3)
+                                 #:inputs (list (derivation-input fixed1)
+                                                (derivation-input fixed2)))))
+    (and (derivation? final)
+         (match (derivation-inputs final)
+           (((= derivation-input-derivation one)
+             (= derivation-input-derivation two))
+            (and (not (string=? (derivation-file-name one)
+                                (derivation-file-name two)))
+                 (string=? (derivation->output-path one)
+                           (derivation->output-path two))))))))
 
 (test-assert "multiple-output derivation"
   (let* ((builder    (add-text-to-store %store "my-fixed-builder.sh"
@@ -640,7 +680,7 @@
   (let* ((value (getenv "GUIX_STATE_DIRECTORY"))
          (drv   (derivation %store "leaked-env-vars" %bash
                             '("-c" "echo -n $GUIX_STATE_DIRECTORY > $out")
-                            #:hash (sha256 (string->utf8 value))
+                            #:hash (gcrypt:sha256 (string->utf8 value))
                             #:hash-algo 'sha256
                             #:sources (list %bash)
                             #:leaked-env-vars '("GUIX_STATE_DIRECTORY"))))
@@ -947,6 +987,24 @@
                                          #:mode (build-mode check))
                   (list drv dep))))))
 
+(test-assert "derivation-input-fold"
+  (let* ((builder (add-text-to-store %store "my-builder.sh"
+                                     "echo hello, world > \"$out\"\n"
+                                     '()))
+         (drv1    (derivation %store "foo"
+                              %bash `(,builder)
+                              #:sources `(,%bash ,builder)))
+         (drv2    (derivation %store "bar"
+                              %bash `(,builder)
+                              #:inputs `((,drv1))
+                              #:sources `(,%bash ,builder))))
+    (equal? (derivation-input-fold (lambda (input result)
+                                     (cons (derivation-input-derivation input)
+                                           result))
+                                   '()
+                                   (list (derivation-input drv2)))
+            (list drv1 drv2))))
+
 (test-assert "substitution-oracle and #:substitute? #f"
   (with-store store
     (let* ((dep   (build-expression->derivation store "dep"
@@ -1048,7 +1106,7 @@
          (builder2   '(call-with-output-file (pk 'difference-here! %output)
                         (lambda (p)
                           (write "hello" p))))
-         (hash       (sha256 (string->utf8 "hello")))
+         (hash       (gcrypt:sha256 (string->utf8 "hello")))
          (input1     (build-expression->derivation %store "fixed" builder1
                                                    #:hash hash
                                                    #:hash-algo 'sha256))
@@ -1069,7 +1127,7 @@
          (builder2   '(call-with-output-file (pk 'difference-here! %output)
                         (lambda (p)
                           (write "hello" p))))
-         (hash       (sha256 (string->utf8 "hello")))
+         (hash       (gcrypt:sha256 (string->utf8 "hello")))
          (input1     (build-expression->derivation %store "fixed" builder1
                                                    #:hash hash
                                                    #:hash-algo 'sha256))
@@ -1232,5 +1290,5 @@
 (test-end)
 
 ;; Local Variables:
-;; eval: (put 'with-http-server 'scheme-indent-function 2)
+;; eval: (put 'with-http-server 'scheme-indent-function 1)
 ;; End:

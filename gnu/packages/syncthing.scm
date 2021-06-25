@@ -1,6 +1,9 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2016 Petter <petter@mykolab.ch>
-;;; Copyright © 2016, 2017, 2018, 2019 Leo Famulari <leo@famulari.name>
+;;; Copyright © 2016, 2017, 2018, 2019, 2020 Leo Famulari <leo@famulari.name>
+;;; Copyright © 2020 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2020 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2020 Giacomo Leidi <goodoldpaul@autistici.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -19,18 +22,28 @@
 
 (define-module (gnu packages syncthing)
   #:use-module (guix build-system go)
+  #:use-module (guix build-system python)
   #:use-module (guix build-system trivial)
   #:use-module (guix packages)
   #:use-module (guix download)
   #:use-module (guix git-download)
   #:use-module (guix licenses)
   #:use-module (gnu packages)
-  #:use-module (gnu packages golang))
+  #:use-module (gnu packages freedesktop)
+  #:use-module (gnu packages glib)
+  #:use-module (gnu packages gnome)
+  #:use-module (gnu packages golang)
+  #:use-module (gnu packages gtk)
+  #:use-module (gnu packages linux)
+  #:use-module (gnu packages python)
+  #:use-module (gnu packages python-crypto)
+  #:use-module (gnu packages python-xyz)
+  #:use-module (gnu packages time))
 
 (define-public syncthing
   (package
     (name "syncthing")
-    (version "1.2.0")
+    (version "1.5.0")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://github.com/syncthing/syncthing"
@@ -38,7 +51,7 @@
                                   "/syncthing-source-v" version ".tar.gz"))
               (sha256
                (base32
-                "1l7crhggg2vq4y7pgzsj8wp7k4l9hw5yblflly5bzwywzxz8ff83"))
+                "1394b8y4nllihnjngc0kjpdy7pvyh6v1h09hkn8rdmwxpsdkqkjb"))
               (modules '((guix build utils)))
               ;; Delete bundled ("vendored") free software source code.
               (snippet '(begin
@@ -52,10 +65,9 @@
     ;; When updating Syncthing, check 'go.mod' in the source distribution to
     ;; ensure we are using the correct versions of these dependencies.
     (inputs
-     `(("go-github-com-audriusbutkevicius-go-nat-pmp"
-        ,go-github-com-audriusbutkevicius-go-nat-pmp)
+     `(("go-github-com-jackpal-go-nat-pmp"
+        ,go-github-com-jackpal-go-nat-pmp)
        ("go-github-com-bkaradzic-go-lz4" ,go-github-com-bkaradzic-go-lz4)
-       ("go-github-com-calmh-du" ,go-github-com-calmh-du)
        ("go-github-com-calmh-xdr" ,go-github-com-calmh-xdr)
        ("go-github-com-chmduquesne-rollinghash"
         ,go-github-com-chmduquesne-rollinghash)
@@ -75,32 +87,18 @@
        ("go-github-com-syncthing-notify" ,go-github-com-syncthing-notify)
        ("go-github-com-syndtr-goleveldb" ,go-github-com-syndtr-goleveldb)
        ("go-github-com-thejerf-suture" ,go-github-com-thejerf-suture)
-       ("go-golang-org-x-time-rate" ,go-golang-org-x-time-rate)
-       ("go-gopkg.in-ldap.v2" ,go-gopkg.in-ldap.v2)
+       ("go-golang-org-x-time" ,go-golang-org-x-time)
+       ("go-github-com-go-ldap-ldap" ,go-github-com-go-ldap-ldap)
        ("go-github-com-gogo-protobuf" ,go-github-com-gogo-protobuf)
-       ("go-github-com-gogo-protobuf-gogoproto"
-        ,go-github-com-gogo-protobuf-gogoproto)
-       ("go-github-com-gogo-protobuf-protoc-gen-gogo"
-        ,go-github-com-gogo-protobuf-protoc-gen-gogo)
-       ("go-github-com-prometheus-client-golang-prometheus"
-        ,go-github-com-prometheus-client-golang-prometheus)
-       ("go-golang-org-x-net-bpf" ,go-golang-org-x-net-bpf)
-       ("go-golang-org-x-net-internal-iana" ,go-golang-org-x-net-internal-iana)
-       ("go-golang-org-x-net-internal-socket"
-        ,go-golang-org-x-net-internal-socket)
-       ("go-golang-org-x-net-internal-socks"
-        ,go-golang-org-x-net-internal-socks)
-       ("go-golang-org-x-net-ipv4" ,go-golang-org-x-net-ipv4)
-       ("go-golang-org-x-net-ipv6" ,go-golang-org-x-net-ipv6)
-       ("go-golang-org-x-net-proxy" ,go-golang-org-x-net-proxy)
-       ("go-golang-org-x-text-unicode-norm" ,go-golang-org-x-text-unicode-norm)
-       ("go-golang-org-x-text-transform" ,go-golang-org-x-text-transform)
+       ("go-github-com-shirou-gopsutil" ,go-github-com-shirou-gopsutil)
+       ("go-github-com-prometheus-client-golang"
+        ,go-github-com-prometheus-client-golang)
+       ("go-golang-org-x-net" ,go-golang-org-x-net)
+       ("go-golang-org-x-text" ,go-golang-org-x-text)
        ("go-github-com-audriusbutkevicius-recli"
         ,go-github-com-audriusbutkevicius-recli)
        ("go-github-com-urfave-cli" ,go-github-com-urfave-cli)
-       ("go-github-com-vitrun-qart-qr" ,go-github-com-vitrun-qart-qr)
-       ("go-github-com-vitrun-qart-coding" ,go-github-com-vitrun-qart-coding)
-       ("go-github-com-vitrun-qart-gf256" ,go-github-com-vitrun-qart-gf256)
+       ("go-github-com-vitrun-qart" ,go-github-com-vitrun-qart)
        ("go-github-com-mattn-go-isatty" ,go-github-com-mattn-go-isatty)
        ("go-golang-org-x-crypto" ,go-golang-org-x-crypto)
        ("go-github-com-flynn-archive-go-shlex"
@@ -110,12 +108,16 @@
        ("go-github-com-ccding-go-stun" ,go-github-com-ccding-go-stun)
        ("go-github-com-audriusbutkevicius-pfilter" ,go-github-com-audriusbutkevicius-pfilter)
        ("go-github-com-lucas-clemente-quic-go" ,go-github-com-lucas-clemente-quic-go)
+       ("go-github-com-willf-bloom" ,go-github-com-willf-bloom)
 
-       ;; For tests
+       ;; For tests.
        ("go-github-com-d4l3k-messagediff" ,go-github-com-d4l3k-messagediff)))
 
     (arguments
-     `(#:import-path "github.com/syncthing/syncthing"
+     `(#:modules ((srfi srfi-26) ; for cut
+                  (guix build utils)
+                  (guix build go-build-system))
+       #:import-path "github.com/syncthing/syncthing"
        ;; We don't need to install the source code for end-user applications.
        #:install-source? #f
        #:phases
@@ -129,7 +131,13 @@
          (replace 'build
            (lambda _
              (with-directory-excursion "src/github.com/syncthing/syncthing"
-               (invoke "go" "run" "build.go" "-no-upgrade"))))
+               ;; XXX The only way to build Syncthing without its automatic
+               ;; updater and to build the utilities is to "build all" and then
+               ;; "build syncthing" again with -no-upgrade.
+               ;; https://github.com/syncthing/syncthing/issues/6118
+               (invoke "go" "run" "build.go" "build" "all")
+               (delete-file "syncthing")
+               (invoke "go" "run" "build.go" "-no-upgrade" "build" "syncthing"))))
 
          (replace 'check
            (lambda _
@@ -139,14 +147,16 @@
          (replace 'install
            (lambda* (#:key outputs #:allow-other-keys)
              (let ((out (assoc-ref outputs "out"))
-                   (utils (assoc-ref outputs "utils"))
-                   (src "src/github.com/syncthing/syncthing/bin/"))
-               (install-file (string-append src "/syncthing")
-                             (string-append out "/bin"))
-               (delete-file (string-append src "/syncthing"))
-               (copy-recursively "src/github.com/syncthing/syncthing/bin/"
-                                 (string-append utils "/bin"))
-               #t)))
+                   (utils (assoc-ref outputs "utils")))
+               (with-directory-excursion "src/github.com/syncthing/syncthing"
+                 (install-file "syncthing" (string-append out "/bin"))
+                 (for-each (cut install-file <> (string-append utils "/bin/"))
+                           '("stcli" "stcompdirs" "stcrashreceiver"
+                             "stdisco" "stdiscosrv" "stevents" "stfileinfo"
+                             "stfinddevice" "stfindignored" "stgenfiles"
+                             "stindex" "strelaypoolsrv" "strelaysrv" "stsigtool"
+                             "stvanity" "stwatchfile" "uraggregate" "ursrv"))
+                 #t))))
 
          (add-after 'install 'install-docs
            (lambda* (#:key outputs #:allow-other-keys)
@@ -178,29 +188,91 @@ Protocol.")
     (home-page "https://github.com/syncthing/syncthing")
     (license mpl2.0)))
 
-(define-public go-github-com-audriusbutkevicius-go-nat-pmp
-  (let ((commit "452c97607362b2ab5a7839b8d1704f0396b640ca")
-        (revision "0"))
-    (package
-      (name "go-github-com-audriusbutkevicius-go-nat-pmp")
-      (version (git-version "0.0.0" revision commit))
-      (source (origin
-                (method git-fetch)
-                (uri (git-reference
-                      (url "https://github.com/AudriusButkevicius/go-nat-pmp")
-                      (commit commit)))
-                (file-name (git-file-name name version))
-                (sha256
-                 (base32 "1accmpl1llk16a19nlyy991fqrgfay6l53gb64hgmdfmqljdvbk7"))))
-      (build-system go-build-system)
-      (arguments
-       `(#:import-path "github.com/AudriusButkevicius/go-nat-pmp"))
-      (synopsis "Port mapping and discovery of external IP address")
-      (description "This package provides a Go client for the NAT-PMP internet
+(define-public syncthing-gtk
+  (package
+    (name "syncthing-gtk")
+    (version "0.9.4.4")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/syncthing/syncthing-gtk.git")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0nc0wd7qvyri7841c3dd9in5d7367hys0isyw8znv5fj4c0a6v1f"))))
+    (build-system python-build-system)
+    (arguments
+     `(#:python ,python-2
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'hardcode-dependencies
+           (lambda* (#:key inputs #:allow-other-keys)
+             (let ((psmisc (assoc-ref inputs "psmisc"))
+                   (syncthing (assoc-ref inputs "syncthing")))
+               ;; Hardcode dependencies paths to avoid propagation.
+               (substitute* "syncthing_gtk/tools.py"
+                 (("killall") (string-append psmisc "/bin/killall")))
+               (substitute* "syncthing_gtk/configuration.py"
+                 (("/usr/bin/syncthing") (string-append syncthing
+                                                        "/bin/syncthing"))))
+             #t))
+         (add-after 'wrap 'wrap-libs
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out")))
+               (wrap-program (string-append out "/bin/syncthing-gtk")
+                 `("GI_TYPELIB_PATH" ":" prefix
+                   (,(getenv "GI_TYPELIB_PATH"))))
+               #t))))))
+    (inputs
+     `(("gtk+" ,gtk+)
+       ("libappindicator" ,libappindicator)
+       ("libnotify" ,libnotify)
+       ("python2-bcrypt" ,python2-bcrypt)
+       ("python2-dateutil" ,python2-dateutil)
+       ("python2-pycairo" ,python2-pycairo)
+       ("python2-pygobject" ,python2-pygobject)
+       ("python-nautilus" ,python-nautilus)
+       ("psmisc" ,psmisc)
+       ("syncthing" ,syncthing)))
+    (native-inputs
+     `(("python2-setuptools" ,python2-setuptools)))
+    (home-page "https://github.com/syncthing/syncthing-gtk")
+    (synopsis "GTK3 based GUI and notification area icon for Syncthing")
+    (description "@code{syncthing-gtk} is a GTK3 Python based GUI and
+notification area icon for Syncthing.  Supported Syncthing features:
+
+@itemize
+@item Everything that WebUI can display
+@item Adding, editing and deleting nodes
+@item Adding, editing and deleting repositories
+@item Restart, shutdown server
+@item Editing daemon settings
+@end itemize\n")
+    (license gpl2)))
+
+(define-public go-github-com-jackpal-go-nat-pmp
+  (package
+    (name "go-github-com-jackpal-go-nat-pmp")
+    (version "1.0.2")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/jackpal/go-nat-pmp")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "1p2yrzfbkazc9nisr2iqjwzhb6q16zj6finyxxn2ikk7iiighl1g"))))
+    (build-system go-build-system)
+    (arguments
+     `(#:import-path "github.com/jackpal/go-nat-pmp"))
+    (synopsis "Port mapping and discovery of external IP address")
+    (description "This package provides a Go client for the NAT-PMP internet
 protocol for port mapping and discovering the external IP address of a
 firewall.")
-      (home-page "https://github.com/AudriusButkevicius/go-nat-pmp")
-      (license asl2.0))))
+    (home-page "https://github.com/jackpal/go-nat-pmp")
+    (license asl2.0)))
 
 (define-public go-github-com-audriusbutkevicius-recli
   (package
@@ -321,32 +393,30 @@ structs in the Go programming language.")
     (license expat)))
 
 (define-public go-github-com-gobwas-glob
-  (let ((commit "51eb1ee00b6d931c66d229ceeb7c31b985563420")
-        (revision "0"))
-    (package
-      (name "go-github-com-gobwas-glob")
-      (version (git-version "0.0.0" revision commit))
-      (source (origin
-                (method git-fetch)
-                (uri (git-reference
-                       (url "https://github.com/gobwas/glob")
-                       (commit commit)))
-                (file-name (git-file-name name version))
-                (sha256
-                 (base32
-                  "090wzpwsjana1qas8ipwh1pj959gvc4b7vwybzi01f3bmd79jwlp"))))
-      (build-system go-build-system)
-      (arguments
-        `(#:import-path "github.com/gobwas/glob"))
-      (synopsis "Go globbing library")
-      (description "This package provides a Go implementation of globs.")
-      (home-page "https://github.com/gobwas/glob")
-      (license expat))))
+  (package
+    (name "go-github-com-gobwas-glob")
+    (version "0.2.3")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/gobwas/glob")
+                     (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0jxk1x806zn5x86342s72dq2qy64ksb3zrvrlgir2avjhwb18n6z"))))
+    (build-system go-build-system)
+    (arguments
+      `(#:import-path "github.com/gobwas/glob"))
+    (synopsis "Go globbing library")
+    (description "This package provides a Go implementation of globs.")
+    (home-page "https://github.com/gobwas/glob")
+    (license expat)))
 
 
 (define-public go-github-com-golang-groupcache-lru
-  (let ((commit "84a468cf14b4376def5d68c722b139b881c450a4")
-        (revision "1"))
+  (let ((commit "869f871628b6baa9cfbc11732cdf6546b17c1298")
+        (revision "2"))
     (package
       (name "go-github-com-golang-groupcache-lru")
       (version (git-version "0.0.0" revision commit))
@@ -358,7 +428,7 @@ structs in the Go programming language.")
                 (file-name (git-file-name name version))
                 (sha256
                  (base32
-                  "1ky1r9qh54yi9zp2769qrjngzndgd8fn7mja2qfac285n06chmcn"))))
+                  "0r4nk8129bvx50qb4xzjaay39b2h6k7cbdqqzdlanmc82ygczsbw"))))
       (build-system go-build-system)
       (arguments
        `(#:import-path "github.com/golang/groupcache/lru"
@@ -396,33 +466,31 @@ compression format.")
       (license bsd-3))))
 
 (define-public go-github-com-jackpal-gateway
-  (let ((commit "5795ac81146e01d3fab7bcf21c043c3d6a32b006")
-        (revision "0"))
-    (package
-      (name "go-github-com-jackpal-gateway")
-      (version (git-version "0.0.0" revision commit))
-      (source (origin
-                (method git-fetch)
-                (uri (git-reference
-                      (url "https://github.com/jackpal/gateway")
-                      (commit commit)))
-                (file-name (git-file-name name version))
-                (sha256
-                 (base32
-                  "0fkwkwmhfadwk3cha8616bhqxfkr9gjjnynhhxyldlphixgs3f25"))))
-      (build-system go-build-system)
-      (arguments
-       `(#:import-path "github.com/jackpal/gateway"))
-      (synopsis "Discover the address of a LAN gateway")
-      (description "@code{gateway} is a Go library for discovering the IP
+  (package
+    (name "go-github-com-jackpal-gateway")
+    (version "1.0.6")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/jackpal/gateway")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "1yms2dw4dnz4cvj9vhwh6193d50jhvn5awsp2g3a4lcc3sjrgd6m"))))
+    (build-system go-build-system)
+    (arguments
+     `(#:import-path "github.com/jackpal/gateway"))
+    (synopsis "Discover the address of a LAN gateway")
+    (description "@code{gateway} is a Go library for discovering the IP
 address of the default LAN gateway.")
-      (home-page "https://github.com/jackpal/gateway")
-      (license bsd-3))))
+    (home-page "https://github.com/jackpal/gateway")
+    (license bsd-3)))
 
 (define-public go-github-com-lib-pq
   (package
     (name "go-github-com-lib-pq")
-    (version "1.1.1")
+    (version "1.2.0")
     (source (origin
               (method git-fetch)
               (uri (git-reference
@@ -431,7 +499,7 @@ address of the default LAN gateway.")
               (file-name (git-file-name name version))
               (sha256
                (base32
-                "0g64wlg1l1ybq4x44idksl4pgm055s58jxc6r6x4qhqm5q76h0km"))))
+                "08j1smm6rassdssdks4yh9aspa1dv1g5nvwimmknspvhx8a7waqz"))))
     (build-system go-build-system)
     (arguments
      `(#:import-path "github.com/lib/pq"
@@ -447,7 +515,7 @@ database/sql package.")
 (define-public go-github-com-oschwald-geoip2-golang
   (package
     (name "go-github-com-oschwald-geoip2-golang")
-    (version "1.3.0")
+    (version "1.4.0")
     (source (origin
               (method git-fetch)
               (uri (git-reference
@@ -456,12 +524,12 @@ database/sql package.")
               (file-name (git-file-name name version))
               (sha256
                (base32
-                "0jivzl15jb8n16rm1b2w97kf7vna5dd3kcz865wfi233qay075j2"))))
+                "1jj4rbdpy87rbl79czg5hs5dyn6xlbnk0bnvyzi71dsxan57nixw"))))
     (build-system go-build-system)
     (propagated-inputs
      `(("go-github-com-oschwald-maxminddb-golang"
         ,go-github-com-oschwald-maxminddb-golang)
-       ("go-golang-org-x-sys-unix" ,go-golang-org-x-sys-unix)))
+       ("go-golang-org-x-sys" ,go-golang-org-x-sys)))
     (arguments
      `(#:import-path "github.com/oschwald/geoip2-golang"
        #:tests? #f)) ; Requires some unpackaged software and test data
@@ -472,32 +540,30 @@ GeoLite2 and GeoIP2 databases in Go.")
     (license isc)))
 
 (define-public go-github-com-oschwald-maxminddb-golang
-  (let ((commit "26fe5ace1c706491c2936119e1dc69c1a9c04d7f")
-        (revision "0"))
-    (package
-      (name "go-github-com-oschwald-maxminddb-golang")
-      (version (git-version "1.2.0" revision commit))
-      (source (origin
-                (method git-fetch)
-                (uri (git-reference
-                      (url "https://github.com/oschwald/maxminddb-golang")
-                      (commit commit)))
-                (file-name (git-file-name name version))
-                (sha256
-                 (base32
-                  "1i6d935f3cv9djpjvc2ibh8aps8jqvg454b9pkwg2h98al759ggk"))))
-      (build-system go-build-system)
-      (propagated-inputs
-       `(("go-golang-org-x-sys-unix" ,go-golang-org-x-sys-unix)))
-      (arguments
-       `(#:import-path "github.com/oschwald/maxminddb-golang"
-         #:tests? #f)) ; Requires some unpackaged software and test data
-      (synopsis "MaxMind DB Reader for Go")
-      (description "This is a Go reader for the MaxMind DB format.  Although
+  (package
+    (name "go-github-com-oschwald-maxminddb-golang")
+    (version "1.4.0")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/oschwald/maxminddb-golang")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "100wd5qv00pkcm6cb8c4x5gavc9jnn7drh6xrqh85hzci4rils66"))))
+    (build-system go-build-system)
+    (propagated-inputs
+     `(("go-golang-org-x-sys" ,go-golang-org-x-sys)))
+    (arguments
+     `(#:import-path "github.com/oschwald/maxminddb-golang"
+       #:tests? #f)) ; Requires some unpackaged software and test data
+    (synopsis "MaxMind DB Reader for Go")
+    (description "This is a Go reader for the MaxMind DB format.  Although
 this can be used to read GeoLite2 and GeoIP2 databases, @code{geoip2} provides a
 higher-level API for doing so.")
-      (home-page "https://github.com/oschwald/maxminddb-golang")
-      (license isc))))
+    (home-page "https://github.com/oschwald/maxminddb-golang")
+    (license isc)))
 
 (define-public go-github-com-stathat-go
   (let ((commit "74669b9f388d9d788c97399a0824adbfee78400e")
@@ -523,8 +589,8 @@ higher-level API for doing so.")
       (license expat))))
 
 (define-public go-github-com-rcrowley-go-metrics
-  (let ((commit "e181e095bae94582363434144c61a9653aff6e50")
-        (revision "1"))
+  (let ((commit "cac0b30c2563378d434b5af411844adff8e32960")
+        (revision "2"))
     (package
       (name "go-github-com-rcrowley-go-metrics")
       (version (git-version "0.0.0" revision commit))
@@ -536,10 +602,14 @@ higher-level API for doing so.")
                 (file-name (git-file-name name version))
                 (sha256
                  (base32
-                  "1pwkyw801hy7n94skzk6h177zqcil6ayrmb5gs3jdpsfayh8ia5w"))))
+                  "1hfxffnpaw49pr3wrkbzq3pnv3nyzsvk5dxndv0yz70xlrbg8a04"))))
       (build-system go-build-system)
       (arguments
-       `(#:import-path "github.com/rcrowley/go-metrics"))
+       ;; Arbitrary precision tests are known to be broken on aarch64, ppc64le
+       ;; and s390x. See: https://github.com/rcrowley/go-metrics/issues/249
+       `(#:tests? ,(not (string-prefix? "aarch64" (or (%current-target-system)
+                                                      (%current-system))))
+         #:import-path "github.com/rcrowley/go-metrics"))
       (propagated-inputs
        `(("go-github-com-stathat-go" ,go-github-com-stathat-go)))
       (synopsis "Go port of Coda Hale's Metrics library")
@@ -573,8 +643,8 @@ run-time in Go.")
     (license asl2.0)))
 
 (define-public go-github-com-syndtr-goleveldb
-  (let ((commit "c3a204f8e96543bb0cc090385c001078f184fc46")
-        (revision "3"))
+  (let ((commit "758128399b1df3a87e92df6c26c1d2063da8fabe")
+        (revision "4"))
     (package
       (name "go-github-com-syndtr-goleveldb")
       (version (git-version "1.0.1" revision commit))
@@ -586,7 +656,7 @@ run-time in Go.")
                 (file-name (git-file-name name version))
                 (sha256
                  (base32
-                  "18cac90dim2z5g28vazzibxa058q2ynihsmf0vbscwzba6l5s5ms"))))
+                  "0mnkzrz4di13g6ggd54my7bkb9nwk8f5k672dyasn467wsg7bf8f"))))
       (build-system go-build-system)
       (propagated-inputs
        `(("go-github-com-golang-snappy" ,go-github-com-golang-snappy)))
@@ -629,11 +699,11 @@ environment")
     (home-page "https://github.com/thejerf/suture")
     (license expat)))
 
-(define-public go-github-com-vitrun-qart-coding
+(define-public go-github-com-vitrun-qart
   (let ((commit "bf64b92db6b05651d6c25a3dabf2d543b360c0aa")
         (revision "0"))
     (package
-      (name "go-github-com-vitrun-qart-coding")
+      (name "go-github-com-vitrun-qart")
       (version (git-version "0.0.0" revision commit))
       (source (origin
                 (method git-fetch)
@@ -647,77 +717,16 @@ environment")
                   "1xk7qki703xmay9ghi3kq2bjf1iw9dz8wik55739d6i7sn77vvkc"))))
       (build-system go-build-system)
       (arguments
-       `(#:import-path "github.com/vitrun/qart/coding"
-         #:unpack-path "github.com/vitrun/qart"))
-      (synopsis "Low-level QR coding library")
+       `(#:import-path "github.com/vitrun/qart"))
+      (synopsis "Create QR codes with an embedded image")
       (description "This package provides a library for embedding
 human-meaningful graphics in QR codes.  However, instead of scribbling on
 redundant pieces and relying on error correction to preserve the meaning,
 @code{qart} engineers the encoded values to create the picture in a code with no
-inherent errors.  This @code{qart} component, @code{coding}, implements
-low-level QR coding details.")
-      (home-page "https://github.com/vitrun/qart/")
-      (license bsd-3))))
-
-(define-public go-github-com-vitrun-qart-gf256
-  (let ((commit "bf64b92db6b05651d6c25a3dabf2d543b360c0aa")
-        (revision "0"))
-    (package
-      (name "go-github-com-vitrun-qart-gf256")
-      (version (git-version "0.0.0" revision commit))
-      (source (origin
-                (method git-fetch)
-                (uri (git-reference
-                      (url "https://github.com/vitrun/qart")
-                      (commit commit)))
-                (file-name (string-append "go-github-com-vitrun-qart-"
-                                          version "-checkout"))
-                (sha256
-                 (base32
-                  "1xk7qki703xmay9ghi3kq2bjf1iw9dz8wik55739d6i7sn77vvkc"))))
-      (build-system go-build-system)
-      (arguments
-       `(#:import-path "github.com/vitrun/qart/gf256"
-         #:unpack-path "github.com/vitrun/qart"))
-      (synopsis "Qart library for Galois Field GF(256) math")
-      (description "This package, a component of @code{qart}, provides @code{gf256},
-implements arithmetic over the Galois Field GF(256).")
+inherent errors.")
       (home-page "https://github.com/vitrun/qart")
       (license bsd-3))))
 
-(define-public go-github-com-vitrun-qart-qr
-  (let ((commit "bf64b92db6b05651d6c25a3dabf2d543b360c0aa")
-        (revision "0"))
-    (package
-      (name "go-github-com-vitrun-qart-qr")
-      (version (git-version "0.0.0" revision commit))
-      (source (origin
-                (method git-fetch)
-                (uri (git-reference
-                      (url "https://github.com/vitrun/qart")
-                      (commit commit)))
-                (file-name (string-append "go-github-com-vitrun-qart-"
-                                          version "-checkout"))
-                (sha256
-                 (base32
-                  "1xk7qki703xmay9ghi3kq2bjf1iw9dz8wik55739d6i7sn77vvkc"))))
-      (build-system go-build-system)
-      (arguments
-       `(#:import-path "github.com/vitrun/qart/qr"
-         #:unpack-path "github.com/vitrun/qart"))
-      (synopsis "Qart component for generating QR codes")
-      (description "This package provides a library for embedding
-human-meaningful graphics in QR codes.  However, instead of scribbling on
-redundant pieces and relying on error correction to preserve the meaning,
-@code{qart} engineers the encoded values to create the picture in a code with no
-inherent errors.  This @code{qart} component, @code{qr}, provides QR code
-generation.")
-      (home-page "https://github.com/vitrun/qart")
-      (license bsd-3))))
-
-;; XXX Syncthing actually imports 'github.com/chmduquesne/rollinghash/adler32'.
-;; Normally we'd package this module indpendenctly but the adler32 module itself
-;; imports 'github.com/chmduquesne/rollinghash/', so this is the easy way out.
 (define-public go-github-com-chmduquesne-rollinghash
   (let ((commit "a60f8e7142b536ea61bb5d84014171189eeaaa81")
         (revision "0"))
@@ -728,7 +737,7 @@ generation.")
         (origin
           (method git-fetch)
           (uri (git-reference
-                 (url "https://github.com/chmduquesne/rollinghash.git")
+                 (url "https://github.com/chmduquesne/rollinghash")
                  (commit commit)))
           (file-name (git-file-name name version))
           (sha256
@@ -744,21 +753,20 @@ hashes.")
       (license expat))))
 
 (define-public go-github-com-petermattis-goid
-  (let ((commit "3db12ebb2a599ba4a96bea1c17b61c2f78a40e02")
-        (revision "0"))
+  (let ((commit "b0b1615b78e5ee59739545bb38426383b2cda4c9")
+        (revision "1"))
     (package
       (name "go-github-com-petermattis-goid")
       (version (git-version "0.0.0" revision commit))
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                       (url "https://github.com/petermattis/goid.git")
+                       (url "https://github.com/petermattis/goid")
                        (commit commit)))
                 (file-name (git-file-name name version))
                 (sha256
-
                  (base32
-                  "0z18a3mr72c52g7g94n08gxw0ksnaafbfwdl5p5jav2sffirb0kd"))))
+                  "0ghfxn045r0bbn2vszw897lxzmhnm4k59aypjvpxl0pbzsw9ab2c"))))
       (build-system go-build-system)
       (arguments
        '(#:import-path "github.com/petermattis/goid"))
@@ -769,20 +777,20 @@ the current goroutine's ID.")
       (license asl2.0))))
 
 (define-public go-github-com-kballard-go-shellquote
-  (let ((commit "cd60e84ee657ff3dc51de0b4f55dd299a3e136f2")
-        (revision "0"))
+  (let ((commit "95032a82bc518f77982ea72343cc1ade730072f0")
+        (revision "1"))
     (package
       (name "go-github-com-kballard-go-shellquote")
       (version (git-version "0.0.0" revision commit))
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                       (url "https://github.com/kballard/go-shellquote.git")
+                       (url "https://github.com/kballard/go-shellquote")
                        (commit commit)))
                 (file-name (git-file-name name version))
                 (sha256
                  (base32
-                  "1xjpin4jq1zl84dcn96xhjmn9bsfyszf6g9aqyj2dc0xfi6c88y0"))))
+                  "1rspvmnsikdq95jmx3dykxd4k1rmgl98ryjrysvl0cf18hl1vq80"))))
       (build-system go-build-system)
       (arguments
        '(#:import-path "github.com/kballard/go-shellquote"))
@@ -793,8 +801,8 @@ using sh's word-splitting rules.")
       (license expat))))
 
 (define-public go-github-com-syncthing-notify
-  (let ((commit "4e389ea6c0d84e6195eb585ffaf62c8c143306ae")
-        (revision "4"))
+  (let ((commit "69c7a957d3e261f9744f46b3dd4d608d8480ad90")
+        (revision "5"))
     (package
       (name "go-github-com-syncthing-notify")
       (version (git-version "0.0.0" revision commit))
@@ -806,12 +814,12 @@ using sh's word-splitting rules.")
                 (file-name (git-file-name name version))
                 (sha256
                  (base32
-                  "19gvl14s1l9m82f8c2xsjcr8lmbqrvw1mxkayvfcpimvxfz0j61i"))))
+                  "1mmdzyfnmjabyhbipl4bggw4w5nlxyyjp0d93qd824kj07kmsr1f"))))
       (build-system go-build-system)
       (arguments
        '(#:import-path "github.com/syncthing/notify"))
       (propagated-inputs
-       `(("go-golang-org-x-sys-unix" ,go-golang-org-x-sys-unix)))
+       `(("go-golang-org-x-sys" ,go-golang-org-x-sys)))
       (synopsis "File system event notification library")
       (description "This package provides @code{notify}, a file system event
 notification library in Go.")
@@ -827,7 +835,7 @@ notification library in Go.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                       (url "https://github.com/beorn7/perks.git")
+                       (url "https://github.com/beorn7/perks")
                        (commit commit)))
                 (file-name (git-file-name name version))
                 (sha256
@@ -844,50 +852,29 @@ bounds.")
       (home-page "https://github.com/beorn7/perks")
       (license expat))))
 
-(define-public go-github-com-golang-protobuf-proto
+(define-public go-github-com-prometheus-client-model
+  (let ((commit "14fe0d1b01d4d5fc031dd4bec1823bd3ebbe8016")
+        (revision "2"))
     (package
-      (name "go-github-com-golang-protobuf-proto")
-      (version "1.3.1")
-      (source (origin
-                (method git-fetch)
-                (uri (git-reference
-                       (url "https://github.com/golang/protobuf.git")
-                       (commit (string-append "v" version))))
-                (file-name (git-file-name name version))
-                (sha256
-                 (base32
-                  "15am4s4646qy6iv0g3kkqq52rzykqjhm4bf08dk0fy2r58knpsyl"))))
-      (build-system go-build-system)
-      (arguments
-       '(#:import-path "github.com/golang/protobuf/proto"
-         #:unpack-path "github.com/golang/protobuf"
-         #:tests? #f ; requires unpackaged golang.org/x/sync/errgroup
-         ))
-      (synopsis "Go support for Protocol Buffers")
-      (description "This package provides Go support for the Protocol Buffers
-data serialization format.")
-      (home-page "https://github.com/golang/protobuf")
-      (license bsd-3)))
-
-(define-public go-github-com-prometheus-client-model-go
-  (let ((commit "fd36f4220a901265f90734c3183c5f0c91daa0b8")
-        (revision "1"))
-    (package
-      (name "go-github-com-prometheus-client-model-go")
+      (name "go-github-com-prometheus-client-model")
       (version (git-version "0.0.2" revision commit))
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                       (url "https://github.com/prometheus/client_model.git")
+                       (url "https://github.com/prometheus/client_model")
                        (commit commit)))
                 (file-name (git-file-name name version))
                 (sha256
                  (base32
-                  "1bs5d72k361llflgl94c22n0w53j30rsfh84smgk8mbjbcmjsaa5"))))
+                  "0zdmk6rbbx39cvfz0r59v2jg5sg9yd02b4pds5n5llgvivi99550"))))
       (build-system go-build-system)
       (arguments
-       '(#:import-path "github.com/prometheus/client_model/go"
-         #:unpack-path "github.com/prometheus/client_model"))
+       '(#:import-path "github.com/prometheus/client_model"
+         #:tests? #f
+         #:phases
+         (modify-phases %standard-phases
+           ;; Source-only package
+           (delete 'build))))
       (propagated-inputs
        `(("go-github-com-golang-protobuf-proto"
           ,go-github-com-golang-protobuf-proto)))
@@ -907,7 +894,7 @@ data serialization format.")
           (method git-fetch)
           (uri
             (git-reference
-              (url "https://github.com/matttproud/golang_protobuf_extensions.git")
+              (url "https://github.com/matttproud/golang_protobuf_extensions")
               (commit commit)))
           (file-name (git-file-name name version))
           (sha256
@@ -927,14 +914,14 @@ message streaming.")
       (home-page "https://github.com/matttproud/golang_protobuf_extensions")
       (license asl2.0))))
 
-(define-public go-github-com-prometheus-common-expfmt
+(define-public go-github-com-prometheus-common
     (package
-      (name "go-github-com-prometheus-common-expfmt")
+      (name "go-github-com-prometheus-common")
       (version "0.4.1")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                       (url "https://github.com/prometheus/common.git")
+                       (url "https://github.com/prometheus/common")
                        (commit (string-append "v" version))))
                 (file-name (git-file-name name version))
                 (sha256
@@ -942,8 +929,8 @@ message streaming.")
                   "0sf4sjdckblz1hqdfvripk3zyp8xq89w7q75kbsyg4c078af896s"))))
       (build-system go-build-system)
       (arguments
-       '(#:import-path "github.com/prometheus/common/expfmt"
-         #:unpack-path "github.com/prometheus/common"
+       '(#:import-path "github.com/prometheus/common"
+         #:tests? #f
          #:phases
          (modify-phases %standard-phases
            (add-before 'reset-gzip-timestamps 'make-gzip-archive-writable
@@ -955,62 +942,34 @@ message streaming.")
                                      "/src/github.com/prometheus/common/expfmt/testdata/")
                       ".*\\.gz$"))
                #t))
-           (replace 'check
-             ;; Tests don't pass "vet" on go-1.11.  See
-             ;; https://github.com/syncthing/syncthing/issues/5311.
-             (lambda* (#:key import-path #:allow-other-keys)
-               (invoke "go" "test"
-                       "-vet=off"
-                       import-path))))))
+           ;; Source-only package
+           (delete 'build))))
       (propagated-inputs
        `(("go-github-com-golang-protobuf-proto"
           ,go-github-com-golang-protobuf-proto)
          ("go-github-com-matttproud-golang-protobuf-extensions-pbutil"
           ,go-github-com-matttproud-golang-protobuf-extensions-pbutil)
-         ("go-github-com-prometheus-client-model-go"
-          ,go-github-com-prometheus-client-model-go)))
+         ("go-github-com-prometheus-client-model"
+          ,go-github-com-prometheus-client-model)))
       (synopsis "Prometheus metrics")
       (description "This package provides tools for reading and writing
 Prometheus metrics.")
       (home-page "https://github.com/prometheus/common")
       (license asl2.0)))
 
-(define-public go-github-com-prometheus-common-model
-    (package
-      (name "go-github-com-prometheus-common-model")
-      (version "0.4.1")
-      (source (origin
-                (method git-fetch)
-                (uri (git-reference
-                       (url "https://github.com/prometheus/common.git")
-                       (commit (string-append "v" version))))
-                (file-name (git-file-name name version))
-                (sha256
-                 (base32
-                  "0sf4sjdckblz1hqdfvripk3zyp8xq89w7q75kbsyg4c078af896s"))))
-      (build-system go-build-system)
-      (arguments
-       '(#:import-path "github.com/prometheus/common/model"
-         #:unpack-path "github.com/prometheus/common"))
-      (synopsis "Prometheus component")
-      (description "This package provides a component of the Go Prometheus
-implementation.")
-      (home-page "https://github.com/prometheus/common")
-      (license asl2.0)))
-
 (define-public go-github-com-prometheus-procfs
     (package
       (name "go-github-com-prometheus-procfs")
-      (version "0.0.3")
+      (version "0.0.4")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                       (url "https://github.com/prometheus/procfs.git")
+                       (url "https://github.com/prometheus/procfs")
                        (commit (string-append "v" version))))
                 (file-name (git-file-name name version))
                 (sha256
                  (base32
-                  "18c4m795fwng8f8qa395f3crvamlbk5y5afk8b5rzyisnmjq774y"))))
+                  "1z5jq5rjala0a0di4nwk1rai0z9f73qwqj6mgcbpjbg2qknlb544"))))
       (build-system go-build-system)
       (arguments
        '(#:import-path "github.com/prometheus/procfs"
@@ -1023,135 +982,89 @@ system, kernel, and process metrics from the @file{/proc} pseudo file system.")
       (home-page "https://github.com/prometheus/procfs")
       (license asl2.0)))
 
-(define-public go-github-com-client-golang-prometheus-promhttp
+(define-public go-github-com-prometheus-client-golang
     (package
-      (name "go-github-com-client-golang-prometheus-promhttp")
-      (version "0.9.4")
+      (name "go-github-com-prometheus-client-golang")
+      (version "1.2.1")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                       (url "https://github.com/prometheus/client_golang.git")
+                       (url "https://github.com/prometheus/client_golang")
                        (commit (string-append "v" version))))
                 (file-name (git-file-name name version))
                 (sha256
                  (base32
-                  "0s134fj4i7k6pxdmxwkdi7amb1882yq33spv15hg3pkpbd3h311p"))))
+                  "0zs49psk23n9z8wrl02d5vib5wclpym8kaxcy6n5pk696i419065"))))
       (build-system go-build-system)
       (arguments
-       '(#:tests? #f ; The tests require internet access
-         #:import-path "github.com/prometheus/client_golang/prometheus/promhttp"
-         #:unpack-path "github.com/prometheus/client_golang"))
+       '(#:tests? #f
+         #:import-path "github.com/prometheus/client_golang"
+         #:phases
+         (modify-phases %standard-phases
+           ;; Source-only package
+           (delete 'build))))
       (propagated-inputs
        `(("go-github-com-beorn7-perks-quantile"
           ,go-github-com-beorn7-perks-quantile)
          ("go-github-com-golang-protobuf-proto"
           ,go-github-com-golang-protobuf-proto)
-         ("go-github-com-prometheus-common-model"
-          ,go-github-com-prometheus-common-model)
-         ("go-github-com-prometheus-client-model-go"
-          ,go-github-com-prometheus-client-model-go)
-         ("go-github-com-prometheus-common-internal-bitbucket-org-ww-goautoneg"
-          ,go-github-com-prometheus-common-internal-bitbucket-org-ww-goautoneg)
-         ("go-github-com-prometheus-common-expfmt"
-          ,go-github-com-prometheus-common-expfmt)
-         ("go-github-com-prometheus-procfs" ,go-github-com-prometheus-procfs)))
+         ("go-github-com-prometheus-client-model"
+          ,go-github-com-prometheus-client-model)
+         ("go-github-com-prometheus-common"
+          ,go-github-com-prometheus-common)
+         ("go-github-com-prometheus-procfs" ,go-github-com-prometheus-procfs)
+         ("go-github-com-cespare-xxhash" ,go-github-com-cespare-xxhash)))
       (synopsis "HTTP server and client tools for Prometheus")
       (description "This package @code{promhttp} provides HTTP client and
 server tools for Prometheus metrics.")
       (home-page "https://github.com/prometheus/client_golang")
       (license asl2.0)))
 
-(define-public go-github-com-prometheus-client-golang-prometheus
-    (package
-      (name "go-github-com-prometheus-client-golang-prometheus")
-      (version "0.9.4")
-      (source (origin
-                (method git-fetch)
-                (uri (git-reference
-                       (url "https://github.com/prometheus/client_golang.git")
-                       (commit (string-append "v" version))))
-                (file-name (git-file-name name version))
-                (sha256
-                 (base32
-                  "0s134fj4i7k6pxdmxwkdi7amb1882yq33spv15hg3pkpbd3h311p"))))
-      (build-system go-build-system)
-      (arguments
-       '(#:import-path "github.com/prometheus/client_golang/prometheus"
-         #:unpack-path "github.com/prometheus/client_golang"
-         #:tests? #f)) ; 'TestHandler' test fails in this non-critical dependency
-      (propagated-inputs
-       `(("go-github-com-beorn7-perks-quantile"
-          ,go-github-com-beorn7-perks-quantile)
-         ("go-github-com-prometheus-common-model" ,go-github-com-prometheus-common-model)
-         ("go-github-com-prometheus-client-model-go"
-          ,go-github-com-prometheus-client-model-go)
-         ("go-github-com-prometheus-common-expfmt"
-          ,go-github-com-prometheus-common-expfmt)
-         ("go-github-com-prometheus-procfs" ,go-github-com-prometheus-procfs)
-         ("go-github-com-prometheus-common-internal-bitbucket-org-ww-goautoneg"
-          ,go-github-com-prometheus-common-internal-bitbucket-org-ww-goautoneg)))
-      (synopsis "Prometheus instrumentation library for Go applications")
-      (description "This package provides the Go client library for the
-Prometheus monitoring and alerting system.  It has two separate parts, one for
-instrumenting application code, and one for creating clients that talk to the
-Prometheus HTTP API.")
-      (home-page "https://github.com/prometheus/client_golang")
-      (license asl2.0)))
-
-(define-public go-gopkg.in-asn1-ber.v1
+(define-public go-github-com-go-asn1-ber-asn1-ber
   (package
-    (name "go-gopkg.in-asn1-ber.v1")
-    (version "1.2")
+    (name "go-github-com-go-asn1-ber-asn1-ber")
+    (version "1.3.1")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                     (url "https://gopkg.in/asn1-ber.v1")
+                     (url "https://github.com/go-asn1-ber/asn1-ber")
                      (commit (string-append "v" version))))
               (file-name (git-file-name name version))
               (sha256
                (base32
-                "1y8bvzbxpw0lfnn7pbcdwzqj4l90qj6xf88dvv9pxd9yl5g6cskx"))))
+                "0dxfmgk84fn0p6pz3i0cspynh6rly5pfk9wghm1q07mx99npln02"))))
     (build-system go-build-system)
     (arguments
-     '(#:import-path "gopkg.in/asn1-ber.v1"
-       ;; Tests don't pass "vet" on go-1.11.  See
-       ;; https://github.com/go-asn1-ber/asn1-ber/issues/20.
-       #:phases
-       (modify-phases %standard-phases
-         (replace 'check
-           (lambda* (#:key import-path #:allow-other-keys)
-             (invoke "go" "test"
-                     "-vet=off"
-                     import-path))))))
+     '(#:import-path "github.com/go-asn1-ber/asn1-ber"))
     (synopsis "ASN.1 BER encoding and decoding in Go")
     (description "This package provides ASN.1 BER encoding and decoding in the
 Go language.")
-    (home-page "https://gopkg.in/asn1-ber.v1")
+    (home-page "https://github.com/go-asn1-ber/asn1-ber")
     (license expat)))
 
-(define-public go-gopkg.in-ldap.v2
+(define-public go-github-com-go-ldap-ldap
   (package
-    (name "go-gopkg.in-ldap.v2")
-    (version "2.5.1")
+    (name "go-github-com-go-ldap-ldap")
+    (version "3.1.7")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                     (url "https://gopkg.in/ldap.v2")
+                     (url "https://github.com/go-ldap/ldap")
                      (commit (string-append "v" version))))
               (file-name (git-file-name name version))
               (sha256
                (base32
-                "1wf81wy04nhkqs0dg5zkivr4sh37r83bxrfwjz9vr4jq6vmljr3h"))))
+                "1z6wxia7a1jkmasa9mm6g4n8f0qqbp5rw6vk0zyh4vzk7azklnj2"))))
     (build-system go-build-system)
     (arguments
-     '(#:import-path "gopkg.in/ldap.v2"
-       #:tests? #f)) ; the test suite requires network access
+     '(#:import-path "github.com/go-ldap/ldap/v3"
+       #:tests? #f)) ; test suite requires internet access
     (propagated-inputs
-     `(("go-gopkg.in-asn1-ber.v1" ,go-gopkg.in-asn1-ber.v1)))
+     `(("go-github-com-go-asn1-ber-asn1-ber" ,go-github-com-go-asn1-ber-asn1-ber)))
+    (home-page "https://github.com/go-ldap/ldap")
     (synopsis "LDAP v3 functionality for Go")
     (description "This package provides basic LDAP v3 functionality in the Go
 language.")
-    (home-page "https://gopkg.in/ldap.v2")
     (license expat)))
 
 (define-public go-github-com-flynn-archive-go-shlex
@@ -1163,7 +1076,7 @@ language.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                       (url "https://github.com/flynn-archive/go-shlex.git")
+                       (url "https://github.com/flynn-archive/go-shlex")
                        (commit commit)))
                 (file-name (git-file-name name version))
                 (sha256
@@ -1178,52 +1091,28 @@ quoting, commenting, and escaping.")
       (home-page "https://github.com/flynn-archive/go-shlex")
       (license asl2.0))))
 
-(define-public go-github-com-prometheus-common-internal-bitbucket-org-ww-goautoneg
+(define-public go-github-com-audriusbutkevicius-pfilter
   (package
-    (name "go-github-com-prometheus-common-internal-bitbucket-org-ww-goautoneg")
-    (version "0.4.1")
-    (source (origin
-              (method git-fetch)
-              (uri (git-reference
-                     (url "https://github.com/prometheus/common.git")
-                     (commit (string-append "v" version))))
-              (file-name (git-file-name name version))
-              (sha256
-               (base32
-                "0sf4sjdckblz1hqdfvripk3zyp8xq89w7q75kbsyg4c078af896s"))))
+    (name "go-github-com-audriusbutkevicius-pfilter")
+    (version "0.0.5")
+    (source
+      (origin
+        (method git-fetch)
+        (uri (git-reference
+               (url "https://github.com/AudriusButkevicius/pfilter")
+               (commit version)))
+        (file-name (git-file-name name version))
+        (sha256
+         (base32
+          "0xzhwyd0w21bhvzl5pinn22hp0y6h44rh3s2ppql69rafc6zd3c6"))))
     (build-system go-build-system)
     (arguments
-     '(#:import-path "github.com/prometheus/common/internal/bitbucket.org/ww/goautoneg"
-       #:unpack-path "github.com/prometheus/common"))
-    (synopsis "Internal Prometheus component")
-    (description "This package is an internal component of Prometheus.")
-    (home-page "https://github.com/prometheus/common")
-    (license asl2.0)))
-
-(define-public go-github-com-audriusbutkevicius-pfilter
-  (let ((commit "c55ef6137fc6f075801eac099cc2687ede0f101d")
-        (revision "3"))
-    (package
-      (name "go-github-com-audriusbutkevicius-pfilter")
-      (version (git-version "0.0.0" revision commit))
-      (source
-        (origin
-          (method git-fetch)
-          (uri (git-reference
-                 (url "https://github.com/AudriusButkevicius/pfilter.git")
-                 (commit commit)))
-          (file-name (git-file-name name version))
-          (sha256
-           (base32
-            "0xzhwyd0w21bhvzl5pinn22hp0y6h44rh3s2ppql69rafc6zd3c6"))))
-      (build-system go-build-system)
-      (arguments
-       '(#:import-path "github.com/AudriusButkevicius/pfilter"))
-      (synopsis "Filter packets into mulitple virtual connections")
-      (description "Pfilter is a Go package for filtering packets into multiple
+     '(#:import-path "github.com/AudriusButkevicius/pfilter"))
+    (synopsis "Filter packets into multiple virtual connections")
+    (description "Pfilter is a Go package for filtering packets into multiple
 virtual connections from a single physical connection.")
-      (home-page "https://github.com/AudriusButkevicius/pfilter")
-      (license expat))))
+    (home-page "https://github.com/AudriusButkevicius/pfilter")
+    (license expat)))
 
 (define-public go-github-com-ccding-go-stun
   (let ((commit "be486d185f3dfcb2dbf8429332da50a0da7f95a6")
@@ -1235,7 +1124,7 @@ virtual connections from a single physical connection.")
         (origin
           (method git-fetch)
           (uri (git-reference
-                 (url "https://github.com/ccding/go-stun.git")
+                 (url "https://github.com/ccding/go-stun")
                  (commit commit)))
           (file-name (git-file-name name version))
           (sha256
@@ -1249,3 +1138,25 @@ virtual connections from a single physical connection.")
 and RFC 5389).")
       (home-page "https://github.com/ccding/go-stun")
       (license asl2.0))))
+
+(define-public go-github-com-cespare-xxhash
+  (package
+    (name "go-github-com-cespare-xxhash")
+    (version "2.1.0")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/cespare/xxhash")
+                     (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "12ad3z7ki9j07c4kx3ywkl6188i2afsjg7sl60wd21p6zkkpfjxq"))))
+    (build-system go-build-system)
+    (arguments
+     '(#:import-path "github.com/cespare/xxhash"))
+    (synopsis "Go implementation of xxHash")
+    (description "This package provides of Go implementation of the 64-bit
+xxHash algorithm (XXH64).")
+    (home-page "https://github.com/cespare/xxhash/")
+    (license expat)))

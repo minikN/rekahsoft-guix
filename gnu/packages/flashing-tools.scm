@@ -6,7 +6,7 @@
 ;;; Copyright © 2016, 2019 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2017 Jonathan Brielmaier <jonathan.brielmaier@web.de>
 ;;; Copyright © 2017 Julien Lepiller <julien@lepiller.eu>
-;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -48,7 +48,7 @@
 (define-public flashrom
   (package
     (name "flashrom")
-    (version "1.1")
+    (version "1.2")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -56,7 +56,7 @@
                     version ".tar.bz2"))
               (sha256
                (base32
-                "06afq680n9p34hi3vrkn12vd1pfyq2062db9qqbi4hi21k3skbdf"))))
+                "0ax4kqnh7kd3z120ypgp73qy1knz47l6qxsqzrfkd97mh5cdky71"))))
     (build-system gnu-build-system)
     (inputs `(("dmidecode" ,dmidecode)
               ("pciutils" ,pciutils)
@@ -98,7 +98,7 @@ programmer devices.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/pali/0xffff.git")
+             (url "https://github.com/pali/0xffff")
              (commit version)))
        (file-name (git-file-name name version))
        (sha256
@@ -169,7 +169,7 @@ programming} technique.")
      `(("pkg-config" ,pkg-config)))
     (inputs
      `(("libusb" ,libusb)))
-    (home-page "http://dfu-programmer.github.io/")
+    (home-page "https://dfu-programmer.github.io/")
     (synopsis "Device firmware update programmer for Atmel chips")
     (description
      "Dfu-programmer is a multi-platform command-line programmer for
@@ -211,14 +211,15 @@ firmware from it.")
   (let ((commit "f289b7a2e5627464044249f0e5742830e052e360"))
     (package
       (name "teensy-loader-cli")
-      (version (string-append "2.1-1." (string-take commit 7)))
+      (version (git-version "2.1" "1" commit))
       (source
        (origin
-         (method url-fetch)
-         (uri (string-append "https://github.com/PaulStoffregen/"
-                             "teensy_loader_cli/archive/" commit ".tar.gz"))
-         (sha256 (base32 "17wqc2q4fa473cy7f5m2yiyb9nq0qw7xal2kzrxzaikgm9rabsw8"))
-         (file-name (string-append "teensy-loader-cli-" version ".tar.gz" ))
+         (method git-fetch)
+         (uri (git-reference
+                (url "https://github.com/PaulStoffregen/teensy_loader_cli")
+                (commit commit)))
+         (sha256 (base32 "0sssim56pwsxp5cp5dlf6mi9h5fx2592m6j1g7abnm0s09b0lpdx"))
+         (file-name (git-file-name name version))
          (modules '((guix build utils)))
          (snippet
           `(begin
@@ -265,7 +266,7 @@ non-root users.")
         (origin
           (method git-fetch)
           (uri (git-reference
-                (url "https://github.com/linux-rockchip/rkflashtool.git")
+                (url "https://github.com/linux-rockchip/rkflashtool")
                 (commit commit)))
           (file-name (git-file-name name version))
           (sha256
@@ -294,13 +295,14 @@ RK3036, RK3066, RK312X, RK3168, RK3188, RK3288, RK3368.")
     (name "heimdall")
     (version "1.4.2")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/Benjamin-Dobell/Heimdall"
-                                  "/archive/v" version ".tar.gz"))
-              (file-name (string-append name "-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://gitlab.com/BenjaminDobell/Heimdall.git")
+                     (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "1y7gwg3lipyp2zcysm2vid1qg5nwin9bxbvgzs28lz2rya4fz6sq"))))
+                "1ygn4snvcmi98rgldgxf5hwm7zzi1zcsihfvm6awf9s6mpcjzbqz"))))
     (build-system cmake-build-system)
     (arguments
      `(#:build-type "Release"
@@ -327,7 +329,7 @@ RK3036, RK3066, RK312X, RK3168, RK3188, RK3288, RK3368.")
      `(("libusb" ,libusb)
        ("qtbase" ,qtbase)
        ("zlib" ,zlib)))
-    (home-page "http://glassechidna.com.au/heimdall/")
+    (home-page "https://glassechidna.com.au/heimdall/")
     (synopsis "Flash firmware onto Samsung mobile devices")
     (description "@command{heimdall} is a tool suite used to flash firmware (aka
 ROMs) onto Samsung mobile devices.  Heimdall connects to a mobile device over
@@ -343,7 +345,7 @@ referred to as the \"Odin 3 protocol\".")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/coreboot/coreboot.git")
+                    (url "https://github.com/coreboot/coreboot")
                     (commit version)))
               (file-name (git-file-name name version))
               (sha256
@@ -413,28 +415,26 @@ Management Engine (ME).  You need to @code{sudo rmmod mei_me} and
 (define-public me-cleaner
   (package
     (name "me-cleaner")
-    (version "1.1")
+    (version "1.2")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/corna/me_cleaner/"
-                                  "archive/v" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/corna/me_cleaner")
+                     (commit (string-append "v" version))))
               (sha256
                (base32
-                "1pgwdqy0jly80nhxmlmyibs343497yjzs6dwfbkcw0l1gjm8i5hw"))
-              (file-name (string-append name "-" version ".tar.gz"))))
+                "1bdj2clm13ir441vn7sv860xsc5gh71ja5lc2wn0gggnff0adxj4"))
+              (file-name (git-file-name name version))))
     (build-system python-build-system)
     (arguments
      `(#:phases
        (modify-phases %standard-phases
-         (add-after 'unpack 'create-setup.py
-           (lambda _
-             (call-with-output-file "setup.py"
-               (lambda (port)
-                 (format port "\
-from setuptools import setup
-setup(name='me_cleaner', version='~a', scripts=['me_cleaner.py'])
-" ,version)))
-             #t)))))
+         (add-after 'install 'install-documentation
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (man (string-append out "/share/man/man1")))
+               (install-file "man/me_cleaner.1" man)
+               #t))))))
     (home-page "https://github.com/corna/me_cleaner")
     (synopsis "Intel ME cleaner")
     (description "This package provides tools for disabling Intel
@@ -447,15 +447,16 @@ ME as far as possible (it only edits ME firmware image files).")
 (define-public uefitool
   (package
     (name "uefitool")
-    (version "0.22.4")
+    (version "0.27.0")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/LongSoft/UEFITool/archive/"
-                                  version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/LongSoft/UEFITool")
+                     (commit version)))
               (sha256
                (base32
-                "05jmhv7jpq08kqbd1477y1lgyjvcic3njrd0bmzdy7v7b7lnhl82"))
-              (file-name (string-append name "-" version ".tar.gz"))))
+                "1i1p823qld927p4f1wcphqcnivb9mq7fi5xmzibxc3g9zzgnyc2h"))
+              (file-name (git-file-name name version))))
     (build-system gnu-build-system)
     (arguments
      `(#:phases

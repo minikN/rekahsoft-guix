@@ -1,8 +1,8 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2014, 2015 Eric Bavier <bavier@member.fsf.org>
+;;; Copyright © 2014, 2015, 2020 Eric Bavier <bavier@posteo.net>
 ;;; Copyright © 2014 Ian Denhardt <ian@zenhack.net>
 ;;; Copyright © 2015, 2016, 2017 Leo Famulari <leo@famulari.name>
-;;; Copyright © 2017, 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2017, 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2017 Thomas Danckaert <post@thomasdanckaert.be>
 ;;; Copyright © 2017 Arun Isaac <arunisaac@systemreboot.net>
 ;;; Copyright © 2017 Kei Kebreau <kkebreau@posteo.net>
@@ -11,8 +11,12 @@
 ;;; Copyright © 2017 Rutger Helling <rhelling@mykolab.com>
 ;;; Copyright © 2018 Mark H Weaver <mhw@netris.org>
 ;;; Copyright © 2018 Oleg Pykhalov <go.wigust@gmail.com>
-;;; Copyright © 2018, 2019 Ricardo Wurmus <rekado@elephly.net>
+;;; Copyright © 2018, 2019, 2020 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2019 Alex Vong <alexvong1995@gmail.com>
+;;; Copyright © 2019 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2019 Mathieu Othacehe <m.othacehe@gmail.com>
+;;; Copyright © 2020 Nicolas Goaziou <mail@nicolasgoaziou.fr>
+;;; Copyright © 2020 Marcin Karpezo <sirmacik@wioo.waw.pl>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -35,6 +39,7 @@
   #:use-module (guix git-download)
   #:use-module (guix download)
   #:use-module (guix utils)
+  #:use-module (guix build-system cmake)
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system go)
   #:use-module (guix build-system python)
@@ -50,6 +55,7 @@
   #:use-module (gnu packages dbm)
   #:use-module (gnu packages dejagnu)
   #:use-module (gnu packages ftp)
+  #:use-module (gnu packages gettext)
   #:use-module (gnu packages glib)
   #:use-module (gnu packages gnupg)
   #:use-module (gnu packages golang)
@@ -57,10 +63,13 @@
   #:use-module (gnu packages guile)
   #:use-module (gnu packages linux)
   #:use-module (gnu packages mcrypt)
+  #:use-module (gnu packages ncurses)
   #:use-module (gnu packages nettle)
+  #:use-module (gnu packages onc-rpc)
   #:use-module (gnu packages pcre)
   #:use-module (gnu packages perl)
   #:use-module (gnu packages pkg-config)
+  #:use-module (gnu packages protobuf)
   #:use-module (gnu packages python)
   #:use-module (gnu packages python-crypto)
   #:use-module (gnu packages python-web)
@@ -73,7 +82,7 @@
 (define-public duplicity
   (package
     (name "duplicity")
-    (version "0.7.19")
+    (version "0.8.14")
     (source
      (origin
       (method url-fetch)
@@ -82,32 +91,36 @@
                           "-series/" version "/+download/duplicity-"
                           version ".tar.gz"))
       (sha256
-       (base32 "0ag9dknslxlasslwfjhqgcqbkb1mvzzx93ry7lch2lfzcdd91am6"))))
+       (base32 "1af7rppsd8kj66xhbc04x1di3rpncrz0prxq1z7npg11c769vb1x"))))
     (build-system python-build-system)
     (native-inputs
-     `(("util-linux" ,util-linux)       ; setsid command, for the tests
+     `(("gettext" ,gnu-gettext)         ; for msgfmt
+       ("util-linux" ,util-linux)       ; setsid command, for the tests
        ("par2cmdline" ,par2cmdline)
-       ("python-pexpect" ,python2-pexpect)
-       ("python-fasteners" ,python2-fasteners)
-       ("mock" ,python2-mock)))
+       ("python-fasteners" ,python-fasteners)
+       ("python-future" ,python-future) ; for tests
+       ("python-pexpect" ,python-pexpect)
+       ("python-pytest" ,python-pytest)
+       ("python-pytest-runner" ,python-pytest-runner)
+       ("python-setuptools-scm" ,python-setuptools-scm)
+       ("tzdata" ,tzdata-for-tests)
+       ("mock" ,python-mock)))
     (propagated-inputs
-     `(("lockfile" ,python2-lockfile)
-       ("urllib3" ,python2-urllib3)))
+     `(("lockfile" ,python-lockfile)
+       ("urllib3" ,python-urllib3)))
     (inputs
-     `(("librsync" ,librsync-0.9)
+     `(("librsync" ,librsync)
        ("lftp" ,lftp)
        ("gnupg" ,gnupg)                 ; gpg executable needed
-       ("util-linux" ,util-linux)       ; for setsid
-       ("tzdata" ,tzdata)))
+       ("util-linux" ,util-linux)))     ; for setsid
     (arguments
-     `(#:python ,python-2               ; setup assumes Python 2
-       #:test-target "test"
+     `(#:test-target "test"
        #:phases
        (modify-phases %standard-phases
          (add-before 'build 'use-store-file-names
            (lambda* (#:key inputs #:allow-other-keys)
              (substitute* "duplicity/gpginterface.py"
-               (("self.call = 'gpg'")
+               (("self.call = u'gpg'")
                 (string-append "self.call = '" (assoc-ref inputs "gnupg") "/bin/gpg'")))
 
              (substitute* '("testing/functional/__init__.py"
@@ -139,7 +152,7 @@ spying and/or modification by the server.")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/Parchive/par2cmdline.git")
+                    (url "https://github.com/Parchive/par2cmdline")
                     (commit (string-append "v" version))))
               (file-name (git-file-name name version))
               (sha256
@@ -198,28 +211,30 @@ backups (called chunks) to allow easy burning to CD/DVD.")
 (define-public libarchive
   (package
     (name "libarchive")
-    (replacement libarchive-3.3.3)
-    (version "3.3.2")
+    (version "3.4.2")
     (source
      (origin
        (method url-fetch)
-       (uri (string-append "https://libarchive.org/downloads/libarchive-"
-                           version ".tar.gz"))
-       (patches (search-patches "libarchive-CVE-2017-14166.patch"
-                                "libarchive-CVE-2017-14502.patch"))
+       (uri (list (string-append "https://libarchive.org/downloads/libarchive-"
+                                 version ".tar.xz")
+                  (string-append "https://github.com/libarchive/libarchive"
+                                 "/releases/download/v" version "/libarchive-"
+                                 version ".tar.xz")))
        (sha256
         (base32
-         "1km0mzfl6in7l5vz9kl09a88ajx562rw93ng9h2jqavrailvsbgd"))))
+         "18dd01ahs2hv74xm7axjc3yhq839p0x0s4vssvlmm8fknja09qfq"))))
     (build-system gnu-build-system)
     (inputs
-     `(("zlib" ,zlib)
-       ("nettle" ,nettle)
-       ("lzo" ,lzo)
-       ("bzip2" ,bzip2)
+     `(("bzip2" ,bzip2)
        ("libxml2" ,libxml2)
-       ("xz" ,xz)))
+       ("lzo" ,lzo)
+       ("nettle" ,nettle)
+       ("xz" ,xz)
+       ("zlib" ,zlib)
+       ("zstd" ,zstd "lib")))
     (arguments
-     `(#:phases
+     `(#:configure-flags '("--disable-static")
+       #:phases
        (modify-phases %standard-phases
          (add-before 'build 'patch-pwd
            (lambda _
@@ -227,17 +242,34 @@ backups (called chunks) to allow easy burning to CD/DVD.")
                (("/bin/pwd") (which "pwd")))
              #t))
          (replace 'check
-           (lambda _
-             ;; XXX: The test_owner_parse, test_read_disk, and
-             ;; test_write_disk_lookup tests expect user 'root' to exist, but
-             ;; the chroot's /etc/passwd doesn't have it.  Turn off those tests.
-             ;;
-             ;; The tests allow one to disable tests matching a globbing pattern.
-             (invoke "make" "libarchive_test" "bsdcpio_test" "bsdtar_test")
-             ;; XXX: This glob disables too much.
-             (invoke "./libarchive_test" "^test_*_disk*")
-             (invoke "./bsdcpio_test" "^test_owner_parse")
-             (invoke "./bsdtar_test")))
+           (lambda* (#:key (tests? #t) #:allow-other-keys)
+             (if tests?
+		 ;; XXX: The test_owner_parse, test_read_disk, and
+		 ;; test_write_disk_lookup tests expect user 'root' to
+		 ;; exist, but the chroot's /etc/passwd doesn't have
+		 ;; it.  Turn off those tests.
+		 ;;
+		 ;; XXX: Adjust test that fails with zstd 1.4.1
+		 ;; because the default options compresses two bytes
+		 ;; better than this test expects.
+		 ;; https://github.com/libarchive/libarchive/issues/1226
+                 (begin
+                   (substitute* "libarchive/test/test_write_filter_zstd.c"
+		     (("compression-level\", \"6\"")
+		      "compression-level\", \"7\""))
+
+		   ;; The tests allow one to disable tests matching a globbing pattern.
+		   (invoke "make"
+			   "libarchive_test"
+			   "bsdcpio_test"
+			   "bsdtar_test")
+
+		   ;; XXX: This glob disables too much.
+		   (invoke "./libarchive_test" "^test_*_disk*")
+		   (invoke "./bsdcpio_test" "^test_owner_parse")
+		   (invoke "./bsdtar_test"))
+                 ;; Tests may be disabled if cross-compiling.
+                 (format #t "Test suite not run.~%"))))
          (add-after 'install 'add--L-in-libarchive-pc
            (lambda* (#:key inputs outputs #:allow-other-keys)
              (let* ((out     (assoc-ref outputs "out"))
@@ -246,8 +278,11 @@ backups (called chunks) to allow easy burning to CD/DVD.")
                     (libxml2 (assoc-ref inputs "libxml2"))
                     (xz      (assoc-ref inputs "xz"))
                     (zlib    (assoc-ref inputs "zlib"))
+                    (zstd    (assoc-ref inputs "zstd"))
                     (bzip2   (assoc-ref inputs "bzip2")))
-               (substitute* (string-append lib "/pkgconfig/libarchive.pc")
+               ;; Embed absolute references to these inputs to avoid propagation.
+               (substitute* (list (string-append lib "/pkgconfig/libarchive.pc")
+                                  (string-append lib "/libarchive.la"))
                  (("-lnettle")
                   (string-append "-L" nettle "/lib -lnettle"))
                  (("-lxml2")
@@ -256,13 +291,11 @@ backups (called chunks) to allow easy burning to CD/DVD.")
                   (string-append "-L" xz "/lib -llzma"))
                  (("-lz")
                   (string-append "-L" zlib "/lib -lz"))
+                 (("-lzstd")
+                  (string-append "-L" zstd "/lib -lzstd"))
                  (("-lbz2")
                   (string-append "-L" bzip2 "/lib -lbz2")))
-               #t))))
-
-       ;; libarchive/test/test_write_format_gnutar_filenames.c needs to be
-       ;; compiled with C99 or C11 or a gnu variant.
-       #:configure-flags '("CFLAGS=-O2 -g -std=c99")))
+               #t))))))
     (home-page "https://libarchive.org/")
     (synopsis "Multi-format archive and compression library")
     (description
@@ -275,35 +308,19 @@ archive.  In particular, note that there is currently no built-in support for
 random access nor for in-place modification.")
     (license license:bsd-2)))
 
-(define-public libarchive-3.3.3
-  (package
-    (inherit libarchive)
-    (version "3.3.3")
-    (source
-     (origin
-       (method url-fetch)
-       (uri (string-append "https://libarchive.org/downloads/libarchive-"
-                           version ".tar.gz"))
-       (patches (search-patches "libarchive-CVE-2018-1000877.patch"
-                                "libarchive-CVE-2018-1000878.patch"
-                                "libarchive-CVE-2018-1000880.patch"))
-       (sha256
-        (base32
-         "0bhfncid058p7n1n8v29l6wxm3mhdqfassscihbsxfwz3iwb2zms"))))))
-
 (define-public rdup
   (package
     (name "rdup")
     (version "1.1.15")
     (source
      (origin
-       (method url-fetch)
-       (file-name (string-append name "-" version ".tar.gz"))
-       (uri (string-append "https://github.com/miekg/rdup/archive/"
-                           version ".tar.gz"))
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/miekg/rdup")
+             (commit version)))
+       (file-name (git-file-name name version))
        (sha256
-        (base32
-         "1jr91hgcf0rrpanqlwws72ql9db6d6grs2i122ki1s4bx0vqqyvq"))))
+        (base32 "0bzyv6qmnivxnv9nw7lnfn46k0m1dlxcjj53zcva6v8y8084l1iw"))))
     (build-system gnu-build-system)
     (native-inputs
      `(("autoconf" ,autoconf)
@@ -313,11 +330,14 @@ random access nor for in-place modification.")
        ;; For tests.
        ("dejagnu" ,dejagnu)))
     (inputs
+     ;; XXX Compiling with nettle (encryption) support requires patching out
+     ;; -Werror from GNUmakefile.in.  Then, rdup-tr-{en,de}crypt tests fail:
+     ;; free(): invalid pointer
+     ;; ** rdup-tr: SIGPIPE received, exiting
      `(("glib" ,glib)
        ("pcre" ,pcre)
        ("libarchive" ,libarchive)
-       ("mcrypt" ,mcrypt)
-       ("nettle" ,nettle)))
+       ("mcrypt" ,mcrypt)))
     (arguments
      `(#:parallel-build? #f             ;race conditions
        #:phases
@@ -332,6 +352,13 @@ random access nor for in-place modification.")
                 (string-append delimiter (which "mcrypt") " "))
                ;; Avoid frivolous dependency on ‘which’ with a shell builtin.
                (("which") "command -v"))
+             #t))
+         (add-before 'check 'disable-encryption-tests
+           (lambda _
+             (for-each delete-file
+                       (list "testsuite/rdup/rdup.rdup-tr-crypt.exp"
+                             "testsuite/rdup/rdup.rdup-tr-decrypt.exp"
+                             "testsuite/rdup/rdup.rdup-tr-encrypt.exp"))
              #t))
          (add-before 'check 'pre-check
            (lambda _
@@ -383,23 +410,23 @@ errors.")
 (define-public rdiff-backup
   (package
     (name "rdiff-backup")
-    (version "1.2.8")
+    (version "2.0.5")
     (source
      (origin
        (method url-fetch)
-       (uri (string-append "mirror://savannah/rdiff-backup/rdiff-backup-"
-                           version ".tar.gz"))
+       (uri (string-append "https://github.com/rdiff-backup/rdiff-backup/releases/"
+                           "download/v" version "/rdiff-backup-" version ".tar.gz"))
        (sha256
-        (base32
-         "1nwmmh816f96h0ff1jxk95ad38ilbhbdl5dgibx1d4cl81dsi48d"))))
+        (base32 "11rvjcp77zwgkphz1kyf5yqgr3rlss7dm9xzmvpvc4lp99xq7drb"))))
     (build-system python-build-system)
+    (native-inputs
+     `(("python-setuptools-scm" ,python-setuptools-scm)))
     (inputs
-     `(("python" ,python-2)
-       ("librsync" ,librsync-0.9)))
+     `(("python" ,python)
+       ("librsync" ,librsync)))
     (arguments
-     `(#:python ,python-2
-       #:tests? #f))
-    (home-page "https://www.nongnu.org/rdiff-backup/")
+     `(#:tests? #f))                    ; Tests require root/sudo
+    (home-page "https://rdiff-backup.net/")
     (synopsis "Local/remote mirroring+incremental backup")
     (description
      "Rdiff-backup backs up one directory to another, possibly over a network.
@@ -418,7 +445,7 @@ rdiff-backup is easy to use and settings have sensible defaults.")
 (define-public rsnapshot
   (package
     (name "rsnapshot")
-    (version "1.4.2")
+    (version "1.4.3")
     (source
      (origin
        (method url-fetch)
@@ -426,8 +453,7 @@ rdiff-backup is easy to use and settings have sensible defaults.")
              "https://github.com/rsnapshot/rsnapshot/releases/download/"
              version "/rsnapshot-" version ".tar.gz"))
        (sha256
-        (base32
-         "05jfy99a0xs6lvsjfp3wz21z0myqhmwl2grn3jr9clijbg282ah4"))))
+        (base32 "1lavqmmsf53pim0nvming7fkng6p0nk2a51k2c2jdq0l7snpl31b"))))
     (build-system gnu-build-system)
     (arguments
      `(#:phases
@@ -439,11 +465,15 @@ rdiff-backup is easy to use and settings have sensible defaults.")
                             "t/backup_exec/conf/backup_exec.conf")
                (("/bin/true") (which "true"))
                (("/bin/false") (which "false")))
+
+             ;; Disable a test that tries to connect to localhost on port 22.
+             (delete-file "t/ssh_args/ssh_args.t.in")
+
              (invoke "make" "test"))))))
     (inputs
      `(("perl" ,perl)
        ("rsync" ,rsync)))
-    (home-page "http://rsnapshot.org")
+    (home-page "https://rsnapshot.org")
     (synopsis "Deduplicating snapshot backup utility based on rsync")
     (description "rsnapshot is a file system snapshot utility based on rsync.
 rsnapshot makes it easy to make periodic snapshots of local machines, and
@@ -462,10 +492,26 @@ rsnapshot uses hard links to deduplicate identical files.")
               (sha256
                (base32
                 "0fpdyxww41ba52d98blvnf543xvirq1v9xz1i3x1gm9lzlzpmc2g"))
-              (patches (search-patches "diffutils-gets-undeclared.patch"))))
+              (patches (search-patches "diffutils-gets-undeclared.patch"))
+              (modules '((guix build utils)))
+              (snippet
+               '(begin
+                  ;; Include all the libtirpc headers necessary to get the
+                  ;; definitions of 'u_int', etc.
+                  (substitute* '("src/block-server.c"
+                                 "include/chop/block-server.h"
+                                 "utils/chop-block-server.c")
+                    (("#include <rpc/(.*)\\.h>" _ header)
+                     (string-append "#include <rpc/types.h>\n"
+                                    "#include <rpc/rpc.h>\n"
+                                    "#include <rpc/" header ".h>\n")))
+                  #t))))
     (build-system gnu-build-system)
     (arguments
-     '(#:phases (modify-phases %standard-phases
+     '(;; Link against libtirpc.
+       #:configure-flags '("LDFLAGS=-ltirpc -Wl,--as-needed")
+
+       #:phases (modify-phases %standard-phases
                   (add-before 'configure 'adjust-configure-script
                     (lambda _
                       ;; Mimic upstream commit
@@ -475,6 +521,15 @@ rsnapshot uses hard links to deduplicate identical files.")
                          (string-append "GUILE=" middle
                                         "--variable bindir`/guile")))
                       #t))
+                  (add-before 'build 'set-libtirpc-include-path
+                    (lambda* (#:key inputs #:allow-other-keys)
+                      ;; Allow <rpc/rpc.h> & co. to be found.
+                      (let ((libtirpc (assoc-ref inputs "libtirpc")))
+                        (setenv "CPATH"
+                                (string-append (getenv "CPATH")
+                                               ":" libtirpc
+                                               "/include/tirpc"))
+                        #t)))
                   (add-before 'check 'skip-test
                     (lambda _
                       ;; XXX: This test fails (1) because current GnuTLS no
@@ -485,10 +540,12 @@ rsnapshot uses hard links to deduplicate identical files.")
     (native-inputs
      `(("guile" ,guile-2.0)
        ("gperf" ,gperf-3.0)                  ;see <https://bugs.gnu.org/32382>
-       ("pkg-config" ,pkg-config)))
+       ("pkg-config" ,pkg-config)
+       ("rpcsvc-proto" ,rpcsvc-proto)))           ;for 'rpcgen'
     (inputs
      `(("guile" ,guile-2.0)
        ("util-linux" ,util-linux)
+       ("libtirpc" ,libtirpc)
        ("gnutls" ,gnutls)
        ("tdb" ,tdb)
        ("bdb" ,bdb)
@@ -512,13 +569,13 @@ detection, and lossless compression.")
 (define-public borg
   (package
     (name "borg")
-    (version "1.1.10")
+    (version "1.1.13")
     (source
      (origin
        (method url-fetch)
        (uri (pypi-uri "borgbackup" version))
        (sha256
-        (base32 "1pp70p4n5kamvcbl4d8021ggrxhyykmg9isjg4yd3wags8b19d7g"))
+        (base32 "089q3flmwbz7dc28zlscwylf64kgck3jf1n6lqpwww8hlrk8cjhn"))
        (modules '((guix build utils)))
        (snippet
         '(begin
@@ -601,7 +658,8 @@ detection, and lossless compression.")
                         ;; These tests assume the kernel supports FUSE.
                         "and not test_fuse "
                         "and not test_fuse_allow_damaged_files "
-                        "and not test_mount_hardlinks")))))
+                        "and not test_mount_hardlinks "
+                        "and not test_readonly_mount ")))))
          (add-after 'install 'install-doc
            (lambda* (#:key inputs outputs #:allow-other-keys)
              (let* ((out (assoc-ref outputs "out"))
@@ -685,14 +743,14 @@ changes are stored.")
 (define-public wimlib
   (package
     (name "wimlib")
-    (version "1.13.1")
+    (version "1.13.2")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://wimlib.net/downloads/"
                                   "wimlib-" version ".tar.gz"))
               (sha256
                (base32
-                "0pxgrpr3dr81rcf2jh71aiiq3v4anc5sj1nld18f2vhvbijbrx27"))))
+                "0id9ym3hzij4kpdrk0sz3ijxp5r0z1md5jch83pml9hdy1zbx5bj"))))
     (build-system gnu-build-system)
     (native-inputs
      `(("pkg-config" ,pkg-config)))
@@ -715,63 +773,6 @@ NTFS volumes using @code{ntfs-3g}, preserving NTFS-specific attributes.")
     (license (list license:gpl3+
                    license:lgpl3+
                    license:cc0))))
-
-(define-public obnam
-  (package
-    (name "obnam")
-    (version "1.21")
-    (source
-     (origin
-       (method url-fetch)
-       (uri (string-append
-             "http://code.liw.fi/debian/pool/main/o/obnam/obnam_"
-             version ".orig.tar.xz"))
-       (sha256
-        (base32
-         "0qlipsq50hca71zc0dp1mg9zs12qm0sbblw7qfzl0hj6mk2rv1by"))))
-    (build-system python-build-system)
-    (arguments
-     `(#:python ,python-2
-       #:phases
-       (modify-phases %standard-phases
-         (replace 'check
-                  (lambda _
-                    (substitute* "obnamlib/vfs_local_tests.py"
-                      ;; Check for the nobody user instead of root.
-                      (("self.fs.get_username\\(0\\), 'root'")
-                       "self.fs.get_username(65534), 'nobody'")
-                      ;; Disable tests checking for root group.
-                      (("self.fs.get_groupname\\(0\\)") "'root'"))
-                    (substitute* "obnamlib/vfs_local.py"
-                      ;; Don't cover get_groupname function.
-                      (("def get_groupname\\(self, gid\\):")
-                       "def get_groupname(self, gid):  # pragma: no cover"))
-                    ;; Can't run network tests.
-                    (invoke "./check" "--unit-tests"))))))
-    (inputs
-     `(("python2-cliapp" ,python2-cliapp)
-       ("python2-larch" ,python2-larch)
-       ("python2-paramiko" ,python2-paramiko)
-       ("python2-pyaml" ,python2-pyaml)
-       ("python2-tracing" ,python2-tracing)
-       ("python2-ttystatus" ,python2-ttystatus)))
-    (native-inputs
-     `(("gnupg" ,gnupg)
-       ("python2-coverage" ,python2-coverage)
-       ("python2-coverage-test-runner" ,python2-coverage-test-runner)
-       ("python2-pep8" ,python2-pep8)
-       ("python2-pylint" ,python2-pylint)))
-    (home-page "https://obnam.org/")
-    (synopsis "Retired backup program")
-    (description
-     "Warning: @uref{https://blog.liw.fi/posts/2017/08/13/retiring_obnam/,
-the Obnam project is retired}.  You should use another backup solution instead.
-
-Obnam was an easy, secure backup program.  Features included snapshot backups,
-data de-duplication and encrypted backups using GnuPG.  Backups can be stored on
-local hard disks, or online via the SSH SFTP protocol.  The backup server, if
-used, does not require any special software, on top of SSH.")
-    (license license:gpl3+)))
 
 (define-public dirvish
   (package
@@ -883,7 +884,7 @@ is like a time machine for your data. ")
 (define-public restic
   (package
     (name "restic")
-    (version "0.9.5")
+    (version "0.9.6")
     ;; TODO Try packaging the bundled / vendored dependencies in the 'vendor/'
     ;; directory.
     (source (origin
@@ -894,7 +895,7 @@ is like a time machine for your data. ")
               (file-name (string-append name "-" version ".tar.gz"))
               (sha256
                (base32
-                "0afl3dv7gzwdc9klikk3fsb57d0px2fwihb0xxb7zq7d8vlhh8p2"))))
+                "1zmh42aah32ah8w5n6ilz9bci0y2xrf8p7qshy3yf1lzm5gnbj0w"))))
     (build-system go-build-system)
     (arguments
      `(#:import-path "github.com/restic/restic"
@@ -996,25 +997,113 @@ precious backup space.
 @end itemize")
     (license license:bsd-2)))
 
+(define-public zbackup
+  (package
+    (name "zbackup")
+    (version "1.4.4")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/zbackup/zbackup")
+             (commit version)))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "14l1kyxg7pccpax3d6qcpmdycb70kn3fxp1a59w64hqy2493hngl"))))
+    (build-system cmake-build-system)
+    (arguments
+     `(#:tests? #f))                    ;no test
+    (inputs
+     `(("lzo" ,lzo)
+       ("libressl" ,libressl)
+       ("protobuf" ,protobuf)
+       ("xz" ,xz)
+       ("zlib" ,zlib)))
+    (home-page "http://zbackup.org")
+    (synopsis "Versatile deduplicating backup tool")
+    (description
+     "ZBackup is a globally-deduplicating backup tool, based on the
+ideas found in Rsync.  Feed a large @file{.tar} into it, and it will
+store duplicate regions of it only once, then compress and optionally
+encrypt the result.  Feed another @file{.tar} file, and it will also
+re-use any data found in any previous backups.  This way only new
+changes are stored, and as long as the files are not very different,
+the amount of storage required is very low.  Any of the backup files
+stored previously can be read back in full at any time.  The program
+is format-agnostic, so you can feed virtually any files to it.")
+    (license license:gpl2+)))
+
+(define-public dump
+  (package
+    (name "dump")
+    (version "0.4b46")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "mirror://sourceforge/dump/dump/"
+                           version "/dump-" version ".tar.gz"))
+       (sha256
+        (base32
+         "15rg5y15ak0ppqlhcih78layvg7cwp6hc16p3c58xs8svlkxjqc0"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:configure-flags
+       `("--sysconfdir=/etc"
+         "--disable-readline"
+         "--disable-rmt")))
+    (native-inputs
+     `(("pkg-config" ,pkg-config)))
+    (inputs
+     `(("openssl" ,openssl-1.0)
+       ("zlib" ,zlib)
+       ("util-linux" ,util-linux "lib")
+       ("e2fsprogs" ,e2fsprogs)))
+    (home-page "https://dump.sourceforge.io/")
+    (synopsis "Ext2/3/4 file system dump/restore utilities")
+    (description "Dump examines files in a file system, determines which ones
+need to be backed up, and copies those files to a specified disk, tape or
+other storage medium.  Subsequent incremental backups can then be layered on
+top of the full backup.  The restore command performs the inverse function of
+dump; it can restore a full backup of a file system.  Single files and
+directory subtrees may also be restored from full or partial backups in
+interractive mode.")
+    (license license:bsd-3)))
+
 (define-public burp
   (package
     (name "burp")
-    (version "2.3.6")
-    (source (origin
-              (method url-fetch)
-              (uri (string-append "mirror://sourceforge/burp/burp-" version
-                                  "/burp-" version ".tar.bz2"))
-              (sha256
-               (base32
-                "101nn30apcbmy9k0wksdf8d4ccw7sfcqzkasgg17a5y332x2imr9"))))
+    (version "2.3.30")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/grke/burp")
+             (commit version)))
+       (sha256
+        (base32 "1f9i5d415psbr03fqd47p162qy25sypra1w8w16ym6jk1pvdjsgx"))
+       (file-name (git-file-name name version))))
     (build-system gnu-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-before 'check 'extend-test-time-outs
+           ;; The defaults are far too low for busy boxes & spinning storage.
+           (lambda _
+             (substitute* (find-files "utest" "\\.c$")
+               (("(tcase_set_timeout\\(tc_core,)[ 0-9]*(\\);.*)$" _ prefix suffix)
+                (string-append prefix " 3600" suffix "\n")))
+             #t)))))
     (inputs
-     `(("librsync" ,librsync)
+     `(("acl" ,acl)
+       ("librsync" ,librsync)
+       ("ncurses" ,ncurses)             ; for the live status monitor
        ("openssl" ,openssl)
        ("uthash" ,uthash)
        ("zlib" ,zlib)))
     (native-inputs
-     `(("check" ,check)
+     `(("autoconf" ,autoconf)
+       ("automake" ,automake)
+       ("check" ,check)
        ("pkg-config" ,pkg-config)))
     (home-page "https://burp.grke.org")
     (synopsis "Differential backup and restore")

@@ -2,6 +2,7 @@
 ;;; Copyright © 2016 Theodoros Foradis <theodoros@foradis.org>
 ;;; Copyright © 2019 Arun Isaac <arunisaac@systemreboot.net>
 ;;; Copyright © 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2020 Michael Rohleder <mike@rohleder.de>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -30,14 +31,14 @@
 (define-public plantuml
   (package
     (name "plantuml")
-    (version "1.2019.3")
+    (version "1.2020.15")
     (source (origin
               (method url-fetch)
               (uri (string-append "mirror://sourceforge/plantuml/"
                                   version "/plantuml-" version ".tar.gz"))
               (sha256
                (base32
-                "0p2mqav0qfc6kmkhb2n1vjysffnvpsx4yal68nl0yrh5vd3bnmza"))))
+                "0n9zrdylc79kdzq7i42kd38bndrhgs7p24bmcm7l09nzv8w8j5r0"))))
     (build-system ant-build-system)
     (arguments
      `(#:tests? #f                      ; no tests
@@ -49,7 +50,7 @@
              (substitute* "build.xml"
                (("1.6") "1.7")
                (("<attribute name=\"Class-Path\"") "<!--")
-               (("j2v8_macosx_x86_64-3.1.7.jar\" />") "-->"))
+               (("ditaa0_9.jar\" />") "-->"))
              #t))
          (add-after 'delete-extra-from-classpath 'patch-usr-bin-dot
            (lambda* (#:key inputs #:allow-other-keys)
@@ -82,7 +83,7 @@
     (inputs
      `(("graphviz" ,graphviz)
        ("jre" ,icedtea)))
-    (home-page "http://plantuml.com/")
+    (home-page "https://plantuml.com/")
     (synopsis "Draw UML diagrams from simple textual description")
     (description
      "Plantuml is a tool to generate sequence, usecase, class, activity,

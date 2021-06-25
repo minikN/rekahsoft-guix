@@ -4,15 +4,19 @@
 ;;; Copyright © 2016 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2016, 2017 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2016 John Darrington <jmd@gnu.org>
-;;; Copyright © 2016 ng0 <ng0@n0.is>
-;;; Copyright © 2016, 2017, 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
-;;; Copyright © 2016 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2016 Nikita <nikita@n0.is>
+;;; Copyright © 2016, 2017, 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2016, 2020 Marius Bakke <mbakke@fastmail.com>
 ;;; Copyright © 2017 Vasile Dumitrascu <va511e@yahoo.com>
 ;;; Copyright © 2017 Gregor Giesen <giesen@zaehlwerk.net>
 ;;; Copyright © 2018 Oleg Pykhalov <go.wigust@gmail.com>
 ;;; Copyright © 2019 Mathieu Othacehe <m.othacehe@gmail.com>
 ;;; Copyright © 2019 Chris Marusich <cmmarusich@gmail.com>
 ;;; Copyright © 2019 Rutger Helling <rhelling@mykolab.com>
+;;; Copyright © 2020 Pierre Langlois <pierre.langlois@gmx.com>
+;;; Copyright © 2020 Arun Isaac <arunisaac@systemreboot.net>
+;;; Copyright © 2020 Leo Famulari <leo@famulari.name>
+;;; Copyright © 2020 Brice Waegeneire <brice@waegenei.re>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -34,11 +38,14 @@
   #:use-module (gnu packages autotools)
   #:use-module (gnu packages base)
   #:use-module (gnu packages bash)
+  #:use-module (gnu packages check)
   #:use-module (gnu packages databases)
+  #:use-module (gnu packages documentation)
   #:use-module (gnu packages compression)
   #:use-module (gnu packages crypto)
   #:use-module (gnu packages datastructures)
   #:use-module (gnu packages flex)
+  #:use-module (gnu packages gcc)
   #:use-module (gnu packages glib)
   #:use-module (gnu packages groff)
   #:use-module (gnu packages groff)
@@ -46,6 +53,7 @@
   #:use-module (gnu packages libevent)
   #:use-module (gnu packages libidn)
   #:use-module (gnu packages linux)
+  #:use-module (gnu packages lua)
   #:use-module (gnu packages ncurses)
   #:use-module (gnu packages nettle)
   #:use-module (gnu packages networking)
@@ -54,6 +62,7 @@
   #:use-module (gnu packages protobuf)
   #:use-module (gnu packages python)
   #:use-module (gnu packages python-xyz)
+  #:use-module (gnu packages sphinx)
   #:use-module (gnu packages swig)
   #:use-module (gnu packages tls)
   #:use-module (gnu packages web)
@@ -65,12 +74,13 @@
   #:use-module (guix git-download)
   #:use-module (guix utils)
   #:use-module (guix build-system gnu)
+  #:use-module (guix build-system meson)
   #:use-module (guix build-system trivial))
 
 (define-public dnsmasq
   (package
     (name "dnsmasq")
-    (version "2.80")
+    (version "2.82")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -78,7 +88,7 @@
                     version ".tar.xz"))
               (sha256
                (base32
-                "1fv3g8vikj3sn37x1j6qsywn09w1jipvlv34j3q5qrljbrwa5ayd"))))
+                "0cn1xd1s6xs78jmrmwjnh9m6w3q38pk6dyqy2phvasqiyd33cll4"))))
     (build-system gnu-build-system)
     (native-inputs
      `(("pkg-config" ,pkg-config)))
@@ -109,32 +119,32 @@ and BOOTP/TFTP for network booting of diskless machines.")
 (define-public isc-bind
   (package
     (name "bind")
-    (version "9.14.4")
+    (version "9.16.5")
     (source (origin
               (method url-fetch)
               (uri (string-append
                     "https://ftp.isc.org/isc/bind9/" version
-                    "/bind-" version ".tar.gz"))
+                    "/bind-" version ".tar.xz"))
               (sha256
                (base32
-                "0gxqws7ml15lwkjw9mdcd759gv5kk3s9m17j3vrp9448ls1gnbii"))))
+                "0xf07mmd0vi91jd15z8d3hhjva8v27l4ip4l8yzah4gg3zjv6y33"))))
     (build-system gnu-build-system)
     (outputs `("out" "utils"))
     (inputs
      ;; It would be nice to add GeoIP and gssapi once there are packages.
      `(("libcap" ,libcap)
+       ("libuv" ,libuv)
        ("libxml2" ,libxml2)
        ("openssl" ,openssl)
        ("p11-kit" ,p11-kit)
        ("python" ,python)
        ("python-ply" ,python-ply)))
-    (native-inputs `(("perl" ,perl)
-                     ("net-tools" ,net-tools)))
+    (native-inputs
+     `(("perl" ,perl)
+       ("pkg-config" ,pkg-config)))
     (arguments
      `(#:configure-flags
-       (list (string-append "--with-openssl="
-                            (assoc-ref %build-inputs "openssl"))
-             (string-append "--with-pkcs11="
+       (list (string-append "--with-pkcs11="
                             (assoc-ref %build-inputs "p11-kit")))
        #:phases
        (modify-phases %standard-phases
@@ -167,14 +177,28 @@ and BOOTP/TFTP for network booting of diskless machines.")
              (with-directory-excursion "fuzz"
                (invoke "make" "check"))
              #t)))))
-    (synopsis "An implementation of the Domain Name System")
+    (synopsis "Domain Name System (DNS) implementation")
     (description "BIND is an implementation of the @dfn{Domain Name System}
 (DNS) protocols for the Internet.  It is a reference implementation of those
 protocols, but it is also production-grade software, suitable for use in
-high-volume and high-reliability applications. The name BIND stands for
-\"Berkeley Internet Name Domain\", because the software originated in the early
-1980s at the University of California at Berkeley.")
-    (home-page "https://www.isc.org/downloads/bind")
+high-volume and high-reliability applications.  The name BIND stands for
+\"Berkeley Internet Name Domain\", because the software originated in the
+early 1980s at the University of California at Berkeley.  The @code{utils}
+output of this package contains the following DNS name servers related command
+line utilities:
+@table @code
+@item delv
+DNS lookup and validation utility
+@item dig
+DNS lookup utility
+@item host
+DNS lookup utility
+@item nslookup
+Internet name servers interactive query utility
+@item nsupdate
+Dynamic DNS update utility
+@end table")
+    (home-page "https://www.isc.org/bind/")
     (license (list license:mpl2.0))))
 
 (define-public dnscrypt-proxy
@@ -273,26 +297,34 @@ the two.")
 (define-public libasr
   (package
     (name "libasr")
-    (version "201602131606")
+    (version "1.0.4")
     (source
      (origin
        (method url-fetch)
        (uri (string-append "https://www.opensmtpd.org/archives/"
-                           name "-" version ".tar.gz"))
+                           "libasr-" version ".tar.gz"))
        (sha256
-        (base32
-         "18kdmbjsxrfai16d66qslp48b1zf7gr8him2jj5dcqgbsl44ls75"))))
+        (base32 "1d6s8njqhvayx2gp47409sp1fn8m608ws26hr1srfp6i23nnpyqr"))))
     (build-system gnu-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         (add-after 'install 'install-documentation
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out")))
+               (install-file "src/asr_run.3"
+                             (string-append out "/share/man/man3"))
+               #t))))))
     (native-inputs
      `(("autoconf" ,autoconf)
        ("automake" ,automake)
-       ("pkg-config" ,pkg-config)
-       ("groff" ,groff)))
+       ("libtool" ,libtool)
+       ("pkg-config" ,pkg-config)))
     (home-page "https://www.opensmtpd.org")
     (synopsis "Asynchronous resolver library by the OpenBSD project")
     (description
      "libasr is a free, simple and portable asynchronous resolver library.
-It allows to run DNS queries and perform hostname resolutions in a fully
+It runs DNS queries and performs hostname resolution in a fully
 asynchronous fashion.")
     (license (list license:isc
                    license:bsd-2 ; last part of getrrsetbyname_async.c
@@ -303,14 +335,14 @@ asynchronous fashion.")
 (define-public nsd
   (package
     (name "nsd")
-    (version "4.2.0")
+    (version "4.3.2")
     (source
      (origin
        (method url-fetch)
        (uri (string-append "https://www.nlnetlabs.nl/downloads/nsd/nsd-"
                            version ".tar.gz"))
        (sha256
-        (base32 "0k57xl3ybdnqjqw9a3dmi7l6qmhkiic6wsghkz08ir809aj1rpsi"))))
+        (base32 "0ac3mbn5z4nc18782m9aswdpi2m9f4665vidw0ciyigdh0pywp2v"))))
     (build-system gnu-build-system)
     (arguments
      `(#:configure-flags
@@ -373,14 +405,14 @@ to result in system-wide compromise.")
 (define-public unbound
   (package
     (name "unbound")
-    (version "1.9.2")
+    (version "1.10.1")
     (source
      (origin
        (method url-fetch)
        (uri (string-append "https://www.unbound.net/downloads/unbound-"
                            version ".tar.gz"))
        (sha256
-        (base32 "15bbrczibap30db8a1pmqhvjbmkxms39hwiivby7f4j5rz2wwykg"))))
+        (base32 "0dnmh9jjh2v274f0hl31bgv40pl77mmfgky8bkqr5kvi3b17fdmp"))))
     (build-system gnu-build-system)
     (outputs '("out" "python"))
     (native-inputs
@@ -390,7 +422,6 @@ to result in system-wide compromise.")
      `(("expat" ,expat)
        ("libevent" ,libevent)
        ("protobuf" ,protobuf)
-       ("python" ,python-3)
        ("python-wrapper" ,python-wrapper)
        ("openssl" ,openssl)))
     (arguments
@@ -566,7 +597,7 @@ served by AS112.  Stub and forward zones are supported.")
              "--enable-nsec"
              "--enable-nsec3"
              "--enable-tsig")))
-    (home-page "http://www.yadifa.eu/")
+    (home-page "https://www.yadifa.eu/")
     (synopsis "Authoritative DNS name server")
     (description "YADIFA is an authoritative name server for the @dfn{Domain
 Name System} (DNS).  It aims for both higher performance and a smaller memory
@@ -578,14 +609,14 @@ Extensions} (DNSSEC).")
 (define-public knot
   (package
     (name "knot")
-    (version "2.8.2")
+    (version "2.9.5")
     (source
      (origin
        (method url-fetch)
        (uri (string-append "https://secure.nic.cz/files/knot-dns/"
                            "knot-" version ".tar.xz"))
        (sha256
-        (base32 "0dx1lp4w33rpa54nns41k4vfdfin6naaskwh132r4qs0l9hl7lh0"))
+        (base32 "0xmzmhd2m9rb24clrrd9k058harsq67nyjplpbyxvy1g46xah28i"))
        (modules '((guix build utils)))
        (snippet
         '(begin
@@ -650,23 +681,96 @@ synthesis, and on-the-fly re-configuration.")
       license:public-domain         ; src/contrib/fnv and possibly murmurhash3
       license:gpl3+))))             ; everything else
 
+(define-public knot-resolver
+  (package
+    (name "knot-resolver")
+    (version "4.3.0")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append "https://secure.nic.cz/files/knot-resolver/"
+                                  "knot-resolver-" version ".tar.xz"))
+              (sha256
+               (base32
+                "09ffmqx79lv5psr433x4n946njgsn071b9b7161pcb9bmrqz380c"))))
+    (build-system meson-build-system)
+    (arguments
+     '(#:configure-flags '("-Ddoc=enabled")
+       #:phases
+       (modify-phases %standard-phases
+         (add-before 'configure 'disable-default-ta
+           (lambda _
+             ;;  Disable the default managed root TA, since we don't have
+             ;;  write access to the keyfile and its directory in store.
+             (substitute* "daemon/lua/sandbox.lua.in"
+               (("^trust_anchors\\.add_file.*") ""))
+             #t))
+         (add-after 'build 'build-doc
+           (lambda _
+             (invoke "ninja" "doc")))
+         (add-after 'install 'wrap-binary
+           (lambda* (#:key inputs outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (lua-* (map cdr (filter
+                                     (lambda (input)
+                                       (string-prefix? "lua-" (car input)))
+                                     inputs)))
+                    (lua-path (lambda (p)
+                                (string-append p "/share/lua/5.1/?.lua")))
+                    (lua-cpath (lambda (p)
+                                 (string-append p "/lib/lua/5.1/?.so"))))
+               (wrap-program (string-append out "/sbin/kresd")
+                 `("LUA_PATH" ";" prefix ,(map lua-path lua-*))
+                 `("LUA_CPATH" ";" prefix ,(map lua-cpath lua-*)))
+               #t))))))
+    (native-inputs
+     `(("cmocka" ,cmocka)               ; for unit tests
+       ("doxygen" ,doxygen)
+       ("protobuf-c" ,protobuf-c)
+       ("pkg-config" ,pkg-config)
+       ("python-breathe" ,python-breathe)
+       ("python-sphinx" ,python-sphinx)
+       ("python-sphinx-rtd-theme" ,python-sphinx-rtd-theme)))
+    (inputs
+     `(("fstrm" ,fstrm)
+       ("gnutls" ,gnutls)
+       ("knot" ,knot)
+       ("libuv" ,libuv)
+       ("lmdb" ,lmdb)
+       ("luajit" ,luajit)
+       ;; TODO: Add optional lua modules: basexx and psl.
+       ("lua-bitop" ,lua5.1-bitop)
+       ("lua-cqueues" ,lua5.1-cqueues)
+       ("lua-filesystem" ,lua5.1-filesystem)
+       ("lua-sec" ,lua5.1-sec)
+       ("lua-socket" ,lua5.1-socket)))
+    (home-page "https://www.knot-resolver.cz/")
+    (synopsis "Caching validating DNS resolver")
+    (description
+     "Knot Resolver is a caching full resolver implementation written in C and
+LuaJIT, both a resolver library and a daemon.")
+    (license (list license:gpl3+
+                   ;; Some 'contrib' files are under MIT, CC0 and LGPL2.
+                   license:expat
+                   license:cc0
+                   license:lgpl2.0))))
+
 (define-public ddclient
   (package
     (name "ddclient")
-    (version "3.9.0")
-    (source (origin
-              (method url-fetch)
-              (uri (string-append "mirror://sourceforge/ddclient/ddclient/ddclient-"
-                                  version "/ddclient-" version ".tar.gz"))
-              (sha256
-               (base32
-                "0fwyhab8yga2yi1kdfkbqxa83wxhwpagmj1w1mwkg2iffh1fjjlw"))))
+    (version "3.9.1")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/ddclient/ddclient")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "0hf377g4j9r9sac75xp17nk2h58mazswz4vkg4g2gl2yyhvzq91w"))))
     (build-system trivial-build-system) ; no Makefile.PL
     (native-inputs
      `(("bash" ,bash)
-       ("gzip" ,gzip)
-       ("perl" ,perl)
-       ("tar" ,tar)))
+       ("perl" ,perl)))
     (inputs
      `(("inetutils" ,inetutils)         ; logger
        ("net-tools" ,net-tools)
@@ -682,48 +786,46 @@ synthesis, and on-the-fly re-configuration.")
          (use-modules (guix build utils)
                       (ice-9 match)
                       (srfi srfi-26))
-         ;; bootstrap
          (setenv "PATH" (string-append
                          (assoc-ref %build-inputs "bash") "/bin" ":"
-                         (assoc-ref %build-inputs "tar") "/bin" ":"
-                         (assoc-ref %build-inputs "gzip") "/bin" ":"
                          (assoc-ref %build-inputs "perl") "/bin"))
-         ;; extract source
-         (invoke "tar" "xvf" (assoc-ref %build-inputs "source"))
-         ;; package
-         (with-directory-excursion (string-append ,name "-" ,version)
-           (let* ((out (assoc-ref %outputs "out"))
-                  (bin (string-append out "/bin")))
-             (let ((file "ddclient"))
-               (substitute* file
-                 (("/usr/bin/perl") (which "perl"))
-                 ;; Strictly use ‘/etc/ddclient/ddclient.conf’.
-                 (("\\$\\{program\\}\\.conf") "/etc/ddclient/ddclient.conf")
-                 (("\\$etc\\$program.conf") "/etc/ddclient/ddclient.conf")
-                 ;; Strictly use ‘/var/cache/ddclient/ddclient.cache’
-                 (("\\$cachedir\\$program\\.cache")
-                  "/var/cache/ddclient/ddclient.cache"))
-               (install-file file bin)
-               (wrap-program (string-append bin "/" file)
-                 `("PATH" ":" =
-                   ("$PATH"
-                    ,@(map (lambda (input)
-                             (match input
-                               ((name . store)
-                                (string-append store "/bin"))))
-                           %build-inputs)))
-                 `("PERL5LIB" ":" =
-                   ,(delete
-                     ""
-                     (map (match-lambda
-                            (((? (cut string-prefix? "perl-" <>) name) . dir)
-                             (string-append dir "/lib/perl5/site_perl"))
-                            (_ ""))
-                          %build-inputs)))))
-             (for-each (cut install-file <> (string-append out
-                                                           "/share/ddclient"))
-                       (find-files "." "sample.*$")))))))
-    (home-page "https://sourceforge.net/projects/ddclient/")
+
+         ;; Copy the (read-only) source into the (writable) build directory.
+         (copy-recursively (assoc-ref %build-inputs "source") ".")
+
+         ;; Install.
+         (let* ((out (assoc-ref %outputs "out"))
+                (bin (string-append out "/bin")))
+           (let ((file "ddclient"))
+             (substitute* file
+               (("/usr/bin/perl") (which "perl"))
+               ;; Strictly use ‘/etc/ddclient/ddclient.conf’.
+               (("\\$\\{program\\}\\.conf") "/etc/ddclient/ddclient.conf")
+               (("\\$etc\\$program.conf") "/etc/ddclient/ddclient.conf")
+               ;; Strictly use ‘/var/cache/ddclient/ddclient.cache’
+               (("\\$cachedir\\$program\\.cache")
+                "/var/cache/ddclient/ddclient.cache"))
+             (install-file file bin)
+             (wrap-program (string-append bin "/" file)
+               `("PATH" ":" =
+                 ("$PATH"
+                  ,@(map (lambda (input)
+                           (match input
+                                  ((name . store)
+                                   (string-append store "/bin"))))
+                         %build-inputs)))
+               `("PERL5LIB" ":" =
+                 ,(delete
+                   ""
+                   (map (match-lambda
+                         (((? (cut string-prefix? "perl-" <>) name) . dir)
+                          (string-append dir "/lib/perl5/site_perl"))
+                         (_ ""))
+                        %build-inputs)))))
+           (for-each (cut install-file <> (string-append out
+                                                         "/share/ddclient"))
+                     (find-files "." "sample.*$"))))))
+    (home-page "https://ddclient.net/")
     (synopsis "Address updating utility for dynamic DNS services")
     (description "This package provides a client to update dynamic IP
 addresses with several dynamic DNS service providers, such as
@@ -793,22 +895,16 @@ System (HNS) peer-to-peer network.")
 (define-public libmicrodns
   (package
     (name "libmicrodns")
-    (version "0.0.10")
+    (version "0.1.2")
     (source (origin
-              (method git-fetch)
-              (uri (git-reference
-                    (url "https://github.com/videolabs/libmicrodns")
-                    (commit version)))
-              (file-name (git-file-name name version))
+              (method url-fetch)
+              (uri (string-append "https://github.com/videolabs/libmicrodns/"
+                                  "releases/download/" version "/microdns-"
+                                  version ".tar.xz"))
               (sha256
                (base32
-                "1xvl9k49ng35wbsqmnjnyqvkyjf8dcq2ywsq3jp3wh0rgmxhq2fh"))))
-    (build-system gnu-build-system)
-    (native-inputs
-     `(("pkg-config" ,pkg-config)
-       ("autoconf" ,autoconf)
-       ("automake" ,automake)
-       ("libtool" ,libtool)))
+                "0p4va18zxgmzcdwhlbg2mmjwswlbgqy4ay5vaxrw7cxmhsflnv36"))))
+    (build-system meson-build-system)
     (home-page "https://github.com/videolabs/libmicrodns")
     (synopsis "Minimal mDNS resolver library")
     (description "@code{libmicrodns} provides a minimal implementation of a
@@ -833,7 +929,7 @@ local networks.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/publicsuffix/list.git")
+                      (url "https://github.com/publicsuffix/list")
                       (commit commit)))
                 (file-name (git-file-name name version))
                 (sha256
@@ -866,3 +962,84 @@ could) directly register names in the Domain Name System (DNS).  Some examples
 of public suffixes are .com, .co.uk and pvt.k12.ma.us.  This is a list of all
 known public suffixes.")
       (license license:mpl2.0))))
+
+(define-public maradns
+  (package
+    (name "maradns")
+    (version "3.5.0007")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "https://maradns.samiam.org/download/"
+                           (version-major+minor version) "/"
+                           version "/maradns-" version ".tar.xz"))
+       (sha256
+        (base32 "0bc19xylg4whww9qaj5i4izwxcrh0c0ja7l1pfcn2la02hlvg1a6"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:tests? #f                      ; need to be root to run tests
+       #:make-flags
+       (list
+        ,(string-append "CC=" (cc-for-target))
+        (string-append "PREFIX=" %output)
+        (string-append "RPM_BUILD_ROOT=" %output))
+       #:phases
+       (modify-phases %standard-phases
+         (replace 'configure
+           (lambda* (#:key native-inputs target #:allow-other-keys)
+             ;; make_32bit_tables generates a header file that is used during
+             ;; compilation. Hence, during cross compilation, it should be
+             ;; built for the host system.
+             (when target
+               (substitute* "rng/Makefile"
+                 (("\\$\\(CC\\) -o make_32bit_tables")
+                  (string-append (assoc-ref native-inputs "gcc")
+                                 "/bin/gcc -o make_32bit_tables"))))
+             (invoke "./configure")))
+         (add-before 'install 'create-install-directories
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out")))
+               (for-each (lambda (dir)
+                           (mkdir-p (string-append out dir)))
+                         (list "/bin" "/sbin" "/etc"
+                               "/share/man/man1"
+                               "/share/man/man5"
+                               "/share/man/man8"))
+               #t))))))
+    (home-page "https://maradns.samiam.org")
+    (synopsis "Small lightweight DNS server")
+    (description "MaraDNS is a small and lightweight DNS server.  MaraDNS
+consists of a UDP-only authoritative DNS server for hosting domains, and a UDP
+and TCP-capable recursive DNS server for finding domains on the internet.")
+    (license license:bsd-2)))
+
+(define-public openresolv
+  (package
+    (name "openresolv")
+    (version "3.10.0")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append "https://roy.marples.name/downloads/openresolv/"
+                                  "openresolv-" version ".tar.xz"))
+              (sha256
+               (base32
+                "01ms6c087la4hk0f0w6n2vpsb7dg4kklah2rqyhz88p0vr9bqy20"))
+              (patches
+               (search-patches "openresolv-restartcmd-guix.patch"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:tests? #f                      ; No test suite
+       #:configure-flags
+       (list (string-append "--sysconfdir=/etc"))
+       #:make-flags
+       (list (string-append "SYSCONFDIR=/" (assoc-ref %outputs "out") "/etc"))))
+    (home-page "https://roy.marples.name/projects/openresolv/")
+    (synopsis "Resolvconf POSIX compliant implementation, a middleman for resolv.conf")
+    (description "openresolv is an implementation of @command{resolvconf}, the
+middleman between the network configuration services and
+@file{/etc/resolv.conf}.  @command{resolvconf} itself is just a script that
+stores, removes and lists a full @file{resolv.conf} generated for the
+interface.  It then calls all the helper scripts it knows about so it can
+configure the real @file{/etc/resolv.conf} and optionally any local
+nameservers other than libc.")
+    (license license:bsd-2)))

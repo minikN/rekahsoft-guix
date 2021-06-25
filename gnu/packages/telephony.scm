@@ -2,16 +2,23 @@
 ;;; Copyright © 2014 John Darrington <jmd@gnu.org>
 ;;; Copyright © 2015 Andreas Enge <andreas@enge.fr>
 ;;; Copyright © 2015 David Hashe <david.hashe@dhashe.com>
-;;; Copyright © 2015, 2016 Efraim Flashner <efraim@flashner.co.il>
+;;; Copyright © 2015, 2016, 2020 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2016 Lukas Gradl <lgradl@openmailbox.org>
 ;;; Copyright © 2016 Francesco Frassinelli <fraph24@gmail.com>
-;;; Copyright © 2016, 2017 ng0 <ng0@n0.is>
+;;; Copyright © 2016, 2017 Nikita <nikita@n0.is>
 ;;; Copyright © 2017, 2018 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2017, 2018 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2017 Adonay Felipe Nogueira <https://libreplanet.org/wiki/User:Adfeno> <adfeno@hyperbola.info>
 ;;; Copyright © 2018 Jovany Leandro G.C <bit4bit@riseup.net>
 ;;; Copyright © 2018 Tim Gesthuizen <tim.gesthuizen@yahoo.de>
 ;;; Copyright © 2019 Pierre Neidhardt <mail@ambrevar.xyz>
+;;; Copyright © 2019 Jan Wielkiewicz <tona_kosmicznego_smiecia@interia.pl>
+;;; Copyright © 2019 Ivan Vilata i Balaguer <ivan@selidor.net>
+;;; Copyright © 2020 Brett Gilio <brettg@gnu.org>
+;;; Copyright © 2020 Michael Rohleder <mike@rohleder.de>
+;;; Copyright © 2020 Raghav Gururajan <raghavgururajan@disroot.org>
+;;; Copyright © 2020 Maxim Cournoyer <maxim.cournoyer@gmail.com>
+;;; Copyright © 2020 Vincent Legoll <vincent.legoll@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -30,7 +37,9 @@
 
 (define-module (gnu packages telephony)
   #:use-module (gnu packages)
+  #:use-module (gnu packages admin)
   #:use-module (gnu packages aidc)
+  #:use-module (gnu packages algebra)
   #:use-module (gnu packages autotools)
   #:use-module (gnu packages avahi)
   #:use-module (gnu packages audio)
@@ -39,18 +48,24 @@
   #:use-module (gnu packages check)
   #:use-module (gnu packages compression)
   #:use-module (gnu packages crypto)
+  #:use-module (gnu packages databases)
+  #:use-module (gnu packages docbook)
   #:use-module (gnu packages documentation)
   #:use-module (gnu packages file)
   #:use-module (gnu packages protobuf)
   #:use-module (gnu packages gettext)
+  #:use-module (gnu packages gl)
   #:use-module (gnu packages glib)
   #:use-module (gnu packages gnome)
   #:use-module (gnu packages gnupg)
   #:use-module (gnu packages gtk)
+  #:use-module (gnu packages image)
   #:use-module (gnu packages libcanberra)
+  #:use-module (gnu packages linphone)
   #:use-module (gnu packages linux)
   #:use-module (gnu packages multiprecision)
   #:use-module (gnu packages ncurses)
+  #:use-module (gnu packages netpbm)
   #:use-module (gnu packages networking)
   #:use-module (gnu packages pcre)
   #:use-module (gnu packages perl)
@@ -60,7 +75,6 @@
   #:use-module (gnu packages qt)
   #:use-module (gnu packages serialization)
   #:use-module (gnu packages speech)
-  #:use-module (gnu packages sqlite)
   #:use-module (gnu packages tls)
   #:use-module (gnu packages upnp)
   #:use-module (gnu packages video)
@@ -76,7 +90,129 @@
   #:use-module (guix download)
   #:use-module (guix git-download)
   #:use-module (guix build-system cmake)
-  #:use-module (guix build-system gnu))
+  #:use-module (guix build-system gnu)
+  #:use-module (guix build-system qt))
+
+(define-public libilbc
+  (package
+    (name "libilbc")
+    (version "2.0.2")
+    (source
+     (origin
+       (method git-fetch)
+       (uri
+        (git-reference
+         (url "https://github.com/TimothyGu/libilbc")
+         (commit
+          (string-append "v" version))))
+       (file-name
+        (git-file-name name version))
+       (sha256
+        (base32
+         "1j1pn1w1198qvdiq2hgv9hkyq2nqcvmfnwlgppac633idkjnjrqx"))))
+    (build-system cmake-build-system)
+    (arguments
+     `(#:tests? #f))                    ; No target
+    (native-inputs
+     `(("pkg-config" ,pkg-config)))
+    (synopsis "Libre iLBC codec")
+    (description "LibiLBC is a packaging friendly copy of the iLBC codec from
+the WebRTC project.  It provides a base for distribution packages and can be
+used as drop-in replacement for the non-free code from RFC 3591.")
+    (home-page "https://github.com/TimothyGu/libilbc")
+    (license license:bsd-3)))
+
+(define-public spandsp
+  (package
+    (name "spandsp")
+    (version "0.0.6")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+        ;; The original upstream has been down since the end of March 2020.
+        (string-append "https://web.archive.org/web/20180626203108/"
+                       "https://www.soft-switch.org/downloads/" name "/"
+                       name "-" version ".tar.gz"))
+       (sha256
+        (base32 "0rclrkyspzk575v8fslzjpgp4y2s4x7xk3r55ycvpi4agv33l1fc"))))
+    (build-system gnu-build-system)
+    (outputs '("out" "doc" "static"))   ;doc contains HTML documentation
+    (arguments
+     `(#:configure-flags '("--enable-doc=yes" "--enable-tests=yes")
+       #:parallel-build? #f ;non-deterministic build failures may occur otherwise
+       #:parallel-tests? #f ;fails removing the same the files twice otherwise
+       #:phases (modify-phases %standard-phases
+                  (add-after 'unpack 'patch-configure.ac
+                    (lambda _
+                      ;; spandsp looks at hard coded locations of the FHS to
+                      ;; find libxml2.
+                      (substitute* "configure.ac"
+                        (("AC_MSG_CHECKING\\(for libxml/xmlmemory\\.h.*" all)
+                         (string-append all
+                                        "PKG_CHECK_MODULES(XML2, libxml-2.0)\n"
+                                        "CPPFLAGS+=\" $XML2_CFLAGS\"\n")))
+                      ;; Force a regeneration of the autotools build system.
+                      (delete-file "autogen.sh")
+                      (delete-file "configure")
+                      #t))
+                  (add-after 'unpack 'do-not-install-data-files
+                    ;; The .tiff images produced for tests are not
+                    ;; reproducible and it is not desirable to have those
+                    ;; distributed.
+                    (lambda _
+                      (substitute* '("test-data/itu/fax/Makefile.am"
+                                     "test-data/etsi/fax/Makefile.am")
+                        (("nobase_data_DATA")
+                         "noinst_DATA"))
+                      #t))
+                  (add-after 'install 'install-doc
+                    (lambda* (#:key outputs #:allow-other-keys)
+                      (let ((doc (string-append (assoc-ref outputs "doc")
+                                                "/share/doc/" ,name "-" ,version)))
+                        (copy-recursively "doc/t38_manual" doc)
+                        #t)))
+                  (add-after 'install 'move-static-libraries
+                    (lambda* (#:key outputs #:allow-other-keys)
+                      (let ((out (assoc-ref outputs "out"))
+                            (static (assoc-ref outputs "static")))
+                        (mkdir-p (string-append static "/lib"))
+                        (with-directory-excursion out
+                          (for-each (lambda (file)
+                                      (rename-file file
+                                                   (string-append static "/"
+                                                                  file)))
+                                    (find-files "lib" "\\.a$")))
+                        #t))))))
+    (native-inputs
+     `(("autoconf" ,autoconf)
+       ("automake" ,automake)
+       ("libtool" ,libtool)
+       ("pkg-config" ,pkg-config)
+       ;; For the tests
+       ("fftw" ,fftw)
+       ("libpcap" ,libpcap)
+       ("libsndfile" ,libsndfile)
+       ("libjpeg" ,libjpeg-turbo)      ;XXX: should be propagated from libtiff
+       ("libtiff" ,libtiff)
+       ("netpbm" ,netpbm)
+       ("sox" ,sox)
+       ;; For the documentation
+       ("docbook-xml" ,docbook-xml-4.3)
+       ("docbook-xsl" ,docbook-xsl)
+       ("doxygen" ,doxygen)
+       ("libxml2" ,libxml2)
+       ("libxslt" ,libxslt)))
+    (synopsis "DSP library for telephony")
+    (description "SpanDSP is a library of DSP functions for telephony, in the
+8000 sample per second world of E1s, T1s, and higher order PCM channels.  It
+contains low level functions, such as basic filters.  It also contains higher
+level functions, such as cadenced supervisory tone detection, and a complete
+software FAX machine.")
+    (home-page "https://web.archive.org/web/20180626203108/\
+https://www.soft-switch.org/index.html")
+    (license (list license:lgpl2.1+  ;for the library
+                   license:gpl2+)))) ;for the test suites and support programs
 
 (define-public commoncpp
   (package
@@ -104,6 +240,8 @@ communications via sockets, and various methods for data handling, such as
 serialization and XML parsing.  It includes the uCommon C++ library, a smaller
 reimplementation.")
    (license license:gpl2+) ; plus runtime exception
+   (properties '((ftp-directory . "/gnu/commoncpp")
+                 (upstream-name . "commoncpp2")))
    (home-page "https://www.gnu.org/software/commoncpp/")))
 
 (define-public ucommon
@@ -150,18 +288,49 @@ packet-manipulation library.")
    (license license:gpl2+) ; plus runtime exception
    (home-page "https://www.gnu.org/software/ccrtp/")))
 
+(define-public zrtpcpp
+  (package
+    (name "zrtpcpp")
+    (version "4.6.6")
+    (source
+     (origin
+       (method git-fetch)
+       (uri
+        (git-reference
+         (url "https://github.com/wernerd/ZRTPCPP")
+         (commit
+          (string-append "V" version))))
+       (file-name
+        (git-file-name name version))
+       (sha256
+        (base32
+         "06vphvh4dgi7ah5qkq53wqvswv8l273x0xwbc447qmgvamm0x1vs"))))
+    (build-system cmake-build-system)
+    (arguments
+     `(#:tests? #f))                    ; No target
+    (native-inputs
+     `(("pkg-config" ,pkg-config)))
+    (inputs
+     `(("ccrtp" ,ccrtp)
+       ("ucommon" ,ucommon)))
+    (synopsis "C++ Implementation of ZRTP protocol")
+    (description  "GNU ZRTP C++ provides a library that adds ZRTP support to the
+GNU ccRTP stack and serves as library for other RTP stacks
+(PJSIP, GStreamer).")
+    (home-page "https://www.gnu.org/software/ccrtp/zrtp")
+    (license license:lgpl3+)))
 
 (define-public osip
   (package
    (name "osip")
-   (version "5.0.0")
+   (version "5.1.1")
    (source (origin
             (method url-fetch)
             (uri (string-append "mirror://gnu/osip/libosip2-" version ".tar.gz"))
             (patches (search-patches "osip-CVE-2017-7853.patch"))
             (sha256
              (base32
-              "00yznbrm9q04wgd4b831km8iwlvwvsnwv87igf79g5vj9yakr88q"))))
+              "0kgnxgzf968kbl6rx3hjsfb3jsg4ydgrsf35gzj319i1f8qjifv1"))))
    (build-system gnu-build-system)
 
    (synopsis "Library implementing SIP (RFC-3261)")
@@ -169,6 +338,8 @@ packet-manipulation library.")
 used to provide multimedia and telecom software developers with an interface
 to initiate and control SIP sessions.")
    (license license:lgpl2.1+)
+   (properties '((ftp-directory . "/gnu/osip")
+                 (upstream-name . "libosip2")))
    (home-page "https://www.gnu.org/software/osip/")))
 
 
@@ -241,21 +412,34 @@ internet.")
 (define-public libsrtp
   (package
     (name "libsrtp")
-    (version "2.2.0")
+    (version "2.3.0")
     (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/cisco/libsrtp/archive/v"
-                                  version ".tar.gz"))
-              (file-name (string-append name "-" version ".tar.gz"))
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/cisco/libsrtp")
+                     (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
               (sha256
                (base32
-                "02x5l5h2nq6f9gq1bmgz5v9jmnqaab51p8aldglng1z7pjbp9za4"))))
+                "1f7i3jdh1wzdv7zjlz7gs3xw5jqig9zw8z9awsqqcp54f94xdpvd"))))
     (native-inputs
      `(("psmisc" ,psmisc)               ;some tests require 'killall'
        ("procps" ,procps)))
     (build-system gnu-build-system)
     (arguments
-     '(#:test-target "runtest"))
+     '(#:test-target "runtest"
+       #:phases (modify-phases %standard-phases
+                  (add-after 'build 'build-shared
+                    (lambda* (#:key (make-flags '()) #:allow-other-keys)
+                      ;; Build the shared library separately because
+                      ;; the test runner requires a static build.
+                      (apply invoke "make" "shared_library" make-flags)
+                      #t))
+                  (add-after 'install 'remove-static-library
+                    (lambda* (#:key outputs #:allow-other-keys)
+                      (delete-file (string-append (assoc-ref outputs "out")
+                                                  "/lib/libsrtp2.a"))
+                      #t)))))
     (synopsis "Secure RTP (SRTP) Reference Implementation")
     (description
      "This package provides an implementation of the Secure Real-time Transport
@@ -263,52 +447,6 @@ Protocol (@dfn{SRTP}), the Universal Security Transform (@dfn{UST}), and a
 supporting cryptographic kernel.")
     (home-page "https://github.com/cisco/libsrtp")
     (license license:bsd-3)))
-
-(define-public bctoolbox
-  (package
-    (name "bctoolbox")
-    (version "0.2.0")
-    (source (origin
-              (method url-fetch)
-              (uri (string-append "mirror://savannah/linphone/bctoolbox/bctoolbox-"
-                                  version ".tar.gz"))
-              (sha256
-               (base32
-                "14ivv6bh6qywys6yyb34scy9w78d636xl1f7cyxm3gwx2qv71lx5"))))
-    (build-system gnu-build-system)
-    (arguments '(#:make-flags '("CFLAGS=-fPIC")))
-    (native-inputs
-     `(("cunit" ,cunit)))
-    (inputs
-     `(("mbedtls" ,mbedtls-apache)))
-    (home-page "https://www.linphone.org")
-    (synopsis "Utilities library for linphone software")
-    (description "BCtoolbox is a utilities library used by Belledonne
-Communications softwares like linphone.")
-    (license license:gpl2+)))
-
-(define-public ortp
-  (package
-    (name "ortp")
-    (version "0.27.0")
-    (source (origin
-              (method url-fetch)
-              (uri (string-append "https://download.savannah.nongnu.org/"
-                                  "releases/linphone/ortp/sources/ortp-"
-                                  version ".tar.gz"))
-              (sha256
-               (base32
-                "1by0dqdqrj5avzcvjws30g8v5sa61wj12x00sxw0kn1smcrshqgb"))))
-    (build-system gnu-build-system)
-    (inputs
-     `(("bctoolbox" ,bctoolbox)))
-    (native-inputs
-     `(("pkg-config" ,pkg-config)))
-    (home-page "https://linphone.org/")
-    (synopsis "Implementation of the Real-time transport protocol")
-    (description "oRTP is a library implementing the Real-time transport
-protocol (RFC 3550).")
-    (license license:lgpl2.1+)))
 
 (define-public libiax2
   (let ((commit "0e5980f1d78ce462e2d1ed6bc39ff35c8341f201"))
@@ -377,54 +515,60 @@ address of one of the participants.")
 (define-public mumble
   (package
     (name "mumble")
-    (version "1.2.19")
+    (version "1.3.2")
     (source (origin
               (method url-fetch)
-              (uri (string-append "https://mumble.info/snapshot/"
+              (uri (string-append "https://mumble.info/snapshot/stable/"
                                   name "-" version ".tar.gz"))
               (sha256
                (base32
-                "1s60vaici3v034jzzi20x23hsj6mkjlc0glipjq4hffrg9qgnizh"))
-              (patches (search-patches "mumble-1.2.19-abs.patch"))
+                "1q91vp3bp7xn67g9kgp1pfgxjj1hks3w60vdxcfm3373wy5db5lz"))
               (modules '((guix build utils)))
               (snippet
                `(begin
-                  ;; Remove bundled software.
-                  (for-each delete-file-recursively '("3rdparty"
-                                                      "speex"
-                                                      "speexbuild"
-                                                      "opus-build"
-                                                      "opus-src"
-                                                      "sbcelt-helper-build"
-                                                      "sbcelt-lib-build"
-                                                      "sbcelt-src"))
-                  ;; TODO: Celt is still bundled. It has been merged into Opus
-                  ;; and will be removed after 1.3.0.
-                  ;; https://github.com/mumble-voip/mumble/issues/1999
+                  ;; Remove bundled software.  Keep arc4random, celt-0.7.0,
+                  ;; celt-0.11.0, qqbonjour, rnnoise, smallft.
+                  (for-each
+                    delete-file-recursively
+                    '("3rdparty/GL" ; in mesa
+                      "3rdparty/mach-override-build" ; for macx
+                      "3rdparty/mach-override-src"
+                      "3rdparty/minhook-build" ; for win32
+                      "3rdparty/minhook-src"
+                      "3rdparty/opus-build" ; in opus
+                      "3rdparty/opus-src"
+                      "3rdparty/speex-build" ; in speex
+                      "3rdparty/speex-src"
+                      "3rdparty/speexdsp-src" ; in speexdsp
+                      "3rdparty/xinputcheck-build" ; for win32
+                      "3rdparty/xinputcheck-src"))
                   #t))))
-    (build-system gnu-build-system)
+    (build-system qt-build-system)
     (arguments
      `(#:tests? #f  ; no "check" target
        #:phases
        (modify-phases %standard-phases
          (replace 'configure
-           (lambda* (#:key outputs #:allow-other-keys)
-             (invoke "qmake" "main.pro" "-recursive"
+           (lambda* (#:key inputs outputs #:allow-other-keys)
+             (invoke "qmake" "main.pro" "QMAKE_LRELEASE=lrelease"
+                     (string-append "MUMBLE_PYTHON="
+                                    (string-append (assoc-ref inputs "python")
+                                                   "/bin/python3"))
                      (string-append "CONFIG+="
                                     (string-join
-                                     (list "no-update"
-                                           "no-ice"
+                                     ;; Options used are listed in the same order
+                                     ;; as in the "INSTALL" file
+                                     ;; (plus the final "packaged" and "release").
+                                     (list "no-bundled-speex" ; in speex
+                                           "no-bundled-opus" ; in opus
+                                           "no-g15" ; not packaged
+                                           "no-jackaudio" ; use pulse
+                                           "no-oss" ; use pulse
+                                           "no-alsa" ; use pulse
+                                           "no-update"
                                            "no-embed-qt-translations"
-                                           "no-bundled-speex"
-                                           "pch"
-                                           "no-bundled-opus"
-                                           "no-celt"
-                                           "no-alsa"
-                                           "no-oss"
-                                           "no-portaudio"
-                                           "speechd"
-                                           "no-g15"
-                                           "no-bonjour"
+                                           "no-ice" ; not packaged
+                                           "packaged"
                                            "release")))
                      (string-append "DEFINES+="
                                     "PLUGIN_PATH="
@@ -433,7 +577,29 @@ address of one of the participants.")
          (add-before 'configure 'fix-libspeechd-include
            (lambda _
              (substitute* "src/mumble/TextToSpeech_unix.cpp"
-               (("libspeechd.h") "speech-dispatcher/libspeechd.h"))))
+               (("libspeechd.h") "speech-dispatcher/libspeechd.h"))
+             #t))
+         ;; disable statistic gathering by default. see <https://bugs.gnu.org/25201>
+         (add-before 'configure 'fix-statistic-gathering-default
+           (lambda _
+             (substitute* "src/mumble/Settings.cpp"
+               (("bUsage = true;") "bUsage = false;"))
+             #t))
+         (add-before 'configure 'fix-mumble-overlay
+           (lambda* (#:key outputs #:allow-other-keys)
+              (with-output-to-file "scripts/mumble-overlay"
+                (lambda ()
+                  (format #t "#!~a~%" (which "bash"))
+                  (format #t "export LD_PRELOAD=\"~a $LD_PRELOAD\"~%"
+                          (string-append (assoc-ref outputs "out")
+                                         "/lib/mumble/libmumble.so.1"))
+                  (format #t "exec \"${@}\"")))
+              #t))
+         (add-before 'install 'disable-murmur-ice
+           (lambda _
+             (substitute* "scripts/murmur.ini.system"
+               (("^ice=") ";ice="))
+             #t))
          (replace 'install ; install phase does not exist
            (lambda* (#:key inputs outputs #:allow-other-keys)
              (let* ((out (assoc-ref outputs "out"))
@@ -461,24 +627,27 @@ address of one of the participants.")
                (for-each (lambda (file) (install-file file lib))
                          (find-files "." "\\.so\\."))
                (for-each (lambda (file) (install-file file lib))
-                         (find-files "release/plugins" "\\.so$"))))))))
+                         (find-files "release/plugins" "\\.so$"))
+               #t))))))
     (inputs
      `(("avahi" ,avahi)
-       ("protobuf" ,protobuf)
-       ("openssl" ,openssl)
-       ("libsndfile" ,libsndfile)
        ("boost" ,boost)
-       ("opus" ,opus)
-       ("speex" ,speex)
-       ("speexdsp" ,speexdsp)
-       ("speech-dispatcher" ,speech-dispatcher)
-       ("libx11" ,libx11)
+       ("libsndfile" ,libsndfile)
        ("libxi" ,libxi)
-       ("qt-4" ,qt-4)
-       ("alsa-lib" ,alsa-lib)
-       ("pulseaudio" ,pulseaudio)))
+       ("mesa" ,mesa) ; avoid bundled
+       ("openssl" ,openssl)
+       ("opus" ,opus) ; avoid bundled
+       ("protobuf" ,protobuf)
+       ("pulseaudio" ,pulseaudio)
+       ("qtbase" ,qtbase)
+       ("qtsvg" ,qtsvg)
+       ("speech-dispatcher" ,speech-dispatcher)
+       ("speex" ,speex) ; avoid bundled
+       ("speexdsp" ,speexdsp))) ; avoid bundled
     (native-inputs
-     `(("pkg-config" ,pkg-config)))
+     `(("pkg-config" ,pkg-config)
+       ("python" ,python)
+       ("qttools" ,qttools)))
     (synopsis "Low-latency, high quality voice chat software")
     (description
      "Mumble is an low-latency, high quality voice chat
@@ -486,99 +655,100 @@ software primarily intended for use while gaming.
 Mumble consists of two applications for separate usage:
 @code{mumble} for the client, and @code{murmur} for the server.")
     (home-page "https://wiki.mumble.info/wiki/Main_Page")
-    (license (list license:bsd-3
-                   ;; The bundled celt is bsd-2. Remove after 1.3.0.
-                   license:bsd-2))))
+    (license (list license:bsd-3 ; mumble celt-0.7.0 qqbonjour rnnoise smallft
+                   license:bsd-2 ; celt-0.11.0
+                   license:isc)))) ; arc4random
 
 (define-public twinkle
-  (let ((commit "02e1d1538af3337134bd7381dcd95f8d7775b30f")
-        (revision "1"))
   (package
-   (name "twinkle")
-   (version (git-version "1.10.1" revision commit))
-   (source (origin
-             (method git-fetch)
-             (uri (git-reference
-                   (url "https://github.com/LubosD/twinkle")
-                   (commit commit)))
-             (patches
-              (search-patches "twinkle-include-qregexpvalidator.patch"))
-             (file-name (git-file-name name version))
-             (sha256
-              (base32
-               "0ds4rp4vr1wagn4m4m7ldqbsx5vgmgbfcqqgyhn1wf6s1dm0020z"))))
-   (build-system cmake-build-system)
-   (arguments
-    `(#:tests? #f ; no test target
-      #:configure-flags '("-DWITH_SPEEX=On")
-      #:phases
-      (modify-phases %standard-phases
-         (add-after 'install 'wrap-executable
-           (lambda* (#:key inputs outputs #:allow-other-keys)
-             (let ((out (assoc-ref outputs "out")))
-               (wrap-program (string-append out "/bin/twinkle")
-                 `("QT_PLUGIN_PATH" ":" prefix
-                   ,(map (lambda (label)
-                           (string-append (assoc-ref inputs label)
-                                          "/lib/qt5/plugins"))
-                         '("qtbase" "qtdeclarative")))
-                 `("QML2_IMPORT_PATH" ":" prefix
-                   ,(map (lambda (label)
-                           (string-append (assoc-ref inputs label)
-                                          "/lib/qt5/qml"))
-                         '("qtdeclarative" "qtquickcontrols"))))
-               #t))))))
-   (native-inputs
-    `(("bison" ,bison)
-      ("flex" ,flex)
-      ("readline" ,readline)
-      ("file" ,file)
-      ("ucommon" ,ucommon)
-      ("ccrtp" ,ccrtp)
-      ("libxml2" ,libxml2)
-      ("speex" ,speex)
-      ("speexdsp" ,speexdsp)
-      ("libsndfile" ,libsndfile)
-      ("alsa-lib" ,alsa-lib)
-      ("qttools" ,qttools)))
-   (inputs
-    `(("qtbase" ,qtbase)
-      ("qtdeclarative" ,qtdeclarative)
-      ("qtquickcontrols" ,qtquickcontrols)))
-   (home-page "http://twinkle.dolezel.info/")
-   (synopsis "Softphone for voice over IP and instant messaging")
-   (description "Twinkle is a softphone for your voice over IP and instant
-messaging communcations using the SIP protocol.  You can use it for direct IP
-phone to IP phone communication or in a network using a SIP proxy to route your
-calls and messages")
-   (license license:gpl2+))))
+    (name "twinkle")
+    (version "1.10.2")
+    (source
+     (origin
+       (method git-fetch)
+       (uri
+        (git-reference
+         (url "https://github.com/LubosD/twinkle")
+         (commit
+          (string-append "v" version))))
+       (file-name
+        (git-file-name name version))
+       (patches
+        (search-patches "twinkle-bcg729.patch")) ; To support new BCG729 API.
+       (sha256
+        (base32
+         "0s0gi03xwvzp02ah4q6j33r9jx9nbayr6dxlg2ck9pwbay1nq1hx"))))
+    (build-system qt-build-system)
+    (arguments
+     `(#:tests? #f                      ; no test target
+       #:configure-flags
+       (list
+        ;; FIX-ME: Make Twinkle compatible with libre version of iLBC.
+        ;; "-DWITH_ILBC=On"                ; For iLBC Codec Support
+        "-DWITH_ZRTP=On"                ; For ZRTP Support
+        "-DWITH_G729=On"                ; For G729 Codec Support
+        "-DWITH_SPEEX=On")))            ; For Speex Codec Support
+    (native-inputs
+     `(("bison" ,bison)
+       ("flex" ,flex)
+       ("qttools" ,qttools)))
+    (inputs
+     `(("alsa-lib" ,alsa-lib)
+       ("bcg729" ,bcg729)
+       ("zrtpcpp" ,zrtpcpp)
+       ("ccrtp" ,ccrtp)
+       ("file" ,file)
+       ("libilbc" ,libilbc)
+       ("libsndfile" ,libsndfile)
+       ("libxml2" ,libxml2)
+       ("qtbase" ,qtbase)
+       ("qtdeclarative" ,qtdeclarative)
+       ("qtquickcontrols" ,qtquickcontrols)
+       ("readline" ,readline)
+       ("speex" ,speex)
+       ("speexdsp" ,speexdsp)
+       ("ucommon" ,ucommon)))
+    (synopsis "Softphone for voice over IP and instant messaging")
+    (description "Twinkle is a softphone for your voice over IP and instant
+messaging communcations using the SIP protocol.  You can use it for direct
+IP phone to IP phone communication or in a network using a SIP proxy to route
+your calls and messages.")
+    (home-page "http://twinkle.dolezel.info/")
+    (license license:gpl2+)))
 
 (define-public pjproject
   (package
     (name "pjproject")
-    (version "2.7.2")
+    (version "2.10")
     (source
      (origin
-       (method url-fetch)
-       (uri (string-append
-             "http://www.pjsip.org/release/" ;
-             version "/" name "-" version ".tar.bz2"))
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/pjsip/pjproject")
+             (commit version)))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32
+         "1aklicpgwc88578k03i5d5cm5h8mfm7hmx8vfprchbmaa2p8f4z0"))
        (modules '((guix build utils)))
        (snippet
         '(begin
            (let ((third-party-directories
-                  (list "BaseClasses" "bdsound" "bin" "g7221" "gsm"
-                        "ilbc" "lib" "milenage" "mp3" "speex" "srtp"
-                        "resample"
+                  ;; Things we don't need:
+                  ;; BaseClasses - contains libraries from Windows SDK
+                  ;; we don't need it, at least not now.
+                  (list "BaseClasses" "g7221" "ilbc" "milenage"
+                        "speex" "threademulation" "yuv" "bdsound"
+                        "gsm" "mp3" "resample" "srtp" "webrtc"
                         ;; Keep only resample, build and README.txt.
                         "build/baseclasses" "build/g7221" "build/gsm"
-                        "build/ilbc" "build/milenage" "build/samplerate"
-                        "build/speex" "build/srtp"
-                        "build/resample" "build/yuv")))
+                        "build/ilbc" "build/milenage" "build/resample"
+                        "build/samplerate" "build/speex" "build/srtp"
+                        "build/webrtc" "build/yuv")))
              ;; Keep only Makefiles related to resample.
-             (for-each (lambda (file)
+             (for-each (lambda (directory)
                          (delete-file-recursively
-                          (string-append "third_party/" file)))
+                          (string-append "third_party/" directory)))
                        third-party-directories)
              #t)
            (let ((third-party-dirs
@@ -588,10 +758,7 @@ calls and messages")
               (lambda (dirs)
                 (substitute* "third_party/build/os-linux.mak"
                   (((string-append "DIRS += " dirs)) "")))
-              third-party-dirs))))
-       (sha256
-        (base32
-         "0wiph6g51wanzwjjrpwsz63amgvly8g08jz033gnwqmppa584b4w"))))
+              third-party-dirs))))))
     (build-system gnu-build-system)
     (inputs
      `(("portaudio" ,portaudio)))
@@ -601,7 +768,8 @@ calls and messages")
      `(("speex" ,speex)
        ("libsrtp" ,libsrtp)
        ("gnutls" ,gnutls)
-       ("util-linux" ,util-linux)))
+       ("resample", resample)
+       ("util-linux" ,util-linux "lib")))
     (native-inputs
      `(("autoconf" ,autoconf)
        ("automake" ,automake)
@@ -618,7 +786,7 @@ calls and messages")
            (lambda _ (invoke "make" "dep")))
          (add-before 'patch-source-shebangs 'autoconf
            (lambda _
-             (invoke "autoconf" "-vfi" "-o"
+             (invoke "autoconf" "-v" "-f" "-i" "-o"
                      "aconfigure" "aconfigure.ac")))
          (add-before 'autoconf 'disable-some-tests
            ;; Three of the six test programs fail due to missing network
@@ -634,278 +802,34 @@ calls and messages")
 Initiation Protocol (SIP) and a multimedia framework.")
     (license license:gpl2+)))
 
-(define %jami-version "20190319.4.a16a99f")
-
-(define* (jami-source #:key without-daemon)
-  (origin
-    (method url-fetch)
-    (uri (string-append "http://dl.jami.net/ring-release/tarballs/ring_"
-                        %jami-version
-                        ".tar.gz"))
-    (modules '((guix build utils)))
-    (snippet
-     (if without-daemon
-       '(begin
-          (delete-file-recursively "daemon/contrib"))
-       #f))
-    (sha256
-     (base32
-      "1c6n6sm7skw83v25g33g4jzbragz9j4przbzaz7asxw54jy33dwl"))))
-
-(define-public pjproject-jami
+(define-public libtgvoip
   (package
-    (inherit pjproject)
-    (name "pjproject-jami")
-    (native-inputs
-     `(("savoir-faire-linux-patches" ,(jami-source))
-       ,@(package-native-inputs pjproject)))
-    (arguments
-     `(#:tests? #f
-       ;; See ring-project/daemon/contrib/src/pjproject/rules.mak.
-       #:configure-flags
-       (list "--disable-oss"
-             "--disable-sound"
-             "--disable-video"
-             "--enable-ext-sound"
-             "--disable-speex-aec"
-             "--disable-g711-codec"
-             "--disable-l16-codec"
-             "--disable-gsm-codec"
-             "--disable-g722-codec"
-             "--disable-g7221-codec"
-             "--disable-speex-codec"
-             "--disable-ilbc-codec"
-             "--disable-opencore-amr"
-             "--disable-silk"
-             "--disable-sdl"
-             "--disable-ffmpeg"
-             "--disable-v4l2"
-             "--disable-openh264"
-             "--disable-resample"
-             "--disable-libwebrtc"
-             ;; "-fPIC" is required for libring.  Bug?
-             "CFLAGS=-fPIC -DPJ_ENABLE_EXTRA_CHECK=1 -DPJ_ICE_MAX_CAND=256 -DPJ_ICE_MAX_CHECKS=1024 -DPJ_ICE_COMP_BITS=2 -DPJ_ICE_MAX_STUN=3 -DPJSIP_MAX_PKT_LEN=8000 -DPJ_ICE_ST_MAX_CAND=32"
-             "CXXFLAGS=-fPIC -DPJ_ENABLE_EXTRA_CHECK=1 -DPJ_ICE_MAX_CAND=256 -DPJ_ICE_MAX_CHECKS=1024 -DPJ_ICE_COMP_BITS=2 -DPJ_ICE_MAX_STUN=3 -DPJSIP_MAX_PKT_LEN=8000 -DPJ_ICE_ST_MAX_CAND=32"
-             ;; Now deviating from the rules.mak file.
-             "--enable-ssl=gnutls"
-             "--with-external-srtp")
-       #:phases
-       (modify-phases %standard-phases
-         (add-after 'unpack 'apply-patches
-           (lambda* (#:key inputs #:allow-other-keys)
-             (let ((savoir-faire-linux-patches-directory "Savoir-faire Linux patches")
-                   ;; Comes from
-                   ;; "ring-project/daemon/contrib/src/pjproject/rules.mak".
-                   ;; WARNING: These amount for huge changes in pjproject.
-                   ;; Particularly, they add support for GnuTLS.
-                   (savoir-faire-linux-patches
-                    '("gnutls"
-                      "rfc2466"
-                      "ipv6"
-                      "ice_config"
-                      "multiple_listeners"
-                      "pj_ice_sess"
-                      "fix_turn_fallback"
-                      "fix_ioqueue_ipv6_sendto"
-                      "add_dtls_transport"
-                      "rfc6062")))
-               (mkdir-p savoir-faire-linux-patches-directory)
-               (invoke "tar" "-xvf" (assoc-ref inputs "savoir-faire-linux-patches")
-                       "-C" savoir-faire-linux-patches-directory "--strip-components=5" "ring-project/daemon/contrib/src/pjproject")
-               (for-each
-                (lambda (file)
-                  (invoke "patch" "--force" "-p1" "-i"
-                          (string-append savoir-faire-linux-patches-directory "/"
-                                         file ".patch")))
-                savoir-faire-linux-patches))
-             #t))
-         ;; TODO: We could use substitute-keyword-arguments instead of
-         ;; repeating the phases from pjproject, but somehow it does
-         ;; not work.
-         (add-before 'build 'build-dep
-           (lambda _ (invoke "make" "dep")))
-         (add-before 'patch-source-shebangs 'autoconf
-           (lambda _
-             (invoke "autoconf" "-v" "-f" "-i" "-o"
-                     "aconfigure" "aconfigure.ac")))
-         (add-before 'autoconf 'disable-some-tests
-           ;; Three of the six test programs fail due to missing network
-           ;; access.
-           (lambda _
-             (substitute* "Makefile"
-               (("selftest: pjlib-test pjlib-util-test pjnath-test pjmedia-test pjsip-test pjsua-test")
-                "selftest: pjlib-test pjlib-util-test pjmedia-test"))
-             #t)))))))
-
-(define-public libring
-  (package
-    (name "libring")
-    (version %jami-version)
-    (source (jami-source #:without-daemon #t))
+    (name "libtgvoip")
+    (version "2.4.4")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/grishka/libtgvoip")
+             (commit version)))
+       (file-name (git-file-name name version))
+       ;; Fix compilation on i686-linux architecture.
+       ;; NOTE: Applying these patches is order-dependent!
+       ;; The patch for WebRTC /must/ precede the patch for SSE2.
+       (patches
+        (search-patches "libtgvoip-disable-webrtc.patch"
+                        "libtgvoip-disable-sse2.patch"))
+       (sha256
+        (base32
+         "122kn3jx6v0kkldlzlpzvlwqxgp6pmzxsjhrhcxw12bx9c08sar5"))))
     (build-system gnu-build-system)
     (inputs
-     ;; Missing (optional?) dep: libnatpmp.
      `(("alsa-lib" ,alsa-lib)
-       ("boost" ,boost)
-       ("dbus-c++" ,dbus-c++)
-       ("eudev" ,eudev)
-       ("ffmpeg" ,ffmpeg)
-       ("flac" ,flac)
-       ("gmp" ,gmp)
-       ("gsm" ,gsm)
-       ("jack" ,jack-1)
-       ("jsoncpp" ,jsoncpp)
-       ("libogg" ,libogg)
-       ("libva" ,libva)
-       ("opendht" ,opendht)
-       ("opus" ,opus)
-       ("pcre" ,pcre)
-       ("pulseaudio" ,pulseaudio)
-       ("libsamplerate" ,libsamplerate)
-       ("libsndfile" ,libsndfile)
-       ("speex" ,speex)
-       ("speexdsp" ,speexdsp)
-       ("libupnp" ,libupnp)
-       ("libvorbis" ,libvorbis)
-       ("libx264" ,libx264)
-       ("libvdpau" ,libvdpau)
-       ("yaml-cpp" ,yaml-cpp)
-       ("zlib" ,zlib)
+       ("libopusenc" ,libopusenc)
        ("openssl" ,openssl)
-       ("libsecp256k1" ,libsecp256k1)
-       ("python" ,python)
-       ("python-wrapper" ,python-wrapper)
-       ("restbed" ,restbed)
-       ("libx11" ,libx11)
-       ;; TODO: Upstream seems to rely on a custom pjproject (a.k.a. pjsip) version.
-       ;; See https://git.jami.net/savoirfairelinux/ring-daemon/issues/24.
-       ("pjproject" ,pjproject-jami)))
-    (native-inputs
-     `(("autoconf" ,autoconf)
-       ("automake" ,automake)
-       ("libtool" ,libtool)
-       ("pkg-config" ,pkg-config)
-       ("which" ,which)
-       ("cppunit" ,cppunit)
-       ("perl" ,perl)))                 ; Needed for documentation.
-    (arguments
-     `(#:tests? #f         ; The tests fail to compile due to missing headers.
-       #:phases
-       (modify-phases %standard-phases
-         (add-after 'unpack 'change-directory
-           (lambda _
-             (chdir "daemon")
-             #t))
-         (add-before 'build 'add-lib-dir
-           (lambda _
-             (mkdir-p "src/lib")
-             #t)))))
-    (synopsis "Distributed multimedia communications platform")
-    (description "Jami (formerly GNU Ring) is a secure and distributed voice,
-video and chat communication platform that requires no centralized server and
-leaves the power of privacy in the hands of the user.  It supports the SIP and
-IAX protocols, as well as decentralized calling using P2P-DHT.
-
-This package provides a library and daemon implementing the Jami core
-functionality.")
-    (home-page "https://jami.net/")
-    (license license:gpl3+)))
-
-(define-public libringclient
-  (package
-    (inherit libring)
-    (name "libringclient")
-    (build-system cmake-build-system)
-    (propagated-inputs
-     `(("libring" ,libring)     ; For 'dring'.
-       ("qtbase" ,qtbase)       ; Qt is included in several installed headers.
-       ("qttools" ,qttools)))
-    (arguments
-     `(#:tests? #f                      ; There is no testsuite.
-       #:configure-flags
-       (list (string-append "-DRING_BUILD_DIR="
-                            (assoc-ref %build-inputs "libring") "/include"))
-       #:phases
-       (modify-phases %standard-phases
-         (add-after 'unpack 'change-directory
-           (lambda _
-             (chdir "lrc")
-             #t))
-         (add-before 'configure 'fix-dbus-interfaces-path
-           (lambda* (#:key inputs #:allow-other-keys)
-             (substitute* "CMakeLists.txt"
-               (("\\$\\{CMAKE_INSTALL_PREFIX\\}(/share/dbus-1/interfaces)" _ dbus-interfaces-path-suffix)
-                (string-append (assoc-ref inputs "libring")
-                               dbus-interfaces-path-suffix))))))))
-    (synopsis "Distributed multimedia communications platform")
-    (description "Jami (formerly GNU Ring) is a secure and distributed voice,
-video and chat communication platform that requires no centralized server and
-leaves the power of privacy in the hands of the user.  It supports the SIP and
-IAX protocols, as well as decentralized calling using P2P-DHT.
-
-This package provides a library common to all Jami clients.")
-    (home-page "https://jami.net")
-    (license license:gpl3+)))
-
-(define-public jami
-  (package
-    (inherit libring)
-    (name "jami")
-    (build-system cmake-build-system)
-    (inputs
-     `(("libringclient" ,libringclient)
-       ("gtk+" ,gtk+)
-       ("qrencode" ,qrencode)
-       ("libnotify" ,libnotify)
-       ("clutter" ,clutter)
-       ("clutter-gtk" ,clutter-gtk)
-       ("gettext" ,gnu-gettext)
-       ("libcanberra" ,libcanberra)
-       ("webkitgtk" ,webkitgtk)
-       ;; TODO: We must wrap ring-client-gnome to force using the
-       ;; `sqlite-with-column-metadata' package instead of `sqlite' or else it
-       ;; fails with:
-       ;;
-       ;;   /gnu/store/...-qtbase-5.11.2/lib/qt5/plugins/sqldrivers/libqsqlite.so:
-       ;;   undefined symbol: sqlite3_column_table_name16
-       ;;
-       ;; qtbase is built against sqlite-with-column-metadata but somehow
-       ;; jami-client-gnome ends up with both `sqlite' and
-       ;; `sqlite-with-column-metadata' as inputs and it seems that
-       ;; libqsqlite.so gets confused.
-       ("sqlite" ,sqlite-with-column-metadata)))
-    (native-inputs
-     `(("pkg-config" ,pkg-config)
-       ("glib:bin" ,glib "bin")
-       ("doxygen" ,doxygen)))
-    (propagated-inputs
-     `(("libring" ,libring)             ; Contains `dring', the daemon, which is automatically by d-bus.
-       ("adwaita-icon-theme" ,adwaita-icon-theme)
-       ("evolution-data-server" ,evolution-data-server)))
-    (arguments
-     `(#:tests? #f                      ; There is no testsuite.
-       #:phases
-       (modify-phases %standard-phases
-         (add-after 'unpack 'change-directory
-           (lambda _
-             (chdir "client-gnome")
-             #t))
-         (add-after 'install 'wrap
-           (lambda* (#:key inputs outputs #:allow-other-keys)
-             (let* ((out (assoc-ref outputs "out"))
-                    (path (string-append (assoc-ref inputs "sqlite") "/lib")))
-               (wrap-program (string-append out "/bin/gnome-ring")
-                 `("LD_LIBRARY_PATH" ":" prefix (,path))))
-             #t)))))
-    (synopsis "Distributed multimedia communications platform")
-    (description "Jami (formerly GNU Ring) is a secure and distributed voice,
-video and chat communication platform that requires no centralized server and
-leaves the power of privacy in the hands of the user.  It supports the SIP and
-IAX protocols, as well as decentralized calling using P2P-DHT.
-
-This package provides the Jami client for the GNOME desktop.")
-    (home-page "https://jami.net")
-    (license license:gpl3+)))
-
-(define-public jami-client-gnome
-  (deprecated-package "jami-client-gnome" jami))
+       ("pulseaudio" ,pulseaudio)))
+    (synopsis "VoIP library for Telegram clients")
+    (description "A collection of libraries and header files for implementing
+telephony functionality into custom Telegram clients.")
+    (home-page "https://github.com/zevlg/libtgvoip")
+    (license license:unlicense)))

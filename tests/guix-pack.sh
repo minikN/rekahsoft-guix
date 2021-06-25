@@ -1,6 +1,6 @@
 # GNU Guix --- Functional package management for GNU
 # Copyright © 2018 Chris Marusich <cmmarusich@gmail.com>
-# Copyright © 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+# Copyright © 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 #
 # This file is part of GNU Guix.
 #
@@ -35,6 +35,18 @@ export GUIX_BUILD_OPTIONS
 
 test_directory="`mktemp -d`"
 trap 'chmod -Rf +w "$test_directory"; rm -rf "$test_directory"' EXIT
+
+# Compute the derivation of a pack.
+drv="`guix pack coreutils -d --no-grafts`"
+guix gc -R "$drv" | grep "`guix build coreutils -d --no-grafts`"
+
+# Compute the derivation of a cross-compiled pack.  Make sure it refers to the
+# cross-compiled package and not to the native package.
+drv="`guix pack idutils -d --no-grafts --target=arm-linux-gnueabihf`"
+guix gc -R "$drv" | \
+    grep "`guix build idutils --target=arm-linux-gnueabihf -d --no-grafts`"
+if guix gc -R "$drv" | grep "`guix build idutils -d --no-grafts`";
+then false; else true; fi
 
 # Build a tarball with no compression.
 guix pack --compression=none --bootstrap guile-bootstrap
@@ -101,7 +113,18 @@ guix pack -R --dry-run --bootstrap -S /mybin=bin guile-bootstrap
 
 # Make sure package transformation options are honored.
 mkdir -p "$test_directory"
-drv1="`guix pack -n guile 2>&1 | grep pack.*\.drv`"
-drv2="`guix pack -n --with-source=guile=$test_directory guile 2>&1 | grep pack.*\.drv`"
+drv1="`guix pack --no-grafts -n guile 2>&1 | grep pack.*\.drv`"
+drv2="`guix pack --no-grafts -n --with-source=guile=$test_directory guile 2>&1 | grep pack.*\.drv`"
 test -n "$drv1"
 test "$drv1" != "$drv2"
+
+# Try '--manifest' options.
+cat > "$test_directory/manifest1.scm" <<EOF
+(specifications->manifest '("guile"))
+EOF
+cat > "$test_directory/manifest2.scm" <<EOF
+(specifications->manifest '("emacs"))
+EOF
+drv="`guix pack --no-grafts -d -m "$test_directory/manifest1.scm" -m "$test_directory/manifest2.scm"`"
+guix gc -R "$drv" | grep `guix build guile -d --no-grafts`
+guix gc -R "$drv" | grep `guix build emacs -d --no-grafts`

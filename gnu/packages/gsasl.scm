@@ -2,7 +2,7 @@
 ;;; Copyright © 2012 Andreas Enge <andreas@enge.fr>
 ;;; Copyright © 2017 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2017 Eric Bavier <bavier@member.fsf.org>
-;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -23,6 +23,7 @@
   #:use-module (gnu packages)
   #:use-module (gnu packages compression)
   #:use-module (gnu packages libidn)
+  #:use-module (gnu packages gnupg)
   #:use-module (gnu packages nettle)
   #:use-module (gnu packages kerberos)
   #:use-module (gnu packages tls)
@@ -34,14 +35,14 @@
 (define-public libntlm
   (package
     (name "libntlm")
-    (version "1.5")
+    (version "1.6")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://www.nongnu.org/libntlm/releases/"
                                   "libntlm-" version ".tar.gz"))
               (sha256
                (base32
-                "1gcvv7f9rggpxay81qv6kw5hr6gd4qiyzkbwhzz02fx9jvv9kmsk"))))
+                "08b83nss16jsn213j326yhn1vnrz10k15fwq6jm5b1vdn23nndzj"))))
     (build-system gnu-build-system)
     (synopsis "Library that implements NTLM authentication")
     (description
@@ -77,28 +78,24 @@ the underlying security implementation.")
 (define-public gsasl
   (package
    (name "gsasl")
-   (version "1.8.0")
+   (version "1.8.1")
    (source (origin
             (method url-fetch)
             (uri (string-append "mirror://gnu/gsasl/gsasl-" version
                                 ".tar.gz"))
-            (sha256 (base32
-                     "1rci64cxvcfr8xcjpqc4inpfq7aw4snnsbf5xz7d30nhvv8n40ii"))
-            (modules '((guix build utils)))
-            (snippet
-             '(begin
-                ;; The gnulib test-lock test is prone to writer starvation
-                ;; with our glibc@2.25, which prefers readers, so disable it.
-                ;; The gnulib commit b20e8afb0b2 should fix this once
-                ;; incorporated here.
-                (substitute* "tests/Makefile.in"
-                  (("test-lock\\$\\(EXEEXT\\) ") ""))
-                #t))))
+            (sha256
+             (base32
+              "1lnqfbaajkj1r2fx1db1qgcxy69pfgbyq7xd2kpvyxhra4m1dnjd"))))
    (build-system gnu-build-system)
-   (inputs `(("libidn" ,libidn)
-             ("libntlm" ,libntlm)
-             ("gss" ,gss)
-             ("zlib" ,zlib)))
+   (arguments
+    `(#:configure-flags '("--with-gssapi-impl=mit"
+                          "--disable-static")))
+   (inputs
+    `(("libgcrypt" ,libgcrypt)
+      ("libidn" ,libidn)
+      ("libntlm" ,libntlm)
+      ("mit-krb5" ,mit-krb5)
+      ("zlib" ,zlib)))
    (propagated-inputs
     ;; Propagate GnuTLS because libgnutls.la reads `-lnettle', and Nettle is a
     ;; propagated input of GnuTLS.

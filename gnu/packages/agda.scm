@@ -3,6 +3,8 @@
 ;;; Copyright © 2018 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2018 Alex Vong <alexvong1995@gmail.com>
 ;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018 John Soo <jsoo1@asu.edu>
+;;; Copyright © 2019 Ludovic Courtès <ludo@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -20,20 +22,22 @@
 ;;; along with GNU Guix.  If not, see <http://www.gnu.org/licenses/>.
 
 (define-module (gnu packages agda)
-  #:use-module (gnu packages haskell)
   #:use-module (gnu packages haskell-check)
   #:use-module (gnu packages haskell-web)
+  #:use-module (gnu packages haskell-xyz)
   #:use-module (guix build-system emacs)
+  #:use-module (guix build-system gnu)
   #:use-module (guix build-system haskell)
   #:use-module (guix build-system trivial)
   #:use-module (guix download)
+  #:use-module (guix git-download)
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (guix packages))
 
 (define-public agda
   (package
     (name "agda")
-    (version "2.5.4.2")
+    (version "2.6.0.1")
     (source
      (origin
        (method url-fetch)
@@ -42,10 +46,11 @@
              version ".tar.gz"))
        (sha256
         (base32
-         "07wvawpfjhx3gw2w53v27ncv1bl0kkx08wkm6wzxldbslkcasign"))))
+         "1s600ry1qwizr3ynyj05rvlx7jdcw9a1viyc0ycjamm5sjf8mf3v"))))
     (build-system haskell-build-system)
     (inputs
-     `(("ghc-alex" ,ghc-alex)
+     `(("ghc-aeson" ,ghc-aeson)
+       ("ghc-alex" ,ghc-alex)
        ("ghc-async" ,ghc-async)
        ("ghc-blaze-html" ,ghc-blaze-html)
        ("ghc-boxes" ,ghc-boxes)
@@ -53,6 +58,7 @@
        ("ghc-edisoncore" ,ghc-edisoncore)
        ("ghc-edit-distance" ,ghc-edit-distance)
        ("ghc-equivalence" ,ghc-equivalence)
+       ("ghc-exceptions" ,ghc-exceptions)
        ("ghc-filemanip" ,ghc-filemanip)
        ("ghc-geniplate-mirror" ,ghc-geniplate-mirror)
        ("ghc-gitrev" ,ghc-gitrev)
@@ -62,11 +68,8 @@
        ("ghc-ieee754" ,ghc-ieee754)
        ("ghc-murmur-hash" ,ghc-murmur-hash)
        ("ghc-uri-encode" ,ghc-uri-encode)
-       ("ghc-parallel" ,ghc-parallel)
        ("ghc-regex-tdfa" ,ghc-regex-tdfa)
-       ("ghc-stm" ,ghc-stm)
        ("ghc-strict" ,ghc-strict)
-       ("ghc-text" ,ghc-text)
        ("ghc-unordered-containers" ,ghc-unordered-containers)
        ("ghc-zlib" ,ghc-zlib)))
     (arguments
@@ -123,7 +126,7 @@
                (for-each (cut invoke agda-compiler <>)
                          (find-files (string-append out "/share") "\\.agda$"))
                #t))))))
-    (home-page "http://wiki.portal.chalmers.se/agda/")
+    (home-page "https://wiki.portal.chalmers.se/agda/")
     (synopsis
      "Dependently typed functional programming language and proof assistant")
     (description
@@ -156,3 +159,45 @@ such as Coq, Epigram and NuPRL.")
     (synopsis "Emacs mode for Agda")
     (description "This Emacs mode enables interactive development with
 Agda.  It also aids the input of Unicode characters.")))
+
+(define-public agda-ial
+  (package
+    (name "agda-ial")
+    (version "1.5.0")
+    (home-page "https://github.com/cedille/ial")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference (url home-page)
+                                  (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0dlis6v6nzbscf713cmwlx8h9n2gxghci8y21qak3hp18gkxdp0g"))))
+    (build-system gnu-build-system)
+    (inputs
+     `(("agda" ,agda)))
+    (arguments
+     `(#:parallel-build? #f
+       #:phases
+       (modify-phases %standard-phases
+         (delete 'configure)
+         (add-before 'build 'patch-dependencies
+           (lambda _ (patch-shebang "find-deps.sh") #t))
+         (delete 'check)
+         (replace 'install
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let* ((out     (assoc-ref outputs "out"))
+                    (include (string-append out "/include/agda/ial")))
+               (for-each (lambda (file)
+                           (make-file-writable file)
+                           (install-file file include))
+                         (find-files "." "\\.agdai?(-lib)?$"))
+               #t))))))
+    (synopsis "The Iowa Agda Library")
+    (description
+     "The goal is to provide a concrete library focused on verification
+examples, as opposed to mathematics.  The library has a good number
+of theorems for booleans, natural numbers, and lists.  It also has
+trees, tries, vectors, and rudimentary IO.  A number of good ideas
+come from Agda's standard library.")
+    (license license:expat)))

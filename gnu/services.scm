@@ -1,6 +1,7 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2016 Chris Marusich <cmmarusich@gmail.com>
+;;; Copyright © 2020 Jan (janneke) Nieuwenhuizen <janneke@gnu.org>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -25,12 +26,16 @@
   #:use-module (guix profiles)
   #:use-module (guix discovery)
   #:use-module (guix combinators)
+  #:use-module (guix channels)
+  #:use-module (guix describe)
   #:use-module (guix sets)
   #:use-module (guix ui)
-  #:use-module ((guix utils) #:select (source-properties->location))
+  #:use-module (guix diagnostics)
+  #:autoload   (guix openpgp) (openpgp-format-fingerprint)
   #:use-module (guix modules)
   #:use-module (gnu packages base)
   #:use-module (gnu packages bash)
+  #:use-module (gnu packages hurd)
   #:use-module (srfi srfi-1)
   #:use-module (srfi srfi-9)
   #:use-module (srfi srfi-9 gnu)
@@ -39,6 +44,7 @@
   #:use-module (srfi srfi-35)
   #:use-module (ice-9 vlist)
   #:use-module (ice-9 match)
+  #:autoload   (ice-9 pretty-print) (pretty-print)
   #:export (service-extension
             service-extension?
             service-extension-target
@@ -82,11 +88,16 @@
             ambiguous-target-service-error-target-type
 
             system-service-type
+            provenance-service-type
+            sexp->system-provenance
+            system-provenance
             boot-service-type
             cleanup-service-type
             activation-service-type
             activation-service->script
             %linux-bare-metal-service
+            %hurd-rc-script
+            %hurd-startup-service
             special-files-service-type
             extra-special-file
             etc-service-type
@@ -232,13 +243,13 @@ TYPE does not have a default value, an error is raised."
     (if (eq? default &no-default-value)
         (let ((location (source-properties->location location)))
           (raise
-           (condition
-            (&missing-value-service-error (type type) (location location))
-            (&message
-             (message (format #f (G_ "~a: no value specified \
+           (make-compound-condition
+            (condition
+             (&missing-value-service-error (type type) (location location)))
+            (formatted-message (G_ "~a: no value specified \
 for service of type '~a'")
-                              (location->string location)
-                              (service-type-name type)))))))
+                               (location->string location)
+                               (service-type-name type)))))
         (service type default))))
 
 (define-condition-type &service-error &error
@@ -314,11 +325,11 @@ This is a shorthand for (map (lambda (svc) ...) %base-services)."
 ;;; Core services.
 ;;;
 
-(define (system-derivation mentries mextensions)
+(define (system-derivation entries mextensions)
   "Return as a monadic value the derivation of the 'system' directory
 containing the given entries."
-  (mlet %store-monad ((entries    mentries)
-                      (extensions (sequence %store-monad mextensions)))
+  (mlet %store-monad ((extensions (mapm/accumulate-builds identity
+                                                          mextensions)))
     (lower-object
      (file-union "system"
                  (append entries (concatenate extensions))))))
@@ -369,6 +380,144 @@ by the initrd once the root file system is mounted.")))
 (define %boot-service
   ;; The service that produces the boot script.
   (service boot-service-type #t))
+
+
+;;;
+;;; Provenance tracking.
+;;;
+
+(define (object->pretty-string obj)
+  "Like 'object->string', but using 'pretty-print'."
+  (call-with-output-string
+    (lambda (port)
+      (pretty-print obj port))))
+
+(define (channel->code channel)
+  "Return code to build CHANNEL, ready to be dropped in a 'channels.scm'
+file."
+  ;; Since the 'introduction' field is backward-incompatible, and since it's
+  ;; optional when using the "official" 'guix channel, include it if and only
+  ;; if we're referring to a different channel.
+  (let ((intro (and (not (equal? (list channel) %default-channels))
+                    (channel-introduction channel))))
+    `(channel (name ',(channel-name channel))
+              (url ,(channel-url channel))
+              (branch ,(channel-branch channel))
+              (commit ,(channel-commit channel))
+              ,@(if intro
+                    `((introduction
+                       (make-channel-introduction
+                        ,(channel-introduction-first-signed-commit intro)
+                        (openpgp-fingerprint
+                         ,(openpgp-format-fingerprint
+                           (channel-introduction-first-commit-signer
+                            intro))))))
+                    '()))))
+
+(define (channel->sexp channel)
+  "Return an sexp describing CHANNEL.  The sexp is _not_ code and is meant to
+be parsed by tools; it's potentially more future-proof than code."
+  ;; TODO: Add CHANNEL's introduction.  Currently we can't do that because
+  ;; older 'guix system describe' expect exactly name/url/branch/commit
+  ;; without any additional fields.
+  `(channel (name ,(channel-name channel))
+            (url ,(channel-url channel))
+            (branch ,(channel-branch channel))
+            (commit ,(channel-commit channel))))
+
+(define (sexp->channel sexp)
+  "Return the channel corresponding to SEXP, an sexp as found in the
+\"provenance\" file produced by 'provenance-service-type'."
+  (match sexp
+    (('channel ('name name)
+               ('url url)
+               ('branch branch)
+               ('commit commit)
+               rest ...)
+     ;; XXX: In the future REST may include a channel introduction.
+     (channel (name name) (url url)
+              (branch branch) (commit commit)))))
+
+(define (provenance-file channels config-file)
+  "Return a 'provenance' file describing CHANNELS, a list of channels, and
+CONFIG-FILE, which can be either #f or a <local-file> containing the OS
+configuration being used."
+  (scheme-file "provenance"
+               #~(provenance
+                  (version 0)
+                  (channels #+@(if channels
+                                   (map channel->sexp channels)
+                                   '()))
+                  (configuration-file #+config-file))))
+
+(define (provenance-entry config-file)
+  "Return system entries describing the operating system provenance: the
+channels in use and CONFIG-FILE, if it is true."
+  (define profile
+    (current-profile))
+
+  (define channels
+    (and=> profile profile-channels))
+
+  (mbegin %store-monad
+    (let ((config-file (cond ((string? config-file)
+                              (local-file config-file "configuration.scm"))
+                             ((not config-file)
+                              #f)
+                             (else
+                              config-file))))
+      (return `(("provenance" ,(provenance-file channels config-file))
+                ,@(if channels
+                      `(("channels.scm"
+                         ,(plain-file "channels.scm"
+                                      (object->pretty-string
+                                       `(list
+                                         ,@(map channel->code channels))))))
+                      '())
+                ,@(if config-file
+                      `(("configuration.scm" ,config-file))
+                      '()))))))
+
+(define provenance-service-type
+  (service-type (name 'provenance)
+                (extensions
+                 (list (service-extension system-service-type
+                                          provenance-entry)))
+                (default-value #f)                ;the OS config file
+                (description
+                 "Store provenance information about the system in the system
+itself: the channels used when building the system, and its configuration
+file, when available.")))
+
+(define (sexp->system-provenance sexp)
+  "Parse SEXP, an s-expression read from /run/current-system/provenance or
+similar, and return two values: the list of channels listed therein, and the
+OS configuration file or #f."
+  (match sexp
+    (('provenance ('version 0)
+                  ('channels channels ...)
+                  ('configuration-file config-file))
+     (values (map sexp->channel channels)
+             config-file))
+    (_
+     (values '() #f))))
+
+(define (system-provenance system)
+  "Given SYSTEM, the file name of a system generation, return two values: the
+list of channels SYSTEM is built from, and its configuration file.  If that
+information is missing, return the empty list (for channels) and possibly
+#false (for the configuration file)."
+  (catch 'system-error
+    (lambda ()
+      (sexp->system-provenance
+       (call-with-input-file (string-append system "/provenance")
+         read)))
+    (lambda _
+      (values '() #f))))
+
+;;;
+;;; Cleanup.
+;;;
 
 (define (cleanup-gexp _)
   "Return a gexp to clean up /tmp and similar places upon boot."
@@ -430,34 +579,34 @@ ACTIVATION-SCRIPT-TYPE."
 (define (activation-script gexps)
   "Return the system's activation script, which evaluates GEXPS."
   (define actions
-    (map (cut scheme-file "activate-service" <>) gexps))
+    (map (cut program-file "activate-service.scm" <>) gexps))
 
-  (scheme-file "activate"
-               (with-imported-modules (source-module-closure
-                                       '((gnu build activation)
-                                         (guix build utils)))
-                 #~(begin
-                     (use-modules (gnu build activation)
-                                  (guix build utils))
+  (program-file "activate.scm"
+                (with-imported-modules (source-module-closure
+                                        '((gnu build activation)
+                                          (guix build utils)))
+                  #~(begin
+                      (use-modules (gnu build activation)
+                                   (guix build utils))
 
-                     ;; Make sure the user accounting database exists.  If it
-                     ;; does not exist, 'setutxent' does not create it and
-                     ;; thus there is no accounting at all.
-                     (close-port (open-file "/var/run/utmpx" "a0"))
+                      ;; Make sure the user accounting database exists.  If it
+                      ;; does not exist, 'setutxent' does not create it and
+                      ;; thus there is no accounting at all.
+                      (close-port (open-file "/var/run/utmpx" "a0"))
 
-                     ;; Same for 'wtmp', which is populated by mingetty et
-                     ;; al.
-                     (mkdir-p "/var/log")
-                     (close-port (open-file "/var/log/wtmp" "a0"))
+                      ;; Same for 'wtmp', which is populated by mingetty et
+                      ;; al.
+                      (mkdir-p "/var/log")
+                      (close-port (open-file "/var/log/wtmp" "a0"))
 
-                     ;; Set up /run/current-system.  Among other things this
-                     ;; sets up locales, which the activation snippets
-                     ;; executed below may expect.
-                     (activate-current-system)
+                      ;; Set up /run/current-system.  Among other things this
+                      ;; sets up locales, which the activation snippets
+                      ;; executed below may expect.
+                      (activate-current-system)
 
-                     ;; Run the services' activation snippets.
-                     ;; TODO: Use 'load-compiled'.
-                     (for-each primitive-load '#$actions)))))
+                      ;; Run the services' activation snippets.
+                      ;; TODO: Use 'load-compiled'.
+                      (for-each primitive-load '#$actions)))))
 
 (define (gexps->activation-gexp gexps)
   "Return a gexp that runs the activation script containing GEXPS."
@@ -492,6 +641,10 @@ ACTIVATION-SCRIPT-TYPE."
                   #~(begin
                       (setenv "LINUX_MODULE_DIRECTORY"
                               "/run/booted-system/kernel/lib/modules")
+                      ;; FIXME: Remove this crutch when the patch #40422,
+                      ;; updating to kmod 27 is merged.
+                      (setenv "MODPROBE_OPTIONS"
+                              "-C /etc/modprobe.d")
                       (apply execl #$modprobe
                              (cons #$modprobe (cdr (command-line))))))))
 
@@ -512,6 +665,39 @@ ACTIVATION-SCRIPT-TYPE."
                   activation-service-type
                   %linux-kernel-activation))
 
+(define %hurd-rc-script
+  ;; The RC script to be started upon boot.
+  (program-file "rc"
+                (with-imported-modules (source-module-closure
+                                        '((guix build utils)
+                                          (gnu build hurd-boot)
+                                          (guix build syscalls)))
+                  #~(begin
+                      (use-modules (guix build utils)
+                                   (gnu build hurd-boot)
+                                   (guix build syscalls)
+                                   (ice-9 match)
+                                   (system repl repl)
+                                   (srfi srfi-1)
+                                   (srfi srfi-26))
+                      (boot-hurd-system)))))
+
+(define (hurd-rc-entry rc)
+  "Return, as a monadic value, an entry for the RC script in the system
+directory."
+  (mlet %store-monad ((rc (lower-object rc)))
+    (return `(("rc" ,rc)))))
+
+(define hurd-startup-service-type
+  ;; The service that creates the initial SYSTEM/rc startup file.
+  (service-type (name 'startup)
+                (extensions
+                 (list (service-extension system-service-type hurd-rc-entry)))
+                (default-value %hurd-rc-script)))
+
+(define %hurd-startup-service
+  ;; The service that produces the RC script.
+  (service hurd-startup-service-type %hurd-rc-script))
 
 (define special-files-service-type
   ;; Service to install "special files" such as /bin/sh and /usr/bin/env.
@@ -540,6 +726,21 @@ and FILE could be \"/usr/bin/env\"."
   (files->etc-directory (service-value service)))
 
 (define (files->etc-directory files)
+  (define (assert-no-duplicates files)
+    (let loop ((files files)
+               (seen (set)))
+      (match files
+        (() #t)
+        (((file _) rest ...)
+         (when (set-contains? seen file)
+           (raise (formatted-message (G_ "duplicate '~a' entry for /etc")
+                                     file)))
+         (loop rest (set-insert file seen))))))
+
+  ;; Detect duplicates early instead of letting them through, eventually
+  ;; leading to a build failure of "etc.drv".
+  (assert-no-duplicates files)
+
   (file-union "etc" files))
 
 (define (etc-entry files)
@@ -582,10 +783,10 @@ executables, making them setuid-root.")))
 
 (define (packages->profile-entry packages)
   "Return a system entry for the profile containing PACKAGES."
-  (mlet %store-monad ((profile (profile-derivation
-                                (packages->manifest
-                                 (delete-duplicates packages eq?)))))
-    (return `(("profile" ,profile)))))
+  (with-monad %store-monad
+    (return `(("profile" ,(profile
+                           (content (packages->manifest
+                                     (delete-duplicates packages eq?)))))))))
 
 (define profile-service-type
   ;; The service that populates the system's profile---i.e.,
@@ -775,26 +976,42 @@ TARGET-TYPE; return the root service adjusted accordingly."
                    (eq? (service-kind service) target-type))
                  services)
     ((sink)
-     (let loop ((sink sink))
-       (let* ((dependents (map loop (dependents sink)))
-              (extensions (map (apply-extension sink) dependents))
-              (extend     (service-type-extend (service-kind sink)))
-              (compose    (service-type-compose (service-kind sink)))
-              (params     (service-value sink)))
-         ;; We distinguish COMPOSE and EXTEND because PARAMS typically has a
-         ;; different type than the elements of EXTENSIONS.
-         (if extend
-             (service (service-kind sink)
-                      (extend params (compose extensions)))
-             sink))))
+     ;; Use the state monad to keep track of already-visited services in the
+     ;; graph and to memoize their value once folded.
+     (run-with-state
+         (let loop ((sink sink))
+           (mlet %state-monad ((visited (current-state)))
+             (match (vhash-assq sink visited)
+               (#f
+                (mlet* %state-monad
+                    ((dependents (mapm %state-monad loop (dependents sink)))
+                     (visited    (current-state))
+                     (extensions -> (map (apply-extension sink) dependents))
+                     (extend     -> (service-type-extend (service-kind sink)))
+                     (compose    -> (service-type-compose (service-kind sink)))
+                     (params     -> (service-value sink))
+                     (service
+                      ->
+                      ;; Distinguish COMPOSE and EXTEND because PARAMS typically
+                      ;; has a different type than the elements of EXTENSIONS.
+                      (if extend
+                          (service (service-kind sink)
+                                   (extend params (compose extensions)))
+                          sink)))
+                  (mbegin %state-monad
+                    (set-current-state (vhash-consq sink service visited))
+                    (return service))))
+               ((_ . service)                     ;SINK was already visited
+                (return service)))))
+       vlist-null))
     (()
      (raise
-      (condition (&missing-target-service-error
-                  (service #f)
-                  (target-type target-type))
-                 (&message
-                  (message (format #f (G_ "service of type '~a' not found")
-                                   (service-type-name target-type)))))))
+      (make-compound-condition
+       (condition (&missing-target-service-error
+                   (service #f)
+                   (target-type target-type)))
+       (formatted-message (G_ "service of type '~a' not found")
+                          (service-type-name target-type)))))
     (x
      (raise
       (condition (&ambiguous-target-service-error

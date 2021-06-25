@@ -1,5 +1,5 @@
 # GNU Guix --- Functional package management for GNU
-# Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+# Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 # Copyright © 2013 Andreas Enge <andreas@enge.fr>
 # Copyright © 2015, 2017 Alex Kost <alezost@gmail.com>
 # Copyright © 2016, 2018 Mathieu Lirzin <mthl@gnu.org>
@@ -7,9 +7,9 @@
 # Copyright © 2017 Mathieu Othacehe <m.othacehe@gmail.com>
 # Copyright © 2017 Leo Famulari <leo@famulari.name>
 # Copyright © 2017 Ricardo Wurmus <rekado@elephly.net>
-# Copyright © 2017 Jan Nieuwenhuizen <janneke@gnu.org>
+# Copyright © 2017, 2020 Jan (janneke) Nieuwenhuizen <janneke@gnu.org>
 # Copyright © 2017 Arun Isaac <arunisaac@systemreboot.net>
-# Copyright © 2018 ng0 <ng0@n0.is>
+# Copyright © 2018 Nikita <nikita@n0.is>
 # Copyright © 2018 Julien Lepiller <julien@lepiller.eu>
 # Copyright © 2018 Oleg Pykhalov <go.wigust@gmail.com>
 # Copyright © 2018 Alex Vong <alexvong1995@gmail.com>
@@ -68,7 +68,9 @@ MODULES =					\
   guix/cpio.scm					\
   guix/deprecation.scm				\
   guix/docker.scm	   			\
+  guix/json.scm					\
   guix/records.scm				\
+  guix/openpgp.scm				\
   guix/pki.scm					\
   guix/progress.scm				\
   guix/combinators.scm				\
@@ -93,6 +95,7 @@ MODULES =					\
   guix/repl.scm					\
   guix/inferior.scm				\
   guix/describe.scm				\
+  guix/quirks.scm				\
   guix/channels.scm				\
   guix/gnu-maintenance.scm			\
   guix/self.scm					\
@@ -101,6 +104,7 @@ MODULES =					\
   guix/lint.scm				\
   guix/glob.scm					\
   guix/git.scm					\
+  guix/git-authenticate.scm			\
   guix/graph.scm				\
   guix/cache.scm				\
   guix/cve.scm					\
@@ -121,15 +125,19 @@ MODULES =					\
   guix/build-system/meson.scm			\
   guix/build-system/minify.scm			\
   guix/build-system/asdf.scm			\
+  guix/build-system/copy.scm			\
   guix/build-system/glib-or-gtk.scm		\
   guix/build-system/gnu.scm			\
   guix/build-system/guile.scm			\
   guix/build-system/haskell.scm			\
+  guix/build-system/julia.scm			\
   guix/build-system/linux-module.scm		\
+  guix/build-system/maven.scm			\
   guix/build-system/node.scm			\
   guix/build-system/perl.scm			\
   guix/build-system/python.scm			\
   guix/build-system/ocaml.scm			\
+  guix/build-system/qt.scm			\
   guix/build-system/waf.scm			\
   guix/build-system/r.scm			\
   guix/build-system/rakudo.scm			\
@@ -166,16 +174,20 @@ MODULES =					\
   guix/build/go-build-system.scm		\
   guix/build/asdf-build-system.scm		\
   guix/build/bzr.scm				\
+  guix/build/copy-build-system.scm		\
   guix/build/git.scm				\
   guix/build/hg.scm				\
   guix/build/glib-or-gtk-build-system.scm	\
+  guix/build/gnu-bootstrap.scm			\
   guix/build/gnu-build-system.scm		\
   guix/build/gnu-dist.scm			\
   guix/build/guile-build-system.scm		\
+  guix/build/maven-build-system.scm		\
   guix/build/node-build-system.scm		\
   guix/build/perl-build-system.scm		\
   guix/build/python-build-system.scm		\
   guix/build/ocaml-build-system.scm		\
+  guix/build/qt-build-system.scm		\
   guix/build/r-build-system.scm			\
   guix/build/rakudo-build-system.scm		\
   guix/build/ruby-build-system.scm		\
@@ -183,6 +195,7 @@ MODULES =					\
   guix/build/texlive-build-system.scm		\
   guix/build/waf-build-system.scm		\
   guix/build/haskell-build-system.scm		\
+  guix/build/julia-build-system.scm		\
   guix/build/linux-module-build-system.scm	\
   guix/build/store-copy.scm			\
   guix/build/json.scm				\
@@ -201,6 +214,9 @@ MODULES =					\
   guix/build/emacs-utils.scm			\
   guix/build/java-utils.scm			\
   guix/build/lisp-utils.scm			\
+  guix/build/maven/java.scm			\
+  guix/build/maven/plugin.scm			\
+  guix/build/maven/pom.scm			\
   guix/build/graft.scm				\
   guix/build/bournish.scm			\
   guix/build/qt-utils.scm			\
@@ -218,6 +234,7 @@ MODULES =					\
   guix/import/gnu.scm				\
   guix/import/hackage.scm			\
   guix/import/json.scm				\
+  guix/import/kde.scm				\
   guix/import/launchpad.scm   			\
   guix/import/opam.scm				\
   guix/import/print.scm				\
@@ -237,6 +254,7 @@ MODULES =					\
   guix/scripts/remove.scm			\
   guix/scripts/upgrade.scm			\
   guix/scripts/search.scm			\
+  guix/scripts/show.scm				\
   guix/scripts/gc.scm				\
   guix/scripts/hash.scm				\
   guix/scripts/pack.scm				\
@@ -268,11 +286,14 @@ MODULES =					\
   guix/scripts/publish.scm			\
   guix/scripts/edit.scm				\
   guix/scripts/size.scm				\
+  guix/scripts/git.scm				\
+  guix/scripts/git/authenticate.scm		\
   guix/scripts/graph.scm			\
   guix/scripts/weather.scm			\
   guix/scripts/container.scm			\
   guix/scripts/container/exec.scm		\
   guix/scripts/deploy.scm			\
+  guix/scripts/time-machine.scm			\
   guix.scm					\
   $(GNU_SYSTEM_MODULES)
 
@@ -302,17 +323,20 @@ STORE_MODULES =					\
 MODULES += $(STORE_MODULES)
 
 # Internal modules with test suite support.
-dist_noinst_DATA = guix/tests.scm guix/tests/http.scm
+dist_noinst_DATA =				\
+  guix/tests.scm				\
+  guix/tests/http.scm				\
+  guix/tests/git.scm				\
+  guix/tests/gnupg.scm
 
 # Auxiliary files for packages.
 AUX_FILES =						\
   gnu/packages/aux-files/chromium/master-preferences.json		\
   gnu/packages/aux-files/emacs/guix-emacs.el		\
-  gnu/packages/aux-files/linux-libre/5.2-arm.conf	\
-  gnu/packages/aux-files/linux-libre/5.2-arm-veyron.conf       \
-  gnu/packages/aux-files/linux-libre/5.2-arm64.conf	\
-  gnu/packages/aux-files/linux-libre/5.2-i686.conf	\
-  gnu/packages/aux-files/linux-libre/5.2-x86_64.conf	\
+  gnu/packages/aux-files/linux-libre/5.4-arm.conf	\
+  gnu/packages/aux-files/linux-libre/5.4-arm64.conf	\
+  gnu/packages/aux-files/linux-libre/5.4-i686.conf	\
+  gnu/packages/aux-files/linux-libre/5.4-x86_64.conf	\
   gnu/packages/aux-files/linux-libre/4.19-arm.conf	\
   gnu/packages/aux-files/linux-libre/4.19-arm64.conf	\
   gnu/packages/aux-files/linux-libre/4.19-i686.conf	\
@@ -324,12 +348,14 @@ AUX_FILES =						\
   gnu/packages/aux-files/linux-libre/4.9-x86_64.conf	\
   gnu/packages/aux-files/linux-libre/4.4-i686.conf	\
   gnu/packages/aux-files/linux-libre/4.4-x86_64.conf	\
+  gnu/packages/aux-files/pack-audit.c			\
   gnu/packages/aux-files/run-in-namespace.c
 
 # Templates, examples.
 EXAMPLES =					\
   gnu/system/examples/asus-c201.tmpl		\
   gnu/system/examples/bare-bones.tmpl		\
+  gnu/system/examples/bare-hurd.tmpl		\
   gnu/system/examples/beaglebone-black.tmpl	\
   gnu/system/examples/desktop.tmpl		\
   gnu/system/examples/lightweight-desktop.tmpl	\
@@ -386,6 +412,8 @@ SCM_TESTS =					\
   tests/file-systems.scm			\
   tests/gem.scm				\
   tests/gexp.scm				\
+  tests/git.scm					\
+  tests/git-authenticate.scm			\
   tests/glob.scm				\
   tests/gnu-maintenance.scm			\
   tests/grafts.scm				\
@@ -399,7 +427,9 @@ SCM_TESTS =					\
   tests/modules.scm				\
   tests/monads.scm				\
   tests/nar.scm				\
+  tests/networking.scm				\
   tests/opam.scm				\
+  tests/openpgp.scm				\
   tests/packages.scm				\
   tests/pack.scm				\
   tests/pki.scm				\
@@ -413,6 +443,7 @@ SCM_TESTS =					\
   tests/scripts-build.scm			\
   tests/search-paths.scm			\
   tests/services.scm				\
+  tests/services/linux.scm			\
   tests/sets.scm				\
   tests/size.scm				\
   tests/snix.scm				\
@@ -439,6 +470,7 @@ SH_TESTS =					\
   tests/guix-build-branch.sh			\
   tests/guix-download.sh			\
   tests/guix-gc.sh				\
+  tests/guix-git-authenticate.sh		\
   tests/guix-hash.sh				\
   tests/guix-pack.sh				\
   tests/guix-pack-localstatedir.sh		\
@@ -453,6 +485,7 @@ SH_TESTS =					\
   tests/guix-environment-container.sh		\
   tests/guix-graph.sh				\
   tests/guix-describe.sh			\
+  tests/guix-repl.sh     			\
   tests/guix-lint.sh
 
 TESTS = $(SCM_TESTS) $(SH_TESTS)
@@ -494,13 +527,11 @@ endif !CAN_RUN_TESTS
 
 check-system: $(GOBJECTS)
 	$(AM_V_at)$(top_builddir)/pre-inst-env			\
-	   $(GUILE) --no-auto-compile				\
-	   -e '(@@ (run-system-tests) run-system-tests)'	\
-	   $(top_srcdir)/build-aux/run-system-tests.scm
+	  guix build -m $(top_srcdir)/etc/system-tests.scm -K
 
 # Public keys used to sign substitutes.
 dist_pkgdata_DATA =				\
-  etc/substitutes/berlin.guixsd.org.pub		\
+  etc/substitutes/berlin.guix.gnu.org.pub	\
   etc/substitutes/ci.guix.gnu.org.pub		\
   etc/substitutes/ci.guix.info.pub
 
@@ -523,8 +554,13 @@ EXTRA_DIST +=						\
   TODO							\
   CODE-OF-CONDUCT					\
   .dir-locals.el					\
+  .guix-channel						\
   scripts/guix.in					\
   etc/guix-install.sh					\
+  etc/news.scm						\
+  etc/release-manifest.scm				\
+  etc/system-tests.scm					\
+  etc/historical-authorizations				\
   build-aux/build-self.scm				\
   build-aux/compile-all.scm				\
   build-aux/hydra/evaluate.scm				\
@@ -534,20 +570,26 @@ EXTRA_DIST +=						\
   build-aux/cuirass/gnu-system.scm			\
   build-aux/cuirass/guix-modular.scm			\
   build-aux/cuirass/hydra-to-cuirass.scm		\
-  build-aux/check-available-binaries.scm		\
   build-aux/check-final-inputs-self-contained.scm	\
+  build-aux/check-channel-news.scm			\
   build-aux/compile-as-derivation.scm			\
   build-aux/generate-authors.scm			\
   build-aux/test-driver.scm				\
   build-aux/update-guix-package.scm			\
   build-aux/update-NEWS.scm				\
-  build-aux/run-system-tests.scm			\
   d3.v3.js						\
   graph.js						\
   tests/test.drv					\
   tests/signing-key.pub					\
   tests/signing-key.sec					\
-  tests/cve-sample.xml					\
+  tests/cve-sample.json					\
+  tests/civodul.key					\
+  tests/rsa.key						\
+  tests/dsa.key						\
+  tests/ed25519.key					\
+  tests/ed25519.sec					\
+  tests/ed25519bis.key					\
+  tests/ed25519bis.sec					\
   build-aux/config.rpath				\
   bootstrap						\
   doc/build.scm						\
@@ -597,8 +639,22 @@ $(guix_install_go_files): install-nobase_dist_guilemoduleDATA
 # The above trick doesn't work for 'config.go' because both 'config.scm' and
 # 'config.go' are listed in $(nobase_nodist_guileobject_DATA).  Thus, give it
 # special treatment.
-install-data-hook: set-bootstrap-executable-permissions
+install-data-hook:
 	touch "$(DESTDIR)$(guileobjectdir)/guix/config.go"
+
+# Commit corresponding to the 'v1.0.0' tag.
+commit_v1_0_0 = 6298c3ffd9654d3231a6f25390b056483e8f407c
+
+# Introduction of the 'guix' channel.  Keep in sync with (guix channels)!
+channel_intro_commit = 9edb3f66fd807b096b48283debdcddccfea34bad
+channel_intro_signer = BBB0 2DDF 2CEA F6A8 0D1D  E643 A2A0 6DF2 A33A 54FA
+
+# Authenticate the current Git checkout by checking signatures on every commit.
+authenticate:
+	$(AM_V_at)echo "Authenticating Git checkout..." ;	\
+	guix git authenticate					\
+	    --cache-key=channels/guix --stats			\
+	    "$(channel_intro_commit)" "$(channel_intro_signer)"
 
 # Assuming Guix is already installed and the daemon is up and running, this
 # rule builds from $(srcdir), creating and building derivations.
@@ -634,11 +690,16 @@ AM_DISTCHECK_CONFIGURE_FLAGS =			\
   --enable-daemon				\
   ac_cv_guix_test_root="$(GUIX_TEST_ROOT)"
 
+# Name of the 'guix' package shipped in the binary tarball.
+GUIX_FOR_BINARY_TARBALL = guile3.0-guix
+
 # The self-contained tarball.
 guix-binary.%.tar.xz:
 	$(AM_V_GEN)GUIX_PACKAGE_PATH=					\
-	tarball=`$(top_builddir)/pre-inst-env guix pack -K -C xz	\
-	  -s "$*" --localstatedir --profile-name=current-guix guix` ;	\
+	tarball=`$(top_builddir)/pre-inst-env guix pack -C xz		\
+	  --fallback							\
+	  -s "$*" --localstatedir --profile-name=current-guix		\
+	  $(GUIX_FOR_BINARY_TARBALL)` ;					\
 	cp "$$tarball" "$@.tmp" ; mv "$@.tmp" "$@"
 
 
@@ -671,6 +732,16 @@ gen-AUTHORS:
 	    "$(top_srcdir)/build-aux/generate-authors.scm"	\
 	    "$(top_srcdir)" "$(distdir)/AUTHORS";		\
 	fi
+
+# Like 'dist', but regenerate 'configure' so we get an up-to-date
+# 'PACKAGE_VERSION' string.  (In Gnulib, 'GNUmakefile' has a special trick to
+# do that whenever a 'dist' target is used.)
+dist-with-updated-version:
+	@echo "Running './bootstrap' for new version string..."
+	$(top_srcdir)/bootstrap
+	$(MAKE) $(AM_MAKEFLAGS) $(top_srcdir)/.version dist
+
+.PHONY: dist-with-updated-version
 
 
 #
@@ -727,7 +798,7 @@ system_flags = $(foreach system,$(1),-s $(system))
 #
 # XXX: Depend on 'dist' rather than 'distcheck' to work around the Gettext
 # issue described at <https://savannah.gnu.org/bugs/index.php?51027>.
-release: dist
+release: dist-with-updated-version
 	cd po; git checkout .
 	@if ! git diff-index --quiet HEAD; then			\
 	  echo "There are uncommitted changes; stopping." >&2 ;	\
@@ -741,9 +812,9 @@ release: dist
 	   "`git rev-parse HEAD`" "$(PACKAGE_VERSION)"
 	git add $(top_srcdir)/gnu/packages/package-management.scm
 	git commit -m "gnu: guix: Update to $(PACKAGE_VERSION)."
-	$(top_builddir)/pre-inst-env guix build guix	\
+	$(top_builddir)/pre-inst-env guix build $(GUIX_FOR_BINARY_TARBALL)	\
 	      $(call system_flags,$(SUPPORTED_SYSTEMS))	\
-	      -v1 --no-grafts -K
+	      -v1 --no-grafts --fallback
 	rm -f $(BINARY_TARBALLS)
 	$(MAKE) $(BINARY_TARBALLS)
 	for system in $(SUPPORTED_SYSTEMS) ; do					\
@@ -757,12 +828,12 @@ release: dist
 	git commit -m "gnu: guix: Update to `git rev-parse HEAD | cut -c1-7`."
 	$(top_builddir)/pre-inst-env guix build guix			\
 	      $(call system_flags,$(GUIX_SYSTEM_SUPPORTED_SYSTEMS))	\
-	      -v1 --no-grafts -K
+	      -v1 --no-grafts --fallback
 	for system in $(GUIX_SYSTEM_SUPPORTED_SYSTEMS) ; do				\
 	  image=`$(top_builddir)/pre-inst-env						\
 	    guix system disk-image							\
 	    --file-system-type=iso9660							\
-            --system=$$system								\
+            --system=$$system --fallback						\
 	    gnu/system/install.scm` ;							\
 	  if [ ! -f "$$image" ] ; then							\
 	    echo "failed to produced Guix installation image for $$system" >&2 ;	\
@@ -775,7 +846,8 @@ release: dist
 	for system in $(GUIX_SYSTEM_VM_SYSTEMS) ; do					\
 	  image=`$(top_builddir)/pre-inst-env						\
 	    guix system vm-image $(GUIX_SYSTEM_VM_IMAGE_FLAGS)				\
-	    --system=$$system								\
+	    --save-provenance								\
+	    --system=$$system --fallback						\
 	    gnu/system/examples/vm-image.tmpl` ;					\
 	  if [ ! -f "$$image" ] ; then							\
 	    echo "failed to produced Guix VM image for $$system" >&2 ;			\
@@ -809,9 +881,11 @@ assert-no-store-file-names:
 	$(AM_V_at)if grep -r --exclude=*.texi --exclude=*.info			\
 	     --exclude=*.info-[0-9] --exclude=*.dot				\
 	     --exclude=*.eps --exclude-dir=bootstrap				\
-		 --exclude=guix-manual.pot --exclude=guix-manual.*.po		\
+	     --exclude=guix-manual.pot --exclude=guix-manual.*.po		\
+	     --exclude=guix-cookbook.pot --exclude=guix-cookbook.*.po		\
 	     --exclude=guix-prettify.el						\
 	     --exclude=ChangeLog*						\
+	     --exclude=binutils-boot-2.20*.patch				\
 	     -E "$(storedir)/[a-z0-9]{32}-" $(distdir) ;			\
 	then									\
 	  echo "error: store file names embedded in the distribution" >&2 ;	\
@@ -820,13 +894,19 @@ assert-no-store-file-names:
 
 # Make sure important substitutes are available.
 assert-binaries-available: $(GOBJECTS)
-	$(AM_V_at)$(top_builddir)/pre-inst-env "$(GUILE)"			\
-	  "$(top_srcdir)/build-aux/check-available-binaries.scm"
+	$(AM_V_at)$(top_builddir)/pre-inst-env				\
+	  guix weather -m "$(top_srcdir)/etc/release-manifest.scm"	\
+	                --display-missing
 
 # Make sure the final inputs don't refer to bootstrap tools.
 assert-final-inputs-self-contained: $(GOBJECTS)
 	$(AM_V_at)$(top_builddir)/pre-inst-env "$(GUILE)"			\
 	  "$(top_srcdir)/build-aux/check-final-inputs-self-contained.scm"
+
+# Validate channel news.
+check-channel-news: $(GOBJECTS)
+	$(AM_V_at)$(top_builddir)/pre-inst-env "$(GUILE)"	\
+	  "$(top_srcdir)/build-aux/check-channel-news.scm"
 
 # Compute the Hydra jobs and write them in the target file.
 hydra-jobs.scm: $(GOBJECTS)
@@ -847,9 +927,42 @@ cuirass-jobs.scm: $(GOBJECTS)
 
 .PHONY: gen-ChangeLog gen-AUTHORS gen-tarball-version
 .PHONY: assert-no-store-file-names assert-binaries-available
-.PHONY: assert-final-inputs-self-contained
-.PHONY: clean-go make-go as-derivation
+.PHONY: assert-final-inputs-self-contained check-channel-news
+.PHONY: clean-go make-go as-derivation authenticate
 .PHONY: update-guix-package update-NEWS release
+
+# Downloading up-to-date PO files.
+
+# make-download-po-rule DOMAIN DIRECTORY [FILE-NAME-PREFIX]
+define make-download-po-rule
+
+download-po.$(1):
+	if [ -f "$(top_srcdir)/$(2)/LINGUAS" ]; then				\
+	  LINGUAS="`grep -v '^[[:blank:]]*#' < $(top_srcdir)/$(2)/LINGUAS`" ;	\
+	else									\
+	  LINGUAS="`(cd $(top_srcdir)/$(2);					\
+	    for i in *.po; do echo $$$$i; done) | cut -d . -f 2`" ;		\
+	fi ;									\
+	for lang in $$$$LINGUAS; do						\
+	  if wget -nv -O "$(top_srcdir)/$(2)/$(3)$$$$lang.po.tmp"		\
+	     "https://translationproject.org/latest/$(1)/$$$$lang.po" ;		\
+	  then									\
+	    mv "$(top_srcdir)/$(2)/$(3)$$$$lang.po"{.tmp,} ;			\
+	  else									\
+	    rm "$(top_srcdir)/$(2)/$(3)$$$$lang.po.tmp" ;			\
+	  fi ;									\
+	done
+
+.PHONY: download-po.$(1)
+
+endef
+
+$(eval $(call make-download-po-rule,guix,po/guix))
+$(eval $(call make-download-po-rule,guix-packages,po/packages))
+$(eval $(call make-download-po-rule,guix-manual,po/doc,guix-manual.))
+
+download-po: $(foreach domain,guix guix-packages guix-manual,download-po.$(domain))
+.PHONY: download-po
 
 ## -------------- ##
 ## Silent rules.  ##

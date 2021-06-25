@@ -12,7 +12,7 @@ particularly welcome help on packaging (@pxref{Packaging Guidelines}).
 We want to provide a warm, friendly, and harassment-free environment, so
 that anyone can contribute to the best of their abilities.  To this end
 our project uses a ``Contributor Covenant'', which was adapted from
-@url{http://contributor-covenant.org/}.  You can find a local version in
+@url{https://contributor-covenant.org/}.  You can find a local version in
 the @file{CODE-OF-CONDUCT} file in the source tree.
 
 Contributors are not required to use their legal name in patches and
@@ -26,6 +26,8 @@ choice.
 * Packaging Guidelines::        Growing the distribution.
 * Coding Style::                Hygiene of the contributor.
 * Submitting Patches::          Share your work.
+* Tracking Bugs and Patches::   Using Debbugs.
+* Commit Access::               Pushing to the official repository.
 @end menu
 
 @node Building from Git
@@ -37,6 +39,30 @@ version from the Git repository:
 @example
 git clone https://git.savannah.gnu.org/git/guix.git
 @end example
+
+@cindex authentication, of a Guix checkout
+How do you ensure that you obtained a genuine copy of the repository?
+To do that, run @command{guix git authenticate}, passing if the commit
+and OpenPGP fingerprint of the @dfn{channel introduction}
+(@pxref{Invoking guix git authenticate}):
+
+@c The commit and fingerprint below must match those of the channel
+@c introduction in '%default-channels'.
+@example
+guix git authenticate 9edb3f66fd807b096b48283debdcddccfea34bad \
+  "BBB0 2DDF 2CEA F6A8 0D1D  E643 A2A0 6DF2 A33A 54FA"
+@end example
+
+@noindent
+This command completes with exit code zero on success; it prints an
+error message and exits with a non-zero code otherwise.
+
+As you can see, there is a chicken-and-egg problem: you first need to
+have Guix installed.  Typically you would install Guix System
+(@pxref{System Installation}) or Guix on top of another distro
+(@pxref{Binary Installation}); in either case, you would verify the
+OpenPGP signature on the installation medium.  This ``bootstraps'' the
+trust chain.
 
 The easiest way to set up a development environment for Guix is, of
 course, by using Guix!  The following command starts a new shell where
@@ -54,12 +80,12 @@ following are the required packages in addition to those mentioned in the
 installation instructions (@pxref{Requirements}).
 
 @itemize
-@item @url{http://gnu.org/software/autoconf/, GNU Autoconf};
-@item @url{http://gnu.org/software/automake/, GNU Automake};
-@item @url{http://gnu.org/software/gettext/, GNU Gettext};
-@item @url{http://gnu.org/software/texinfo/, GNU Texinfo};
-@item @url{http://www.graphviz.org/, Graphviz};
-@item @url{http://www.gnu.org/software/help2man/, GNU Help2man (optional)}.
+@item @url{https://gnu.org/software/autoconf/, GNU Autoconf};
+@item @url{https://gnu.org/software/automake/, GNU Automake};
+@item @url{https://gnu.org/software/gettext/, GNU Gettext};
+@item @url{https://gnu.org/software/texinfo/, GNU Texinfo};
+@item @url{https://www.graphviz.org/, Graphviz};
+@item @url{https://www.gnu.org/software/help2man/, GNU Help2man (optional)}.
 @end itemize
 
 On Guix, extra dependencies can be added by instead running @command{guix
@@ -94,12 +120,28 @@ more information.
 Then, run @command{./configure} as usual.  Make sure to pass
 @code{--localstatedir=@var{directory}} where @var{directory} is the
 @code{localstatedir} value used by your current installation (@pxref{The
-Store}, for information about this).
+Store}, for information about this).  We recommend to use the value
+@code{/var}.
 
 Finally, you have to invoke @code{make check} to run tests
 (@pxref{Running the Test Suite}).  If anything
 fails, take a look at installation instructions (@pxref{Installation})
 or send a message to the @email{guix-devel@@gnu.org, mailing list}.
+
+From there on, you can authenticate all the commits included in your
+checkout by running:
+
+@example
+make authenticate
+@end example
+
+The first run takes a couple of minutes, but subsequent runs are faster.
+
+@quotation Note
+You are advised to run @command{make authenticate} after every
+@command{git pull} invocation.  This ensures you keep receiving valid
+changes to the repository.
+@end quotation
 
 
 @node Running Guix Before It Is Installed
@@ -172,8 +214,8 @@ you want to upgrade your local source tree.
 The Perfect Setup to hack on Guix is basically the perfect setup used
 for Guile hacking (@pxref{Using Guile in Emacs,,, guile, Guile Reference
 Manual}).  First, you need more than an editor, you need
-@url{http://www.gnu.org/software/emacs, Emacs}, empowered by the
-wonderful @url{http://nongnu.org/geiser/, Geiser}.  To set that up, run:
+@url{https://www.gnu.org/software/emacs, Emacs}, empowered by the
+wonderful @url{https://nongnu.org/geiser/, Geiser}.  To set that up, run:
 
 @example
 guix package -i emacs guile emacs-geiser
@@ -195,7 +237,7 @@ that it finds source files from your checkout:
 
 To actually edit the code, Emacs already has a neat Scheme mode.  But in
 addition to that, you must not miss
-@url{http://www.emacswiki.org/emacs/ParEdit, Paredit}.  It provides
+@url{https://www.emacswiki.org/emacs/ParEdit, Paredit}.  It provides
 facilities to directly operate on the syntax tree, such as raising an
 s-expression or wrapping it, swallowing or rejecting the following
 s-expression, etc.
@@ -205,7 +247,7 @@ s-expression, etc.
 @cindex reducing boilerplate
 We also provide templates for common git commit messages and package
 definitions in the @file{etc/snippets} directory.  These templates can
-be used with @url{http://joaotavora.github.io/yasnippet/, YASnippet} to
+be used with @url{https://joaotavora.github.io/yasnippet/, YASnippet} to
 expand short trigger strings to interactive text snippets.  You may want
 to add the snippets directory to the @var{yas-snippet-dirs} variable in
 Emacs.
@@ -229,6 +271,33 @@ trigger string @code{origin...}, which can be expanded further.  The
 @code{origin} snippet in turn may insert other trigger strings ending on
 @code{...}, which also can be expanded further.
 
+@cindex insert or update copyright
+@cindex @code{M-x guix-copyright}
+@cindex @code{M-x copyright-update}
+We additionally provide insertion and automatic update of a copyright in
+@file{etc/copyright.el}.  You may want to set your full name, mail, and
+load a file.
+
+@lisp
+(setq user-full-name "Alice Doe")
+(setq user-mail-address "alice@@mail.org")
+;; @r{Assuming the Guix checkout is in ~/src/guix.}
+(load-file "~/src/guix/etc/copyright.el")
+@end lisp
+
+To insert a copyright at the current line invoke @code{M-x guix-copyright}.
+
+To update a copyright you need to specify a @code{copyright-names-regexp}.
+
+@lisp
+(setq copyright-names-regexp
+      (format "%s <%s>" user-full-name user-mail-address))
+@end lisp
+
+You can check if your copyright is up to date by evaluating @code{M-x
+copyright-update}.  If you want to do it automatically after each buffer
+save then add @code{(add-hook 'after-save-hook 'copyright-update)} in
+Emacs.
 
 @node Packaging Guidelines
 @section Packaging Guidelines
@@ -302,6 +371,7 @@ needed is to review and apply the patch.
 * Python Modules::              A touch of British comedy.
 * Perl Modules::                Little pearls.
 * Java Packages::               Coffee break.
+* Rust Crates::                 Beware of oxidation.
 * Fonts::                       Fond of fonts.
 @end menu
 
@@ -312,14 +382,14 @@ needed is to review and apply the patch.
 @cindex free software
 The GNU operating system has been developed so that users can have
 freedom in their computing.  GNU is @dfn{free software}, meaning that
-users have the @url{http://www.gnu.org/philosophy/free-sw.html,four
+users have the @url{https://www.gnu.org/philosophy/free-sw.html,four
 essential freedoms}: to run the program, to study and change the program
 in source code form, to redistribute exact copies, and to distribute
 modified versions.  Packages found in the GNU distribution provide only
 software that conveys these four freedoms.
 
 In addition, the GNU distribution follow the
-@url{http://www.gnu.org/distros/free-system-distribution-guidelines.html,free
+@url{https://www.gnu.org/distros/free-system-distribution-guidelines.html,free
 software distribution guidelines}.  Among other things, these guidelines
 reject non-free firmware, recommendations of non-free software, and
 discuss ways to deal with trademarks and patents.
@@ -376,7 +446,7 @@ package and does not contain any version number.
 
 For instance, the versions 2.24.20 and 3.9.12 of GTK+ may be packaged as follows:
 
-@example
+@lisp
 (define-public gtk+
   (package
     (name "gtk+")
@@ -387,15 +457,15 @@ For instance, the versions 2.24.20 and 3.9.12 of GTK+ may be packaged as follows
     (name "gtk+")
     (version "2.24.20")
     ...))
-@end example
+@end lisp
 If we also wanted GTK+ 3.8.2, this would be packaged as
-@example
+@lisp
 (define-public gtk+-3.8
   (package
     (name "gtk+")
     (version "3.8.2")
     ...))
-@end example
+@end lisp
 
 @c See <https://lists.gnu.org/archive/html/guix-devel/2016-01/msg00425.html>,
 @c for a discussion of what follows.
@@ -428,11 +498,11 @@ It is a good idea to strip commit identifiers in the @code{version}
 field to, say, 7 digits.  It avoids an aesthetic annoyance (assuming
 aesthetics have a role to play here) as well as problems related to OS
 limits such as the maximum shebang length (127 bytes for the Linux
-kernel.)  It is best to use the full commit identifiers in
+kernel).  It is best to use the full commit identifiers in
 @code{origin}s, though, to avoid ambiguities.  A typical package
 definition may look like this:
 
-@example
+@lisp
 (define my-package
   (let ((commit "c3f29bc928d5900971f65965feaae59e1272a3f7")
         (revision "1"))          ;Guix package revision
@@ -447,7 +517,7 @@ definition may look like this:
                 (file-name (git-file-name name version))))
       ;; @dots{}
       )))
-@end example
+@end lisp
 
 @node Synopses and Descriptions
 @subsection Synopses and Descriptions
@@ -498,7 +568,7 @@ such as @command{guix package --show} take care of rendering it
 appropriately.
 
 Synopses and descriptions are translated by volunteers
-@uref{http://translationproject.org/domain/guix-packages.html, at the
+@uref{https://translationproject.org/domain/guix-packages.html, at the
 Translation Project} so that as many users as possible can read them in
 their native language.  User interfaces search them and display them in
 the language specified by the current locale.
@@ -539,11 +609,12 @@ To avoid confusion and naming clashes with other programming languages, it
 seems desirable that the name of a package for a Python module contains
 the word @code{python}.
 
-Some modules are compatible with only one version of Python, others with both.
-If the package Foo compiles only with Python 3, we name it
-@code{python-foo}; if it compiles only with Python 2, we name it
-@code{python2-foo}. If it is compatible with both versions, we create two
-packages with the corresponding names.
+Some modules are compatible with only one version of Python, others with
+both.  If the package Foo is compiled with Python 3, we name it
+@code{python-foo}.  If it is compiled with Python 2, we name it
+@code{python2-foo}.  Packages should be added when they are necessary;
+we don't add Python 2 variants of the package unless we are going to use
+them.
 
 If a project already contains the word @code{python}, we drop this;
 for instance, the module python-dateutil is packaged under the names
@@ -640,6 +711,40 @@ dashes and prepend the prefix @code{java-}.  So the class
 @code{java-apache-commons-cli}.
 
 
+@node Rust Crates
+@subsection Rust Crates
+
+@cindex rust
+Rust programs standing for themselves are named as any other package, using the
+lowercase upstream name.
+
+To prevent namespace collisions we prefix all other Rust packages with the
+@code{rust-} prefix.  The name should be changed to lowercase as appropriate and
+dashes should remain in place.
+
+In the rust ecosystem it is common for multiple incompatible versions of a
+package to be used at any given time, so all packages should have a versioned
+suffix.  If a package has passed version 1.0.0 then just the major version
+number is sufficient (e.g.@: @code{rust-clap-2}), otherwise the version suffix
+should contain both the major and minor version (e.g.@: @code{rust-rand-0.6}).
+
+Because of the difficulty in reusing rust packages as pre-compiled inputs for
+other packages the Cargo build system (@pxref{Build Systems,
+@code{cargo-build-system}}) presents the @code{#:cargo-inputs} and
+@code{cargo-development-inputs} keywords as build system arguments.  It would be
+helpful to think of these as similar to @code{propagated-inputs} and
+@code{native-inputs}.  Rust @code{dependencies} and @code{build-dependencies}
+should go in @code{#:cargo-inputs}, and @code{dev-dependencies} should go in
+@code{#:cargo-development-inputs}.  If a Rust package links to other libraries
+then the standard placement in @code{inputs} and the like should be used.
+
+Care should be taken to ensure the correct version of dependencies are used; to
+this end we try to refrain from skipping the tests or using @code{#:skip-build?}
+when possible.  Of course this is not always possible, as the package may be
+developed for a different Operating System, depend on features from the Nightly
+Rust compiler, or the test suite may have atrophied since it was released.
+
+
 @node Fonts
 @subsection Fonts
 
@@ -731,7 +836,7 @@ especially when matching lists.
 @cindex coding style
 When writing Scheme code, we follow common wisdom among Scheme
 programmers.  In general, we follow the
-@url{http://mumble.net/~campbell/scheme/style.txt, Riastradh's Lisp
+@url{https://mumble.net/~campbell/scheme/style.txt, Riastradh's Lisp
 Style Rules}.  This document happens to describe the conventions mostly
 used in Guile’s code too.  It is very thoughtful and well written, so
 please do read it.
@@ -783,13 +888,15 @@ Development is done using the Git distributed version control system.
 Thus, access to the repository is not strictly necessary.  We welcome
 contributions in the form of patches as produced by @code{git
 format-patch} sent to the @email{guix-patches@@gnu.org} mailing list.
+Seasoned Guix developers may also want to look at the section on commit
+access (@pxref{Commit Access}).
 
-This mailing list is backed by a Debbugs instance accessible at
-@uref{https://bugs.gnu.org/guix-patches}, which allows us to keep track
-of submissions.  Each message sent to that mailing list gets a new
-tracking number assigned; people can then follow up on the submission by
-sending email to @code{@var{NNN}@@debbugs.gnu.org}, where @var{NNN} is
-the tracking number (@pxref{Sending a Patch Series}).
+This mailing list is backed by a Debbugs instance, which allows us to
+keep track of submissions (@pxref{Tracking Bugs and Patches}).  Each
+message sent to that mailing list gets a new tracking number assigned;
+people can then follow up on the submission by sending email to
+@code{@var{NNN}@@debbugs.gnu.org}, where @var{NNN} is the tracking
+number (@pxref{Sending a Patch Series}).
 
 Please write commit logs in the ChangeLog format (@pxref{Change Logs,,,
 standards, GNU Coding Standards}); you can check the commit history for
@@ -825,12 +932,12 @@ recommend using the @code{qemu-binfmt-service-type} to emulate them.  In
 order to enable it, add the following service to the list of services in
 your @code{operating-system} configuration:
 
-@example
+@lisp
 (service qemu-binfmt-service-type
  (qemu-binfmt-configuration
-   (platforms (lookup-qemu-platforms "arm" "aarch64" "mips64el"))
+   (platforms (lookup-qemu-platforms "arm" "aarch64"))
    (guix-support? #t)))
-@end example
+@end lisp
 
 Then reconfigure your system.
 
@@ -841,7 +948,6 @@ commands, respectively:
 @example
 guix build --system=armhf-linux --rounds=2 hello
 guix build --system=aarch64-linux --rounds=2 hello
-guix build --system=mips64el-linux --rounds=2 hello
 @end example
 
 @item
@@ -882,16 +988,16 @@ rebuilding induced, commits go to different branches, along these lines:
 @item 300 dependent packages or less
 @code{master} branch (non-disruptive changes).
 
-@item between 300 and 1,200 dependent packages
+@item between 300 and 1,800 dependent packages
 @code{staging} branch (non-disruptive changes).  This branch is intended
-to be merged in @code{master} every 3 weeks or so.  Topical changes
+to be merged in @code{master} every 6 weeks or so.  Topical changes
 (e.g., an update of the GNOME stack) can instead go to a specific branch
 (say, @code{gnome-updates}).
 
-@item more than 1,200 dependent packages
+@item more than 1,800 dependent packages
 @code{core-updates} branch (may include major and potentially disruptive
 changes).  This branch is intended to be merged in @code{master} every
-2.5 months or so.
+6 months or so.
 @end table
 
 All these branches are @uref{@value{SUBSTITUTE-SERVER},
@@ -960,15 +1066,27 @@ often better to clone the repository.  Don't use the @command{name} field in
 the URL: it is not very useful and if the name changes, the URL will probably
 be wrong.
 
+@item
+Check if Guix builds (@pxref{Building from Git}) and address the
+warnings, especially those about use of undefined symbols.
+
+@item
+Make sure your changes do not break Guix and simulate a @code{guix pull} with:
+@example
+guix pull --url=/path/to/your/checkout --profile=/tmp/guix.master
+@end example
+
 @end enumerate
 
 When posting a patch to the mailing list, use @samp{[PATCH] @dots{}} as
-a subject.  You may use your email client or the @command{git
-send-email} command (@pxref{Sending a Patch Series}).  We prefer to get
-patches in plain text messages, either inline or as MIME attachments.
-You are advised to pay attention if your email client changes anything
-like line breaks or indentation which could potentially break the
-patches.
+a subject, if your patch is to be applied on a branch other than
+@code{master}, say @code{core-updates}, specify it in the subject like
+@samp{[PATCH core-updates] @dots{}}.  You may use your email client or
+the @command{git send-email} command (@pxref{Sending a Patch Series}).
+We prefer to get patches in plain text messages, either inline or as
+MIME attachments.  You are advised to pay attention if your email client
+changes anything like line breaks or indentation which could potentially
+break the patches.
 
 When a bug is resolved, please close the thread by sending an email to
 @email{@var{NNN}-done@@debbugs.gnu.org}.
@@ -987,3 +1105,195 @@ they are kept together.  See
 for more information.  You can install @command{git send-email} with
 @command{guix install git:send-email}.
 @c Debbugs bug: https://debbugs.gnu.org/db/15/15361.html
+
+@node Tracking Bugs and Patches
+@section Tracking Bugs and Patches
+
+@cindex bug reports, tracking
+@cindex patch submissions, tracking
+@cindex issue tracking
+@cindex Debbugs, issue tracking system
+Bug reports and patch submissions are currently tracked using the
+Debbugs instance at @uref{https://bugs.gnu.org}.  Bug reports are filed
+against the @code{guix} ``package'' (in Debbugs parlance), by sending
+email to @email{bug-guix@@gnu.org}, while patch submissions are filed
+against the @code{guix-patches} package by sending email to
+@email{guix-patches@@gnu.org} (@pxref{Submitting Patches}).
+
+A web interface (actually @emph{two} web interfaces!) are available to
+browse issues:
+
+@itemize
+@item
+@url{https://issues.guix.gnu.org} provides a pleasant
+interface@footnote{The web interface at
+@url{https://issues.guix.gnu.org} is powered by Mumi, a nice piece of
+software written in Guile, and you can help!  See
+@url{https://git.elephly.net/gitweb.cgi?p=software/mumi.git}.} to browse
+bug reports and patches, and to participate in discussions;
+@item
+@url{https://bugs.gnu.org/guix} lists bug reports;
+@item
+@url{https://bugs.gnu.org/guix-patches} lists patch submissions.
+@end itemize
+
+To view discussions related to issue number @var{n}, go to
+@indicateurl{https://issues.guix.gnu.org/@var{n}} or
+@indicateurl{https://bugs.gnu.org/@var{n}}.
+
+If you use Emacs, you may find it more convenient to interact with
+issues using @file{debbugs.el}, which you can install with:
+
+@example
+guix install emacs-debbugs
+@end example
+
+For example, to list all open issues on @code{guix-patches}, hit:
+
+@example
+@kbd{C-u} @kbd{M-x} debbugs-gnu @kbd{RET} @kbd{RET} guix-patches @kbd{RET} n y
+@end example
+
+@xref{Top,,, debbugs-ug, Debbugs User Guide}, for more information on
+this nifty tool!
+
+@node Commit Access
+@section Commit Access
+
+@cindex commit access, for developers
+For frequent contributors, having write access to the repository is
+convenient.  When you deem it necessary, consider applying for commit
+access by following these steps:
+
+@enumerate
+@item
+Find three committers who would vouch for you.  You can view the list of
+committers at
+@url{https://savannah.gnu.org/project/memberlist.php?group=guix}.  Each
+of them should email a statement to @email{guix-maintainers@@gnu.org} (a
+private alias for the collective of maintainers), signed with their
+OpenPGP key.
+
+Committers are expected to have had some interactions with you as a
+contributor and to be able to judge whether you are sufficiently
+familiar with the project's practices.  It is @emph{not} a judgment on
+the value of your work, so a refusal should rather be interpreted as
+``let's try again later''.
+
+@item
+Send @email{guix-maintainers@@gnu.org} a message stating your intent,
+listing the three committers who support your application, signed with
+the OpenPGP key you will use to sign commits, and giving its fingerprint
+(see below).  See @uref{https://emailselfdefense.fsf.org/en/}, for an
+introduction to public-key cryptography with GnuPG.
+
+@c See <https://sha-mbles.github.io/>.
+Set up GnuPG such that it never uses the SHA1 hash algorithm for digital
+signatures, which is known to be unsafe since 2019, for instance by
+adding the following line to @file{~/.gnupg/gpg.conf} (@pxref{GPG
+Esoteric Options,,, gnupg, The GNU Privacy Guard Manual}):
+
+@example
+digest-algo sha512
+@end example
+
+@item
+Maintainers ultimately decide whether to grant you commit access,
+usually following your referrals' recommendation.
+
+@item
+@cindex OpenPGP, signed commits
+If and once you've been given access, please send a message to
+@email{guix-devel@@gnu.org} to say so, again signed with the OpenPGP key
+you will use to sign commits (do that before pushing your first commit).
+That way, everyone can notice and ensure you control that OpenPGP key.
+
+@quotation Important
+Before you can push for the first time, maintainers must:
+
+@enumerate
+@item
+add your OpenPGP key to the @code{keyring} branch;
+@item
+add your OpenPGP fingerprint to the @file{.guix-authorizations} file of
+the branch(es) you will commit to.
+@end enumerate
+@end quotation
+
+@item
+Make sure to read the rest of this section and... profit!
+@end enumerate
+
+@quotation Note
+Maintainers are happy to give commit access to people who have been
+contributing for some time and have a track record---don't be shy and
+don't underestimate your work!
+
+However, note that the project is working towards a more automated patch
+review and merging system, which, as a consequence, may lead us to have
+fewer people with commit access to the main repository.  Stay tuned!
+@end quotation
+
+If you get commit access, please make sure to follow
+the policy below (discussions of the policy can take place on
+@email{guix-devel@@gnu.org}).
+
+Non-trivial patches should always be posted to
+@email{guix-patches@@gnu.org} (trivial patches include fixing typos,
+etc.).  This mailing list fills the patch-tracking database
+(@pxref{Tracking Bugs and Patches}).
+
+For patches that just add a new package, and a simple one, it's OK to
+commit, if you're confident (which means you successfully built it in a
+chroot setup, and have done a reasonable copyright and license
+auditing).  Likewise for package upgrades, except upgrades that trigger
+a lot of rebuilds (for example, upgrading GnuTLS or GLib).  We have a
+mailing list for commit notifications (@email{guix-commits@@gnu.org}),
+so people can notice.  Before pushing your changes, make sure to run
+@code{git pull --rebase}.
+
+All commits that are pushed to the central repository on Savannah must
+be signed with an OpenPGP key, and the public key should be uploaded to
+your user account on Savannah and to public key servers, such as
+@code{keys.openpgp.org}.  To configure Git to automatically sign
+commits, run:
+
+@example
+git config commit.gpgsign true
+git config user.signingkey CABBA6EA1DC0FF33
+@end example
+
+You can prevent yourself from accidentally pushing unsigned commits to
+Savannah by using the pre-push Git hook called located at
+@file{etc/git/pre-push}:
+
+@example
+cp etc/git/pre-push .git/hooks/pre-push
+@end example
+
+When pushing a commit on behalf of somebody else, please add a
+@code{Signed-off-by} line at the end of the commit log message---e.g.,
+with @command{git am --signoff}.  This improves tracking of who did
+what.
+
+When adding channel news entries (@pxref{Channels, Writing Channel
+News}), make sure they are well-formed by running the following command
+right before pushing:
+
+@example
+make check-channel-news
+@end example
+
+For anything else, please post to @email{guix-patches@@gnu.org} and
+leave time for a review, without committing anything (@pxref{Submitting
+Patches}).  If you didn’t receive any reply after two weeks, and if
+you're confident, it's OK to commit.
+
+That last part is subject to being adjusted, allowing individuals to commit
+directly on non-controversial changes on parts they’re familiar with.
+
+One last thing: the project keeps moving forward because committers not
+only push their own awesome changes, but also offer some of their time
+@emph{reviewing} and pushing other people's changes.  As a committer,
+you're welcome to use your expertise and commit rights to help other
+contributors, too!

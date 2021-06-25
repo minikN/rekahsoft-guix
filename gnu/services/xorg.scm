@@ -1,10 +1,12 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2017 Andy Wingo <wingo@igalia.com>
-;;; Copyright © 2013, 2014, 2015, 2016, 2017, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2013, 2014, 2015, 2016, 2017, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2015 Sou Bunnbu <iyzsong@gmail.com>
 ;;; Copyright © 2018, 2019 Timothy Sample <samplet@ngyro.com>
 ;;; Copyright © 2019 Jan (janneke) Nieuwenhuizen <janneke@gnu.org>
 ;;; Copyright © 2019 Tim Gesthuizen <tim.gesthuizen@yahoo.de>
+;;; Copyright © 2020 shtwzrd <shtwzrd@protonmail.com>
+;;; Copyright © 2020 Jakub Kądziołka <kuba@kadziolka.net>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -29,7 +31,7 @@
   #:use-module (gnu system keyboard)
   #:use-module (gnu services base)
   #:use-module (gnu services dbus)
-  #:use-module ((gnu packages base) #:select (canonical-package))
+  #:use-module (gnu packages base)
   #:use-module (gnu packages guile)
   #:use-module (gnu packages xorg)
   #:use-module (gnu packages fonts)
@@ -102,6 +104,8 @@
             gdm-configuration
             gdm-service-type
             gdm-service
+
+            handle-xorg-configuration
             set-xorg-configuration))
 
 ;;; Commentary:
@@ -152,7 +156,12 @@
   xorg-configuration make-xorg-configuration
   xorg-configuration?
   (modules          xorg-configuration-modules    ;list of packages
-                    (default %default-xorg-modules))
+                    ; filter out modules not supported on current system
+                    (default (filter
+                              (lambda (p)
+                                (member (%current-system)
+                                        (package-supported-systems p)))
+                              %default-xorg-modules)))
   (fonts            xorg-configuration-fonts      ;list of packges
                     (default %default-xorg-fonts))
   (drivers          xorg-configuration-drivers    ;list of strings
@@ -171,31 +180,32 @@
 (define (xorg-configuration->file config)
   "Compute an Xorg configuration file corresponding to CONFIG, an
 <xorg-configuration> record."
-  (define all-modules
-    ;; 'xorg-server' provides 'fbdevhw.so' etc.
-    (append (xorg-configuration-modules config)
-            (list xorg-server)))
+  (let ((xorg-server (xorg-configuration-server config)))
+    (define all-modules
+      ;; 'xorg-server' provides 'fbdevhw.so' etc.
+      (append (xorg-configuration-modules config)
+              (list xorg-server)))
 
-  (define build
-    #~(begin
-        (use-modules (ice-9 match)
-                     (srfi srfi-1)
-                     (srfi srfi-26))
+    (define build
+      #~(begin
+          (use-modules (ice-9 match)
+                       (srfi srfi-1)
+                       (srfi srfi-26))
 
-        (call-with-output-file #$output
-          (lambda (port)
-            (define drivers
-              '#$(xorg-configuration-drivers config))
+          (call-with-output-file #$output
+            (lambda (port)
+              (define drivers
+                '#$(xorg-configuration-drivers config))
 
-            (define (device-section driver)
-              (string-append "
+              (define (device-section driver)
+                (string-append "
 Section \"Device\"
   Identifier \"device-" driver "\"
   Driver \"" driver "\"
 EndSection"))
 
-            (define (screen-section driver resolutions)
-              (string-append "
+              (define (screen-section driver resolutions)
+                (string-append "
 Section \"Screen\"
   Identifier \"screen-" driver "\"
   Device \"device-" driver "\"
@@ -209,8 +219,8 @@ Section \"Screen\"
   EndSubSection
 EndSection"))
 
-            (define (input-class-section layout variant model options)
-              (string-append "
+              (define (input-class-section layout variant model options)
+                (string-append "
 Section \"InputClass\"
   Identifier \"evdev keyboard catchall\"
   MatchIsKeyboard \"on\"
@@ -234,69 +244,69 @@ Section \"InputClass\"
   Driver \"evdev\"
 EndSection\n"))
 
-            (define (expand modules)
-              ;; Append to MODULES the relevant /lib/xorg/modules
-              ;; sub-directories.
-              (append-map (lambda (module)
-                            (filter-map (lambda (directory)
-                                          (let ((full (string-append module
-                                                                     directory)))
-                                            (and (file-exists? full)
-                                                 full)))
-                                        '("/lib/xorg/modules/drivers"
-                                          "/lib/xorg/modules/input"
-                                          "/lib/xorg/modules/multimedia"
-                                          "/lib/xorg/modules/extensions")))
-                          modules))
+              (define (expand modules)
+                ;; Append to MODULES the relevant /lib/xorg/modules
+                ;; sub-directories.
+                (append-map (lambda (module)
+                              (filter-map (lambda (directory)
+                                            (let ((full (string-append module
+                                                                       directory)))
+                                              (and (file-exists? full)
+                                                   full)))
+                                          '("/lib/xorg/modules/drivers"
+                                            "/lib/xorg/modules/input"
+                                            "/lib/xorg/modules/multimedia"
+                                            "/lib/xorg/modules/extensions")))
+                            modules))
 
-            (display "Section \"Files\"\n" port)
-            (for-each (lambda (font)
-                        (format port "  FontPath \"~a\"~%" font))
-                      '#$(xorg-configuration-fonts config))
-            (for-each (lambda (module)
-                        (format port
-                                "  ModulePath \"~a\"~%"
-                                module))
-                      (append (expand '#$all-modules)
+              (display "Section \"Files\"\n" port)
+              (for-each (lambda (font)
+                          (format port "  FontPath \"~a\"~%" font))
+                        '#$(xorg-configuration-fonts config))
+              (for-each (lambda (module)
+                          (format port
+                                  "  ModulePath \"~a\"~%"
+                                  module))
+                        (append (expand '#$all-modules)
 
-                              ;; For fbdevhw.so and so on.
-                              (list #$(file-append xorg-server
-                                                   "/lib/xorg/modules"))))
-            (display "EndSection\n" port)
-            (display "
+                                ;; For fbdevhw.so and so on.
+                                (list #$(file-append xorg-server
+                                                     "/lib/xorg/modules"))))
+              (display "EndSection\n" port)
+              (display "
 Section \"ServerFlags\"
   Option \"AllowMouseOpenFail\" \"on\"
 EndSection\n" port)
 
-            (display (string-join (map device-section drivers) "\n")
-                     port)
-            (newline port)
-            (display (string-join
-                      (map (cut screen-section <>
-                                '#$(xorg-configuration-resolutions config))
-                           drivers)
-                      "\n")
-                     port)
-            (newline port)
+              (display (string-join (map device-section drivers) "\n")
+                       port)
+              (newline port)
+              (display (string-join
+                        (map (cut screen-section <>
+                                  '#$(xorg-configuration-resolutions config))
+                             drivers)
+                        "\n")
+                       port)
+              (newline port)
 
-            (let ((layout  #$(and=> (xorg-configuration-keyboard-layout config)
-                                    keyboard-layout-name))
-                  (variant #$(and=> (xorg-configuration-keyboard-layout config)
-                                    keyboard-layout-variant))
-                  (model   #$(and=> (xorg-configuration-keyboard-layout config)
-                                    keyboard-layout-model))
-                  (options '#$(and=> (xorg-configuration-keyboard-layout config)
-                                     keyboard-layout-options)))
-              (when layout
-                (display (input-class-section layout variant model options)
-                         port)
-                (newline port)))
+              (let ((layout  #$(and=> (xorg-configuration-keyboard-layout config)
+                                      keyboard-layout-name))
+                    (variant #$(and=> (xorg-configuration-keyboard-layout config)
+                                      keyboard-layout-variant))
+                    (model   #$(and=> (xorg-configuration-keyboard-layout config)
+                                      keyboard-layout-model))
+                    (options '#$(and=> (xorg-configuration-keyboard-layout config)
+                                       keyboard-layout-options)))
+                (when layout
+                  (display (input-class-section layout variant model options)
+                           port)
+                  (newline port)))
 
-            (for-each (lambda (config)
-                        (display config port))
-                      '#$(xorg-configuration-extra-config config))))))
+              (for-each (lambda (config)
+                          (display config port))
+                        '#$(xorg-configuration-extra-config config))))))
 
-  (computed-file "xserver.conf" build))
+    (computed-file "xserver.conf" build)))
 
 (define (xorg-configuration-directory modules)
   "Return a directory that contains the @code{.conf} files for X.org that
@@ -453,6 +463,25 @@ desktop session from the system or user profile will be used."
 
   (program-file "xinitrc" builder))
 
+(define-syntax handle-xorg-configuration
+  (syntax-rules ()
+    "Generate the `compose' and `extend' entries of a login manager
+`service-type' to handle specifying the `xorg-configuration' through
+a `service-extension', as used by `set-xorg-configuration'."
+    ((_ configuration-record service-type-definition)
+     (service-type
+       (inherit service-type-definition)
+       (compose (lambda (extensions)
+                  (match extensions
+                    (() #f)
+                    ((config . _) config))))
+       (extend (lambda (config xorg-configuration)
+                 (if xorg-configuration
+                     (configuration-record
+                      (inherit config)
+                      (xorg-configuration xorg-configuration))
+                     config)))))))
+
 
 ;;;
 ;;; SLiM log-in manager.
@@ -578,18 +607,22 @@ reboot_cmd " shepherd "/sbin/reboot\n"
            (respawn? #t)))))
 
 (define slim-service-type
-  (service-type (name 'slim)
-                (extensions
-                 (list (service-extension shepherd-root-service-type
-                                          slim-shepherd-service)
-                       (service-extension pam-root-service-type
-                                          slim-pam-service)
+  (handle-xorg-configuration slim-configuration
+    (service-type (name 'slim)
+                  (extensions
+                   (list (service-extension shepherd-root-service-type
+                                            slim-shepherd-service)
+                         (service-extension pam-root-service-type
+                                            slim-pam-service)
 
-                       ;; Unconditionally add xterm to the system profile, to
-                       ;; avoid bad surprises.
-                       (service-extension profile-service-type
-                                          (const (list xterm)))))
-                (default-value (slim-configuration))))
+                         ;; Unconditionally add xterm to the system profile, to
+                         ;; avoid bad surprises.
+                         (service-extension profile-service-type
+                                            (const (list xterm)))))
+
+                  (default-value (slim-configuration))
+                  (description
+                   "Run the SLiM graphical login manager for X11."))))
 
 (define-deprecated (slim-service #:key (slim slim)
                                  (allow-empty-passwords? #t) auto-login?
@@ -661,7 +694,11 @@ theme."
                  (list (service-extension pam-root-service-type
                                           screen-locker-pam-services)
                        (service-extension setuid-program-service-type
-                                          screen-locker-setuid-programs)))))
+                                          screen-locker-setuid-programs)))
+                (description
+                 "Allow the given program to be used as a screen locker for
+the graphical server by making it setuid-root, so it can authenticate users,
+and by creating a PAM service for it.")))
 
 (define* (screen-locker-service package
                                 #:optional
@@ -768,10 +805,32 @@ the GNOME desktop environment.")
         (user-account
          (name "gdm")
          (group "gdm")
+         (supplementary-groups '("video"))
          (system? #t)
          (comment "GNOME Display Manager user")
          (home-directory "/var/lib/gdm")
          (shell (file-append shadow "/sbin/nologin")))))
+
+(define %gdm-activation
+  ;; Ensure /var/lib/gdm is owned by the "gdm" user.  This is normally the
+  ;; case but could be wrong if the "gdm" user was created, then removed, and
+  ;; then recreated under a different UID/GID: <https://bugs.gnu.org/37423>.
+  (with-imported-modules '((guix build utils))
+    #~(begin
+        (use-modules (guix build utils))
+
+        (let* ((gdm (getpwnam "gdm"))
+               (uid (passwd:uid gdm))
+               (gid (passwd:gid gdm))
+               (st  (stat "/var/lib/gdm" #f)))
+          ;; Recurse into /var/lib/gdm only if it has wrong ownership.
+          (when (and st
+                     (or (not (= uid (stat:uid st)))
+                         (not (= gid (stat:gid st)))))
+            (for-each (lambda (file)
+                        (chown file uid gid))
+                      (find-files "/var/lib/gdm"
+                                  #:directories? #t)))))))
 
 (define dbus-daemon-wrapper
   (program-file
@@ -814,6 +873,7 @@ the GNOME desktop environment.")
   (allow-empty-passwords? gdm-configuration-allow-empty-passwords? (default #t))
   (auto-login? gdm-configuration-auto-login? (default #f))
   (dbus-daemon gdm-configuration-dbus-daemon (default dbus-daemon-wrapper))
+  (debug? gdm-configuration-debug? (default #f))
   (default-user gdm-configuration-default-user (default #f))
   (gnome-shell-assets gdm-configuration-gnome-shell-assets
                       (default (list adwaita-icon-theme font-cantarell)))
@@ -840,12 +900,19 @@ the GNOME desktop environment.")
                    "#TimedLoginEnable=false\n"
                    "#TimedLogin=\n"
                    "#TimedLoginDelay=0\n"
-                   "#InitialSetupEnable=true\n"
+                   ;; Disable initial system setup inside GDM.
+                   ;; Whatever settings are set there should already be
+                   ;; taken care of through `guix system'.
+                   ;; See also
+                   ;; <https://debbugs.gnu.org/cgi/bugreport.cgi?bug=39281>.
+                   "InitialSetupEnable=false\n"
                    ;; Enable me once X is working.
                    "WaylandEnable=false\n"
                    "\n"
                    "[debug]\n"
-                   "#Enable=true\n"
+                   "Enable=" (if (gdm-configuration-debug? config)
+                                 "true"
+                                 "false") "\n"
                    "\n"
                    "[security]\n"
                    "#DisallowTCP=true\n"
@@ -911,42 +978,30 @@ the GNOME desktop environment.")
          (respawn? #t))))
 
 (define gdm-service-type
-  (service-type (name 'gdm)
-                (extensions
-                 (list (service-extension shepherd-root-service-type
-                                          gdm-shepherd-service)
-                       (service-extension account-service-type
-                                          (const %gdm-accounts))
-                       (service-extension pam-root-service-type
-                                          gdm-pam-service)
-                       (service-extension profile-service-type
-                                          gdm-configuration-gnome-shell-assets)
-                       (service-extension dbus-root-service-type
-                                          (compose list
-                                                   gdm-configuration-gdm))
-                       (service-extension localed-service-type
-                                          (compose
-                                           xorg-configuration-keyboard-layout
-                                           gdm-configuration-xorg))))
-
-                ;; For convenience, this service can be extended with an
-                ;; <xorg-configuration> record.  Take the first one that
-                ;; comes.
-                (compose (lambda (extensions)
-                           (match extensions
-                             (() #f)
-                             ((config . _) config))))
-                (extend (lambda (config xorg-configuration)
-                          (if xorg-configuration
-                              (gdm-configuration
-                               (inherit config)
-                               (xorg-configuration xorg-configuration))
-                              config)))
-
-                (default-value (gdm-configuration))
-                (description
-                 "Run the GNOME Desktop Manager (GDM), a program that allows
-you to log in in a graphical session, whether or not you use GNOME.")))
+  (handle-xorg-configuration gdm-configuration
+    (service-type (name 'gdm)
+                  (extensions
+                   (list (service-extension shepherd-root-service-type
+                                            gdm-shepherd-service)
+                         (service-extension activation-service-type
+                                            (const %gdm-activation))
+                         (service-extension account-service-type
+                                            (const %gdm-accounts))
+                         (service-extension pam-root-service-type
+                                            gdm-pam-service)
+                         (service-extension profile-service-type
+                                            gdm-configuration-gnome-shell-assets)
+                         (service-extension dbus-root-service-type
+                                            (compose list
+                                                     gdm-configuration-gdm))
+                         (service-extension localed-service-type
+                                            (compose
+                                             xorg-configuration-keyboard-layout
+                                             gdm-configuration-xorg))))
+                  (default-value (gdm-configuration))
+                  (description
+                   "Run the GNOME Desktop Manager (GDM), a program that allows
+you to log in in a graphical session, whether or not you use GNOME."))))
 
 (define-deprecated (gdm-service #:key (gdm gdm)
                                 (allow-empty-passwords? #t)

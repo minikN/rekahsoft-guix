@@ -1,8 +1,10 @@
 ;;; GNU Guix --- Functional package management for GNU
 ;;; Copyright © 2016 David Thompson <davet@gnu.org>
 ;;; Copyright © 2018 Efraim Flashner <efraim@flashner.co.il>
-;;; Copyright © 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;; Copyright © 2019 Maxim Cournoyer <maxim.cournoyer@gmail.com>
+;;; Copyright © 2020 Michael Rohleder <mike@rohleder.de>
+;;; Copyright © 2020 Katherine Cox-Buday <cox.katherine.e@gmail.com>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -25,6 +27,7 @@
   #:use-module (guix packages)
   #:use-module (guix download)
   #:use-module (guix git-download)
+  #:use-module (guix build-system cmake)
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system go)
   #:use-module (guix build-system python)
@@ -45,7 +48,7 @@
   #:use-module (gnu packages version-control)
   #:use-module (gnu packages virtualization))
 
-(define %docker-version "18.09.5")
+(define %docker-version "19.03.12")
 
 (define-public python-docker-py
   (package
@@ -63,7 +66,6 @@
     (arguments '(#:tests? #f))
     (inputs
      `(("python-requests" ,python-requests-2.20)
-       ("python-ipaddress" ,python-ipaddress)
        ("python-six" ,python-six)
        ("python-urllib3" ,python-urllib3-1.24)
        ("python-websocket-client" ,python-websocket-client)))
@@ -97,19 +99,17 @@ pseudo-terminal (PTY) allocated to a Docker container using the Python
 client.")
     (license license:asl2.0)))
 
-;; When updating, check whether python-jsonschema-2.6 can be removed from Guix
-;; entirely.
 (define-public docker-compose
   (package
     (name "docker-compose")
-    (version "1.24.1")
+    (version "1.25.4")
     (source
      (origin
        (method url-fetch)
        (uri (pypi-uri "docker-compose" version))
        (sha256
         (base32
-         "0lx7bx6jvhydbab8vwry0bclhdf0dfj6jrns1m5y45yp9ybqxmd5"))))
+         "1ww8ckpj3n5jdg63qvmiqx3gk0fsrnynnnqj17fppymbwjzf5fps"))))
     (build-system python-build-system)
     ;; TODO: Tests require running Docker daemon.
     (arguments '(#:tests? #f))
@@ -119,9 +119,9 @@ client.")
        ("python-docker-py" ,python-docker-py)
        ("python-dockerpty" ,python-dockerpty)
        ("python-docopt" ,python-docopt)
-       ("python-jsonschema" ,python-jsonschema-2.6)
+       ("python-jsonschema" ,python-jsonschema)
        ("python-pyyaml" ,python-pyyaml)
-       ("python-requests" ,python-requests-2.20)
+       ("python-requests" ,python-requests)
        ("python-six" ,python-six)
        ("python-texttable" ,python-texttable)
        ("python-websocket-client" ,python-websocket-client)))
@@ -178,11 +178,13 @@ Python without keeping their credentials in a Docker configuration file.")
      (origin
       (method git-fetch)
       (uri (git-reference
-            (url "https://github.com/containerd/containerd.git")
+            (url "https://github.com/containerd/containerd")
             (commit (string-append "v" version))))
       (file-name (git-file-name name version))
       (sha256
-       (base32 "0npbzixf3c0jvzm159vygvkydrr8h36c9sq50yv0mdinrys2bvg0"))))
+       (base32 "0npbzixf3c0jvzm159vygvkydrr8h36c9sq50yv0mdinrys2bvg0"))
+      (patches
+        (search-patches "containerd-test-with-go1.13.patch"))))
     (build-system go-build-system)
     (arguments
      `(#:import-path "github.com/containerd/containerd"
@@ -235,7 +237,7 @@ Python without keeping their credentials in a Docker configuration file.")
     (description "This package provides the container daemon for Docker.
 It includes image transfer and storage, container execution and supervision,
 network attachments.")
-    (home-page "http://containerd.io/")
+    (home-page "https://containerd.io/")
     (license license:asl2.0)))
 
 ;;; Private package that shouldn't be used directly; its purposes is to be
@@ -254,7 +256,7 @@ network attachments.")
       (source (origin
                 (method git-fetch)
                 (uri (git-reference
-                      (url "https://github.com/docker/libnetwork.git")
+                      (url "https://github.com/docker/libnetwork")
                       (commit commit)))
                 (file-name (git-file-name name version))
                 (sha256
@@ -290,9 +292,9 @@ the required network abstractions for applications.")
        ("logrus" ,go-github-com-sirupsen-logrus)
        ("go-netlink" ,go-netlink)
        ("go-netns" ,go-netns)
-       ("go-golang-org-x-crypto-ssh-terminal"
-        ,go-golang-org-x-crypto-ssh-terminal)
-       ("go-golang-org-x-sys-unix" ,go-golang-org-x-sys-unix)))
+       ("go-golang-org-x-crypto"
+        ,go-golang-org-x-crypto)
+       ("go-golang-org-x-sys" ,go-golang-org-x-sys)))
     (synopsis "Docker user-space proxy")
     (description "A proxy running in the user space.  It is used by the
 built-in registry server of Docker.")
@@ -308,15 +310,13 @@ built-in registry server of Docker.")
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/docker/engine.git")
+             (url "https://github.com/docker/engine")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "0cirpd9l2qazp2jyanwzvrkx2m98nksjdvn43ff38p89w6133ipb"))
+        (base32 "1dj6llfcgcbpq9q9j6b4wb0anbn1g5wzm8ikq2lyhg54i3154m93"))
        (patches
-        (search-patches "docker-engine-test-noinstall.patch"
-                        "docker-fix-tests.patch"
-                        "docker-use-fewer-modprobes.patch"))))
+        (search-patches "docker-fix-tests.patch"))))
     (build-system gnu-build-system)
     (arguments
      `(#:modules
@@ -368,7 +368,16 @@ built-in registry server of Docker.")
                (("StockRuntimeName = .*")
                 (string-append "StockRuntimeName = \""
                                (assoc-ref inputs "runc")
-                               "/sbin/runc\"\n")))
+                               "/sbin/runc\"\n"))
+               (("DefaultInitBinary = .*")
+                (string-append "DefaultInitBinary = \""
+                               (assoc-ref inputs "tini")
+                               "/bin/tini\"\n")))
+             (substitute* "daemon/config/config_common_unix_test.go"
+               (("expectedInitPath: \"docker-init\"")
+                (string-append "expectedInitPath: \""
+                               (assoc-ref inputs "tini")
+                               "/bin/tini\"")))
              (substitute* "vendor/github.com/moby/buildkit/executor/runcexecutor/executor.go"
                (("var defaultCommandCandidates = .*")
                 (string-append "var defaultCommandCandidates = []string{\""
@@ -381,6 +390,17 @@ built-in registry server of Docker.")
              (substitute* "pkg/archive/archive.go"
                (("string\\{\"xz")
                 (string-append "string{\"" (assoc-ref inputs "xz") "/bin/xz")))
+             ;; TODO: Remove when Docker proper uses v1.14.x to build
+             (substitute* "registry/resumable/resumablerequestreader_test.go"
+               (("I%27m%20not%20an%20url" all)
+                (string-append "\"" all "\"")))
+             ;; TODO: Remove when Docker proper uses v1.14.x to build
+             (substitute* "vendor/gotest.tools/x/subtest/context.go"
+               (("func \\(tc \\*testcase\\) Cleanup\\(" all)
+                (string-append all "func()"))
+               (("tc\\.Cleanup\\(" all)
+                (string-append all "nil")))
+
              (let ((source-files (filter (lambda (name)
                                            (not (string-contains name "test")))
                                          (find-files "." "\\.go$"))))
@@ -408,6 +428,7 @@ built-in registry server of Docker.")
                                                   "/" relative-path
                                                   "\"")) ...)))))
                  (substitute-LookPath*
+                  ("containerd" "containerd" "bin/containerd")
                   ("ps" "procps" "bin/ps")
                   ("mkfs.xfs" "xfsprogs" "bin/mkfs.xfs")
                   ("lvmdiskscan" "lvm2" "sbin/lvmdiskscan")
@@ -478,13 +499,23 @@ built-in registry server of Docker.")
              ;; Timeouts after 5 min.
              (delete-file "plugin/manager_linux_test.go")
              ;; Operation not permitted.
+             (delete-file "daemon/graphdriver/aufs/aufs_test.go")
              (delete-file "daemon/graphdriver/btrfs/btrfs_test.go")
              (delete-file "daemon/graphdriver/overlay/overlay_test.go")
              (delete-file "daemon/graphdriver/overlay2/overlay_test.go")
+             (delete-file "pkg/chrootarchive/archive_unix_test.go")
+             (delete-file "daemon/container_unix_test.go")
+             ;; This file uses cgroups and /proc.
+             (delete-file "pkg/sysinfo/sysinfo_linux_test.go")
+             ;; This file uses cgroups.
+             (delete-file "runconfig/config_test.go")
+             ;; This file uses /var.
+             (delete-file "daemon/oci_linux_test.go")
              #t))
          (replace 'configure
            (lambda _
              (setenv "DOCKER_GITCOMMIT" (string-append "v" ,%docker-version))
+             (setenv "VERSION" (string-append ,%docker-version "-ce"))
              ;; Automatically use bundled dependencies.
              ;; TODO: Unbundle - see file "vendor.conf".
              (setenv "AUTO_GOPATH" "1")
@@ -522,8 +553,12 @@ built-in registry server of Docker.")
              (let* ((out (assoc-ref outputs "out"))
                     (out-bin (string-append out "/bin")))
                (install-file "bundles/dynbinary-daemon/dockerd" out-bin)
-               (install-file "bundles/dynbinary-daemon/dockerd-dev" out-bin)
-               #t))))))
+               (install-file (string-append "bundles/dynbinary-daemon/dockerd-"
+                                            (getenv "VERSION"))
+                             out-bin)
+               #t)))
+         (add-after 'install 'remove-go-references
+           (assoc-ref go:%standard-phases 'remove-go-references)))))
     (inputs
      `(("btrfs-progs" ,btrfs-progs)
        ("containerd" ,containerd)       ; for containerd-shim
@@ -541,11 +576,13 @@ built-in registry server of Docker.")
        ("runc" ,runc)
        ("util-linux" ,util-linux)
        ("lvm2" ,lvm2)
+       ("tini" ,tini)
        ("xfsprogs" ,xfsprogs)
        ("xz" ,xz)))
     (native-inputs
      `(("eudev" ,eudev)      ; TODO: Should be propagated by lvm2 (.pc -> .pc)
        ("go" ,go)
+       ("gotestsum" ,gotestsum)
        ("pkg-config" ,pkg-config)))
     (synopsis "Docker container component library, and daemon")
     (description "This package provides a framework to assemble specialized
@@ -563,11 +600,11 @@ provisioning etc.")
      (origin
       (method git-fetch)
       (uri (git-reference
-            (url "https://github.com/docker/cli.git")
+            (url "https://github.com/docker/cli")
             (commit (string-append "v" version))))
       (file-name (git-file-name name version))
       (sha256
-       (base32 "0mxxjzkwdny8p2dmyjich7x1gn7hdlfppzjy2skk2k5bwv7nxpmi"))))
+       (base32 "1bynmnaykhh1m42v6bxparlpm9kajpqsvlrlwgz1b9ivcklf5ik6"))))
     (build-system go-build-system)
     (arguments
      `(#:import-path "github.com/docker/cli"
@@ -605,7 +642,15 @@ provisioning etc.")
          (replace 'install
            (lambda* (#:key outputs #:allow-other-keys)
              (let* ((out (assoc-ref outputs "out"))
-                    (out-bin (string-append out "/bin")))
+                    (out-bin (string-append out "/bin"))
+                    (etc (string-append out "/etc")))
+               (with-directory-excursion "src/github.com/docker/cli/contrib/completion"
+                 (install-file "bash/docker"
+                               (string-append etc "/bash_completion.d"))
+                 (install-file "fish/docker.fish"
+                               (string-append etc "/fish/completions"))
+                 (install-file "zsh/_docker"
+                               (string-append etc "/zsh/site-functions")))
                (chdir "build")
                (install-file "docker" out-bin)
                #t))))))
@@ -625,7 +670,7 @@ provisioning etc.")
     (source (origin
               (method git-fetch)
               (uri (git-reference
-                    (url "https://github.com/savoirfairelinux/cqfd.git")
+                    (url "https://github.com/savoirfairelinux/cqfd")
                     (commit (string-append "v" version))))
               (file-name (git-file-name name version))
               (sha256
@@ -655,3 +700,36 @@ provisioning etc.")
 way to run commands in the current directory, but within a Docker container
 defined in a per-project configuration file.")
     (license license:gpl3+)))
+
+(define-public tini
+  (package
+    (name "tini")
+    (version "0.18.0")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/krallin/tini")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "1h20i3wwlbd8x4jr2gz68hgklh0lb0jj7y5xk1wvr8y58fip1rdn"))))
+    (build-system cmake-build-system)
+    (arguments
+     `(#:tests? #f                    ;tests require a Docker daemon
+       #:phases (modify-phases %standard-phases
+                  (add-after 'unpack 'disable-static-build
+                    ;; Disable the static build as it fails to install, with
+                    ;; the error: "No valid ELF RPATH or RUNPATH entry exists
+                    ;; in the file".
+                    (lambda _
+                      (substitute* "CMakeLists.txt"
+                        ((".*tini-static.*") ""))
+                      #t)))))
+    (home-page "https://github.com/krallin/tini")
+    (synopsis "Tiny but valid init for containers")
+    (description "Tini is an init program specifically designed for use with
+containers.  It manages a single child process and ensures that any zombie
+processes produced from it are reaped and that signals are properly forwarded.
+Tini is integrated with Docker.")
+    (license license:expat)))

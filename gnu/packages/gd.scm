@@ -5,7 +5,7 @@
 ;;; Copyright © 2016, 2017 Leo Famulari <leo@famulari.name>
 ;;; Copyright © 2017 Efraim Flashner <efraim@flashner.co.il>
 ;;; Copyright © 2017 Marius Bakke <mbakke@fastmail.com>
-;;; Copyright © 2018, 2019 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018, 2019, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -39,11 +39,10 @@
 (define-public gd
   (package
     (name "gd")
-    (replacement gd/fixed)
     ;; Note: With libgd.org now pointing to github.com, genuine old
     ;; tarballs are no longer available.  Notably, versions 2.0.x are
     ;; missing.
-    (version "2.2.5")
+    (version "2.3.0")
     (source (origin
              (method url-fetch)
              (uri (string-append
@@ -51,17 +50,15 @@
                    version "/libgd-" version ".tar.xz"))
              (sha256
               (base32
-               "0lfy5f241sbv8s3splm2zqiaxv7lxrcshh875xryryk7yk5jqc4c"))
-
-             (patches (search-patches "gd-CVE-2018-5711.patch"
-                                      "gd-CVE-2018-1000222.patch"
-                                      "gd-fix-tests-on-i686.patch"
-                                      "gd-freetype-test-failure.patch"))))
+               "0n5czhxzinvjvmhkf5l9fwjdx5ip69k5k7pj6zwb6zs1k9dibngc"))
+             (patches (search-patches "gd-fix-tests-on-i686.patch"
+                                      "gd-brect-bounds.patch"))))
     (build-system gnu-build-system)
     (arguments
       ;; As recommended by github.com/libgd/libgd/issues/278 to fix rounding
       ;; issues on aarch64 and other architectures.
      `(#:make-flags '("CFLAGS=-ffp-contract=off")
+       #:configure-flags '("--disable-static")
        #:phases
        (modify-phases %standard-phases
          ;; This test is known to fail on i686-linux:
@@ -76,13 +73,12 @@
     (native-inputs
      `(("pkg-config" ,pkg-config)))
     (inputs
-     `(("freetype" ,freetype)
+     `(("fontconfig" ,fontconfig)
+       ("freetype" ,freetype)
+       ("libjpeg" ,libjpeg-turbo)
        ("libpng" ,libpng)
        ("zlib" ,zlib)))
-    (propagated-inputs
-     `(("fontconfig" ,fontconfig)
-       ("libjpeg" ,libjpeg)))
-    (home-page "http://www.libgd.org/")
+    (home-page "https://www.libgd.org/")
     (synopsis "Library for the dynamic creation of images by programmers")
     (description
      "GD is a library for the dynamic creation of images by programmers.  GD
@@ -95,35 +91,27 @@ most common applications of GD involve website development.")
                            "See COPYING file in the distribution."))
     (properties '((cpe-name . "libgd")))))
 
-(define-public gd/fixed
-  (hidden-package
-    (package
-      (inherit gd)
-      (source (origin
-                (inherit (package-source gd))
-                (patches (append (origin-patches (package-source gd))
-                                 (search-patches "gd-CVE-2019-6977.patch"
-                                                 "gd-CVE-2019-6978.patch"))))))))
-
 (define-public perl-gd
   (package
     (name "perl-gd")
-    (version "2.71")
+    (version "2.72")
     (source
      (origin
        (method url-fetch)
        (uri (string-append "mirror://cpan/authors/id/R/RU/RURBAN/"
                            "GD-" version ".tar.gz"))
        (sha256
-        (base32 "1ivskdb4nwy7ky37369hwkfxp11fkp6ri5k7qlf2dmra7f3y86s5"))))
+        (base32 "014ik1rng6cnjfgdarkyy5m6wl4pdzc2b445m27krfn3zh9hgl31"))))
     (build-system perl-build-system)
     (inputs
      `(("fontconfig" ,fontconfig)
        ("freetype" ,freetype)
        ("gd" ,gd)
        ("libpng" ,libpng)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("zlib" ,zlib)))
+    (native-inputs
+     `(("perl-extutils-pkgconfig" ,perl-extutils-pkgconfig)))
     (arguments
      `(#:make-maker-flags
        (list (string-append "--lib_jpeg_path="

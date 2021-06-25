@@ -3,7 +3,7 @@
 ;;; Copyright © 2017, 2018 Julien Lepiller <julien@lepiller.eu>
 ;;; Copyright © 2018 Marius Bakke <mbakke@fastmail.com>
 ;;; Copyright © 2018 Mark H Weaver <mhw@netris.org>
-;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
+;;; Copyright © 2018, 2020 Tobias Geerinckx-Rice <me@tobias.gr>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -25,6 +25,7 @@
   #:use-module (guix utils)
   #:use-module (guix packages)
   #:use-module (guix download)
+  #:use-module (guix git-download)
   #:use-module (guix build-system ant)
   #:use-module (gnu packages)
   #:use-module (gnu packages compression)
@@ -35,21 +36,26 @@
 (define-public java-snappy
   (package
     (name "java-snappy")
-    (version "1.1.7.2")
-    (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/xerial/snappy-java/archive/"
-                                  version ".tar.gz"))
-              (file-name (string-append name "-" version ".tar.gz"))
-              (sha256
-               (base32
-                "1p557vdv006ysgxbpp83krmq0066k46108vyiyka69w8i4i8rbbm"))))
+    (version "1.1.7.3")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/xerial/snappy-java")
+             (commit version)))
+       (sha256
+        (base32 "07c145w1kv8g7dbwpy5xss142il7zr0qq78p2ih76azgl97n5cba"))
+       (file-name (git-file-name name version))))
     (build-system ant-build-system)
     (arguments
      `(#:jar-name "snappy.jar"
        #:source-dir "src/main/java"
        #:phases
        (modify-phases %standard-phases
+         (add-after 'unpack 'make-git-checkout-writable
+           (lambda _
+             (for-each make-file-writable (find-files "."))
+             #t))
          (add-before 'build 'remove-binaries
            (lambda _
              (delete-file "lib/org/xerial/snappy/OSInfo.class")
@@ -125,14 +131,17 @@ compressor/decompressor.")
 (define-public java-snappy-1
   (package
     (inherit java-snappy)
+    (name "java-snappy")
     (version "1.0.3-rc3")
-    (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/xerial/snappy-java/archive/"
-                                  "snappy-java-" version ".tar.gz"))
-              (sha256
-               (base32
-                "08hsxlqidiqck0q57fshwyv3ynyxy18vmhrai9fyc8mz17m7gsa3"))))
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url (string-append "https://github.com/xerial/snappy-java"))
+             (commit (string-append "snappy-java-" version))))
+       (sha256
+        (base32 "0gbg3xmhniyh5p6w5zqj16fr15fa8j4raswd8pj00l4ixf5qa6m4"))
+       (file-name (git-file-name name version))))
     (arguments
      `(#:jar-name "snappy.jar"
        #:source-dir "src/main/java"
@@ -184,19 +193,20 @@ compressor/decompressor.")
   (package
     (name "java-iq80-snappy")
     (version "0.4")
-    (source (origin
-              (method url-fetch)
-              (uri (string-append "https://github.com/dain/snappy/archive/snappy-"
-                                  version ".tar.gz"))
-              (sha256
-               (base32
-                "0rb3zhci7w9wzd65lfnk7p3ip0n6gb58a9qpx8n7r0231gahyamf"))))
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/dain/snappy")
+             (commit (string-append "snappy-" version))))
+       (sha256
+        (base32 "1mswh207065rdzbxk6rxaqlxhbg1ngxa0vjc20knsn31kqbq1bcz"))
+       (file-name (git-file-name name version))))
     (build-system ant-build-system)
     (arguments
      `(#:jar-name "iq80-snappy.jar"
        #:source-dir "src/main/java"
        #:test-dir "src/test"
-       #:jdk ,icedtea-8
        #:phases
        (modify-phases %standard-phases
          (replace 'check
@@ -217,13 +227,13 @@ compressor/decompressor.")
              ;; We don't have hadoop
              (delete-file "src/main/java/org/iq80/snappy/HadoopSnappyCodec.java")
              (delete-file "src/test/java/org/iq80/snappy/TestHadoopSnappyCodec.java")
-             #t)))))
+             #t))
+         (replace 'install (install-from-pom "pom.xml")))))
     (home-page "https://github.com/dain/snappy")
     (native-inputs
-     `(("guava" ,java-guava)
+     `(("java-guava" ,java-guava)
        ("java-snappy" ,java-snappy)
-       ("hamcrest" ,java-hamcrest-core)
-       ("testng" ,java-testng)))
+       ("java-testng" ,java-testng)))
     (synopsis "Java port of the Snappy (de)compressor")
     (description
      "Iq80-snappy is a port of the Snappy compressor and decompressor rewritten
@@ -271,9 +281,9 @@ It can be used as a replacement for the Apache @code{CBZip2InputStream} /
 @code{CBZip2OutputStream} classes.")
     (license license:expat)))
 
-(define-public java-tukaani-xz
+(define-public java-xz
   (package
-    (name "java-tukaani-xz")
+    (name "java-xz")
     (version "1.6")
     (source (origin
               (method url-fetch)
@@ -292,14 +302,21 @@ It can be used as a replacement for the Apache @code{CBZip2InputStream} /
              ;; the package is not contained in a subdirectory
              (chdir "..")
              #t))
-         (replace 'install
-           (lambda* (#:key outputs #:allow-other-keys)
-             ;; Do we want to install *Demo.jar?
-             (install-file "build/jar/xz.jar"
-                           (string-append
-                             (assoc-ref outputs "out")
-                             "/share/java/xz.jar"))
-             #t)))))
+         (add-before 'install 'generate-pom
+           (lambda _
+             (copy-file "maven/pom_template.xml" "pom.xml")
+             (substitute* "pom.xml"
+               (("@VERSION@") ,version)
+               (("@TITLE@") "XZ data compression")
+               (("@HOMEPAGE@") "http://tukaani.org/xz/java.html"))
+             #t))
+        (add-before 'install 'rename-jar
+          (lambda _
+            (rename-file "build/jar/xz.jar"
+                         (string-append "build/jar/xz-" ,version ".jar"))
+            #t))
+        (replace 'install
+          (install-from-pom "pom.xml")))))
     (native-inputs
      `(("unzip" ,unzip)))
     (home-page "https://tukaani.org")

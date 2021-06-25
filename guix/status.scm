@@ -1,5 +1,5 @@
 ;;; GNU Guix --- Functional package management for GNU
-;;; Copyright © 2017, 2018, 2019 Ludovic Courtès <ludo@gnu.org>
+;;; Copyright © 2017, 2018, 2019, 2020 Ludovic Courtès <ludo@gnu.org>
 ;;; Copyright © 2018, 2019 Ricardo Wurmus <rekado@elephly.net>
 ;;;
 ;;; This file is part of GNU Guix.
@@ -472,10 +472,18 @@ addition to build events."
            (let ((count (match (assq-ref properties 'graft)
                           (#f  0)
                           (lst (or (assq-ref lst 'count) 0)))))
-             (format port (info (N_ "applying ~a graft for ~a..."
-                                    "applying ~a grafts for ~a..."
+             (format port (info (N_ "applying ~a graft for ~a ..."
+                                    "applying ~a grafts for ~a ..."
                                     count))
                      count drv)))
+         ('profile
+          (let ((count (match (assq-ref properties 'profile)
+                         (#f  0)
+                         (lst (or (assq-ref lst 'count) 0)))))
+            (format port (info (N_ "building profile with ~a package..."
+                                   "building profile with ~a packages..."
+                                   count))
+                    count)))
          ('profile-hook
           (let ((hook-type (assq-ref properties 'hook)))
             (or (and=> (hook-message hook-type)
@@ -517,7 +525,7 @@ addition to build events."
        (newline port)))
     (('download-started item uri _ ...)
      (erase-current-line*)
-     (format port (info (G_ "downloading from ~a...")) uri)
+     (format port (info (G_ "downloading from ~a ...")) uri)
      (newline port))
     (('download-progress item uri
                          (= string->number size)

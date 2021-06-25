@@ -7,7 +7,8 @@
 ;;; Copyright © 2016, 2018 Leo Famulari <leo@famulari.name>
 ;;; Copyright © 2017 Ricardo Wurmus <rekado@elephly.net>
 ;;; Copyright © 2018 Tobias Geerinckx-Rice <me@tobias.gr>
-;;; Copyright © 2019 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2019, 2020 Marius Bakke <mbakke@fastmail.com>
+;;; Copyright © 2020 Leo Prikler <leo.prikler@student.tugraz.at>
 ;;;
 ;;; This file is part of GNU Guix.
 ;;;
@@ -29,6 +30,7 @@
   #:use-module (guix packages)
   #:use-module (guix download)
   #:use-module (guix build-system gnu)
+  #:use-module (guix build-system meson)
   #:use-module (guix utils)
   #:use-module (gnu packages)
   #:use-module (gnu packages audio)
@@ -68,19 +70,19 @@
 (define-public orc
   (package
     (name "orc")
-    (version "0.4.29")
+    (version "0.4.31")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://gstreamer.freedesktop.org/data/src/"
                                   "orc/orc-" version ".tar.xz"))
               (sha256
                (base32
-                "1cisbbn69p9c8vikn0nin14q0zscby5m8cyvzxyw2pjb2kwh32ag"))))
-    (build-system gnu-build-system)
+                "0xb0c7q3xv1ldmz5ipybazb01gy3cijj8622dcx7rbm9lq85zax0"))))
+    (build-system meson-build-system)
     (arguments
      `(#:phases
        (modify-phases %standard-phases
-         (add-before 'check 'disable-faulty-test
+         (add-after 'unpack 'disable-faulty-test
            (lambda _
              ;; XXX Disable the 'test-limits' and 'exec_opcodes_sys'
              ;; tests, which fail on some machines.  See:
@@ -90,6 +92,8 @@
                (("if \\(error\\) return 1;")
                 "if (error) return 77;"))
              #t)))))
+    (native-inputs
+     `(("gtk-doc" ,gtk-doc)))
     (home-page "https://gstreamer.freedesktop.org/modules/orc.html")
     (synopsis "Oil runtime compiler")
     (description
@@ -100,33 +104,66 @@ arrays of data.")
     ;; under the 3-clause BSD license, the rest is under 2-clause BSD license.
     (license (list license:bsd-2 license:bsd-3))))
 
+;; Increase the test timeouts to accommodate slow or busy machines.
+(define %common-gstreamer-phases
+  '((add-after 'unpack 'increase-test-timeout
+      (lambda _
+        (substitute* "tests/check/meson.build"
+          (("'CK_DEFAULT_TIMEOUT', '20'")
+           "'CK_DEFAULT_TIMEOUT', '60'")
+          (("timeout ?: 3 \\* 60")
+           "timeout: 9 * 60"))
+        #t))))
+
 (define-public gstreamer
   (package
     (name "gstreamer")
-    (version "1.16.0")
+    (version "1.16.2")
     (source
      (origin
       (method url-fetch)
       (uri (string-append
             "https://gstreamer.freedesktop.org/src/gstreamer/gstreamer-"
             version ".tar.xz"))
-      (patches (search-patches "gstreamer-buffer-reset-offset.patch"))
       (sha256
        (base32
-        "003wy1p1in85p9sr5jsyhbnwqaiwz069flwkhyx7qhxy31qjz3hf"))))
-    (build-system gnu-build-system)
+        "0kp93622y29pck8asvil1fmzf55s2gx76wv475a6izc3cwj49w73"))))
+    (build-system meson-build-system)
     (outputs '("out" "doc"))
     (arguments
-     `(#:configure-flags
-       (list (string-append "--with-html-dir="
-                            (assoc-ref %outputs "doc")
-                            "/share/gtk-doc/html"))))
+     `(#:phases
+       (modify-phases %standard-phases
+         ,@%common-gstreamer-phases
+         ;; FIXME: Since switching to the meson-build-system, two tests
+         ;; started failing on i686.  See
+         ;; <https://gitlab.freedesktop.org/gstreamer/gstreamer/issues/499>.
+         ,@(if (string-prefix? "i686" (or (%current-target-system)
+                                          (%current-system)))
+               `((add-after 'unpack 'disable-some-tests
+                   (lambda _
+                     (substitute* "tests/check/gst/gstsystemclock.c"
+                       (("tcase_add_test \\(tc_chain, test_stress_cleanup_unschedule.*")
+                        "")
+                       (("tcase_add_test \\(tc_chain, test_stress_reschedule.*")
+                      ""))
+                     #t)))
+               '())
+         (add-after 'install 'move-docs
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((out (assoc-ref outputs "out"))
+                   (doc (assoc-ref outputs "doc")))
+               (mkdir-p (string-append doc "/share"))
+               (copy-recursively (string-append out "/share/gtk-doc")
+                                 (string-append doc "/share/gtk-doc"))
+               (delete-file-recursively (string-append out "/share/gtk-doc"))
+               #t))))))
     (propagated-inputs `(("glib" ,glib))) ; required by gstreamer-1.0.pc.
     (native-inputs
      `(("bison" ,bison)
        ("flex" ,flex)
        ("glib" ,glib "bin")
        ("gobject-introspection" ,gobject-introspection)
+       ("gtk-doc" ,gtk-doc)
        ("perl" ,perl)
        ("pkg-config" ,pkg-config)
        ("python-wrapper" ,python-wrapper)))
@@ -152,7 +189,7 @@ This package provides the core library and elements.")
 (define-public gst-plugins-base
   (package
     (name "gst-plugins-base")
-    (version "1.16.0")
+    (version "1.16.2")
     (source
      (origin
       (method url-fetch)
@@ -160,13 +197,19 @@ This package provides the core library and elements.")
                           name "-" version ".tar.xz"))
       (sha256
        (base32
-        "1bmmdwbyy89ayb85xc48y217f6wdmpz96f30zm6v53z2a5xsm4s0"))))
-    (build-system gnu-build-system)
-    (outputs '("out" "doc"))
+        "0sl1hxlyq46r02k7z70v09vx1gi4rcypqmzra9jid93lzvi76gmi"))))
+    (build-system meson-build-system)
     (propagated-inputs
      `(("glib" ,glib)              ;required by gstreamer-sdp-1.0.pc
        ("gstreamer" ,gstreamer)    ;required by gstreamer-plugins-base-1.0.pc
-       ("orc" ,orc)))              ;required by gstreamer-audio-1.0.pc
+
+       ;; XXX: Do not enable Orc optimizations on ARM systems because
+       ;; it leads to two test failures.
+       ;; https://gitlab.freedesktop.org/gstreamer/gst-plugins-base/issues/683
+       ,@(if (string-prefix? "arm" (or (%current-target-system)
+                                       (%current-system)))
+             '()
+             `(("orc" ,orc)))))         ;required by gstreamer-audio-1.0.pc
     (inputs
      `(("cdparanoia" ,cdparanoia)
        ("pango" ,pango)
@@ -189,13 +232,13 @@ This package provides the core library and elements.")
         ("gobject-introspection" ,gobject-introspection)
         ("python-wrapper" ,python-wrapper)))
     (arguments
-     `(#:parallel-tests? #f ; 'pipelines/tcp' fails in parallel
-       #:configure-flags
-       (list (string-append "--with-html-dir="
-                            (assoc-ref %outputs "doc")
-                            "/share/gtk-doc/html"))
+     `(#:configure-flags '("-Dgl=disabled"
+                           ;; FIXME: Documentation fails to build without
+                           ;; enabling GL above, which causes other problems.
+                           "-Ddoc=false")
        #:phases
        (modify-phases %standard-phases
+         ,@%common-gstreamer-phases
          (add-before 'configure 'patch
            (lambda _
              (substitute* "tests/check/libs/pbutils.c"
@@ -211,7 +254,7 @@ for the GStreamer multimedia library.")
 (define-public gst-plugins-good
   (package
     (name "gst-plugins-good")
-    (version "1.16.0")
+    (version "1.16.2")
     (source
      (origin
       (method url-fetch)
@@ -220,8 +263,8 @@ for the GStreamer multimedia library.")
             name "-" version ".tar.xz"))
       (sha256
        (base32
-        "1zdhif1mhf0ihkjpjyrh65g2iz2cawkjjb3h5w8h9ml06grxwjk5"))))
-    (build-system gnu-build-system)
+        "068k3cbv1yf3gbllfdzqsg263kzwh21y8dpwr0wvgh15vapkpfs0"))))
+    (build-system meson-build-system)
     (inputs
      `(("aalib" ,aalib)
        ("cairo" ,cairo)
@@ -235,7 +278,7 @@ for the GStreamer multimedia library.")
        ("libcaca" ,libcaca)
        ("libdv" ,libdv)
        ("libiec61883" ,libiec61883)
-       ("libjpeg" ,libjpeg)
+       ("libjpeg" ,libjpeg-turbo)
        ("libpng" ,libpng)
        ("libshout" ,libshout)
        ("libsoup" ,libsoup)
@@ -254,6 +297,23 @@ for the GStreamer multimedia library.")
     (arguments
      `(#:phases
        (modify-phases %standard-phases
+         ,@%common-gstreamer-phases
+         ,@(if (string-prefix? "arm" (or (%current-target-system)
+                                         (%current-system)))
+               ;; FIXME: These tests started failing on armhf after switching to Meson.
+               ;; https://gitlab.freedesktop.org/gstreamer/gst-plugins-good/issues/689
+               `((add-after 'unpack 'disable-tests-for-armhf
+                   (lambda _
+                     (substitute* "tests/check/elements/rtpbin_buffer_list.c"
+                       (("tcase_add_test \\(tc_chain, test_bufferlist\\);")
+                        ""))
+                     (substitute* "tests/check/elements/rtpulpfec.c"
+                       (("tcase_add_loop_test.*rtpulpfecdec_recovered_from_many.*")
+                        "")
+                       (("tcase_add.*rtpulpfecdec_recovered_using_recovered_packet.*")
+                        ""))
+                     #t)))
+               '())
          (add-after
           'unpack 'disable-failing-tests
           (lambda _
@@ -274,27 +334,44 @@ developers consider to have good quality code and correct functionality.")
 (define-public gst-plugins-bad
   (package
     (name "gst-plugins-bad")
-    (version "1.16.0")
+    (version "1.16.2")
     (source (origin
               (method url-fetch)
               (uri (string-append "https://gstreamer.freedesktop.org/src/"
                                   name "/" name "-" version ".tar.xz"))
               (sha256
                (base32
-                "019b0yqjrcg6jmfd4cc336h1bz5p4wxl58yz1c4sdb96avirs4r2"))))
-    (outputs '("out" "doc"))
-    (build-system gnu-build-system)
+                "0x0y0hm0ga3zqi5q4090hw5sjh59y1ry9ak16qsaascm72i7mjzi"))))
+    (build-system meson-build-system)
     (arguments
-     '(#:tests? #f ; XXX: 13 of 53 tests fail
-       #:configure-flags
-       (list (string-append "--with-html-dir="
-                            (assoc-ref %outputs "doc")
-                            "/share/gtk-doc/html"))))
+     `(#:phases
+       (modify-phases %standard-phases
+         ,@%common-gstreamer-phases
+         ,@(if (string-prefix? "arm" (or (%current-target-system)
+                                         (%current-system)))
+               ;; Disable test that fails on ARMv7.
+               ;; https://gitlab.freedesktop.org/gstreamer/gst-plugins-bad/issues/1188
+               `((add-after 'unpack 'disable-asfmux-test
+                   (lambda _
+                     (substitute* "tests/check/meson.build"
+                       (("\\[\\['elements/asfmux\\.c'\\]\\],")
+                        ""))
+                     #t)))
+               '())
+         (add-after 'unpack 'disable-failing-test
+           (lambda _
+             ;; FIXME: Why is this failing.
+             (substitute* "tests/check/meson.build"
+               ((".*elements/dash_mpd\\.c.*")
+                ""))
+             #t)))))
     (propagated-inputs
      `(("gst-plugins-base" ,gst-plugins-base)))
     (native-inputs
      `(("glib:bin" ,glib "bin") ; for glib-mkenums, etc.
        ("gobject-introspection" ,gobject-introspection)
+       ;; TODO: Enable documentation for 1.18.
+       ;;("gtk-doc" ,gtk-doc)
        ("pkg-config" ,pkg-config)
        ("python" ,python)))
     (inputs
@@ -349,7 +426,7 @@ par compared to the rest.")
 (define-public gst-plugins-ugly
   (package
     (name "gst-plugins-ugly")
-    (version "1.16.0")
+    (version "1.16.2")
     (source
      (origin
        (method url-fetch)
@@ -357,8 +434,11 @@ par compared to the rest.")
                            name "/" name "-" version ".tar.xz"))
        (sha256
         (base32
-         "1hm46c1fy9vl1wfwipsj41zp79cm7in1fpmjw24j5hriy32n82g3"))))
-    (build-system gnu-build-system)
+         "1jpvc32x6q01zjkfgh6gmq6aaikiyfwwnhj7bmvn52syhrdl202m"))))
+    (build-system meson-build-system)
+    (arguments
+     `(#:phases (modify-phases %standard-phases
+                  ,@%common-gstreamer-phases)))
     (inputs
      `(("gst-plugins-base" ,gst-plugins-base)
        ("liba52" ,liba52)
@@ -384,7 +464,7 @@ distribution problems in some jurisdictions, e.g. due to patent threats.")
 (define-public gst-libav
   (package
     (name "gst-libav")
-    (version "1.16.0")
+    (version "1.16.2")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -392,16 +472,14 @@ distribution problems in some jurisdictions, e.g. due to patent threats.")
                     name "-" version ".tar.xz"))
               (sha256
                (base32
-                "16ixqpfrr7plaaz14n3vagr2q5xbfkv7gpmcsyndrkx98f813b6z"))
+                "1wpfilc98bad9nsv3y1qapxp35dvn2mvwvrmqwrsj58cf09gc967"))
               (modules '((guix build utils)))
               (snippet
                '(begin
                   ;; Drop bundled ffmpeg.
                   (delete-file-recursively "gst-libs/ext/libav")
                   #t))))
-    (build-system gnu-build-system)
-    (arguments
-     '(#:configure-flags '("--with-system-libav")))
+    (build-system meson-build-system)
     (native-inputs
      `(("pkg-config" ,pkg-config)
        ("python" ,python)))
@@ -417,10 +495,45 @@ distribution problems in some jurisdictions, e.g. due to patent threats.")
 compression formats through the use of the libav library.")
     (license license:gpl2+)))
 
+(define-public gst-editing-services
+  (package
+    (name "gst-editing-services")
+    (version "1.16.2")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append
+                    "https://gstreamer.freedesktop.org/src/" name "/"
+                    "gstreamer-editing-services-" version ".tar.xz"))
+              (sha256
+               (base32
+                "05hcf3prna8ajjnqd53221gj9syarrrjbgvjcbhicv0c38csc1hf"))))
+    (build-system meson-build-system)
+    (arguments
+     ;; FIXME: 16/22 failing tests.
+     `(#:tests? #f
+       #:phases (modify-phases %standard-phases
+                  ,@%common-gstreamer-phases)))
+    (inputs
+     `(("gst-plugins-base" ,gst-plugins-base)
+       ("libxml2" ,libxml2)))
+    (native-inputs
+     `(("flex" ,flex)
+       ("gst-plugins-bad" ,gst-plugins-bad)
+       ("gst-plugins-good" ,gst-plugins-good)
+       ("perl" ,perl)
+       ("pkg-config" ,pkg-config)
+       ("python" ,python)))
+    (home-page "https://gstreamer.freedesktop.org/")
+    (synopsis "GStreamer library for non-linear editors")
+    (description
+     "This is a high-level library for facilitating the creation of audio/video
+non-linear editors.")
+    (license license:gpl2+)))
+
 (define-public python-gst
   (package
     (name "python-gst")
-    (version "1.16.0")
+    (version "1.16.2")
     (source (origin
               (method url-fetch)
               (uri (string-append
@@ -428,22 +541,20 @@ compression formats through the use of the libav library.")
                     "gst-python-" version ".tar.xz"))
               (sha256
                (base32
-                "0f1d9rvy2qxlymmfzyknnfr5rz1vx69jv17gp7wnamc5s6p7mp2m"))))
-    (build-system gnu-build-system)
+                "1a48ca66izmm8hnp608jv5isg3jxb0vlfmhns0bg9nbkilag7390"))
+              (patches
+               (search-patches "python-gst-fix-build-with-python-3.8.patch"))))
+    (build-system meson-build-system)
     (arguments
-     ;; XXX: Factorize python-sitedir with python-build-system.
-     `(#:imported-modules (,@%gnu-build-system-modules
+     `(#:modules ((guix build meson-build-system)
+                  (guix build utils)
+                  ((guix build python-build-system) #:prefix python:))
+       #:imported-modules (,@%meson-build-system-modules
                            (guix build python-build-system))
        #:configure-flags
-       (let* ((python (assoc-ref %build-inputs "python"))
-              (python-version ((@@ (guix build python-build-system)
-                                   get-python-version)
-                               python))
-              (python-sitedir (string-append
-                               "lib/python" python-version "/site-packages")))
-         (list (string-append
-                "--with-pygi-overrides-dir=" %output "/" python-sitedir
-                "/gi/overrides")))))
+       (list (string-append
+              "-Dpygi-overrides-dir="
+              (python:site-packages %build-inputs %outputs) "gi/overrides"))))
     (native-inputs
      `(("pkg-config" ,pkg-config)
        ("python" ,python)))
