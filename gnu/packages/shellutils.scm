@@ -250,6 +250,42 @@ without unecessary complications, like a real spaceship.")
     (home-page "https://github.com/denysdovhan/spaceship-prompt")
     (license license:expat)))
 
+(define-public sh-z
+  (package
+    (name "sh-z")
+    (version "1.11")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/rupa/z.git")
+                    (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "13zbgkj6y0qhvn5jpkrqbd4jjxjr789k228iwma5hjfh1nx7ghyb"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:tests? #f ; No tests provided
+       #:phases
+       (modify-phases %standard-phases
+         (delete 'configure)
+         (delete 'build)
+         (replace 'install
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let* ((out (assoc-ref outputs "out"))
+                    (man (string-append out "/share/man/man1"))
+                    (bin (string-append out "/bin")))
+               (install-file "z.sh" bin)
+               (chmod (string-append bin "/z.sh") #o755)
+               (install-file "z.1" man)))))))
+    (synopsis "Jump about directories")
+    (description
+     "Tracks your most used directories, based on ``frecency''.  After a short
+learning phase, z will take you to the most ``frecent'' directory that matches
+ALL of the regexes given on the command line in order.")
+    (home-page "https://github.com/rupa/z")
+    (license license:expat)))
+
 (define-public envstore
   (package
     (name "envstore")
